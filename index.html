@@ -380,8 +380,6 @@ html.font-large{zoom:1.13}
     <button class="nav-btn" id="nav-recarga" onclick="navTo('recarga')">⚡ Recarga</button>
     <button class="nav-btn" id="nav-gestao" onclick="navTo('gestao')">⚙ Gestão ▾</button>
   </div>
-  <!-- nav-vistorias mantido fora da navbar para compatibilidade com applyModulos -->
-  <button id="nav-vistorias" style="display:none"></button>
   <!-- BUSCA RÁPIDA -->
   <div class="busca-bar" id="busca-bar">
     <input class="fi" id="busca-input" placeholder="Buscar placa, apto, hóspede, modelo..." oninput="onBuscaInput(this.value)" autocomplete="off" style="margin:0;flex:1">
@@ -433,7 +431,6 @@ html.font-large{zoom:1.13}
     </div>
     <div class="painel-wrap" id="painel-wrap" style="display:none"></div>
     <div class="painel-wrap" id="recarga-wrap" style="display:none;padding:10px"></div>
-    <div class="painel-wrap" id="vistorias-wrap" style="display:none;padding:10px"></div>
 </div>
 <div id="nci-overlay">
   <div class="nci-hdr">
@@ -1172,7 +1169,7 @@ function renderP(){
     const info=[d.model,d.color].filter(Boolean).join(' · ');
     const isLarge=d.size==='large';
     const elapsed=d.saida_ts?fmtElapsed(d.saida_ts):'';
-    const vstPend=MODULOS.vistorias&&(()=>{const vst=getVistoriaByApt(apt)||(d.hospedagem?getVistoriaByHosp(d.hospedagem):null);return vst&&!vst.ts_assinada;})();
+    const vstPend=(()=>{const vst=getVistoriaByApt(apt)||(d.hospedagem?getVistoriaByHosp(d.hospedagem):null);return vst&&!vst.ts_assinada;})();
     const dv=document.createElement('div');dv.className='oi';dv.dataset.apt=apt;
     dv.innerHTML=`
       <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -1218,7 +1215,7 @@ function renderP(){
   const hidden  = items.length - visible.length;
 
   visible.forEach(([apt,d])=>{
-    const vstP=MODULOS.vistorias&&(()=>{const vst=getVistoriaByApt(apt)||(d.hospedagem?getVistoriaByHosp(d.hospedagem):null);return vst&&!vst.ts_assinada;})();
+    const vstP=(()=>{const vst=getVistoriaByApt(apt)||(d.hospedagem?getVistoriaByHosp(d.hospedagem):null);return vst&&!vst.ts_assinada;})();
     const btn=document.createElement('span');
     btn.className='tb-pi'+(d.size==='large'?' large-badge':'');
     btn.innerHTML=apt+(vstP?'<span style="color:#A32D2D;font-size:9px;margin-left:2px">❗</span>':'');
@@ -2139,14 +2136,14 @@ function doChk(id){
   };
 
   const _vstChk=getVistoriaByHosp(d.hospedagem||'')||getVistoriaByApt(aptKey);
-  const _temVstPend=MODULOS.vistorias&&_vstChk&&!_vstChk.ts_assinada;
+  const _temVstPend=_vstChk&&!_vstChk.ts_assinada;
   mc.innerHTML=`
     <div class="mt">🚪 Check-out — Apt. ${aptKey}</div>
     <div class="ms">${[d.model,d.color,d.plate].filter(Boolean).join(' · ')||'Sem detalhes'}</div>
     ${_temVstPend?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstChk.numero} — pendente de assinatura</small></div>`:`<div class="warn-box" style="font-size:12px">Confirma o check-out deste veículo?</div>`}
     <div class="ag">
       <button class="ab ac" id="chk-sim">🚪 ${_temVstPend?'Continuar mesmo assim':'Confirmar check-out'}</button>
-      ${_temVstPend?`<button class="ab ao" onclick="navTo('vistorias');closeOv()" style="margin-top:0">📋 Cancelar — ir para Vistorias</button>`:''}
+      ${_temVstPend?`<button class="ab ao" onclick="assinarVistoria('${_vstChk.id}')" style="margin-top:0">✍ Assinar vistoria antes</button>`:''}
       <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
     </div>`;
   document.getElementById('ov').classList.add('on');
@@ -2267,8 +2264,7 @@ function showDet(id, fromPasseio){
     <div class="mt" style="display:flex;align-items:center;gap:4px">
       <span style="white-space:nowrap;cursor:pointer;text-decoration:underline dotted" onclick="showHistoricoModal('${apt}','${hospedagemNum}','${id}',${fromPasseio?1:0})" title="Ver histórico">ℹ️ ${tituloTxt}${hospSufixo}</span>
       <button class="share-btn" onclick="doShare('${id}',${fromPasseio?1:0})" title="Compartilhar" style="flex-shrink:0"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" fill="none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
-      <button class="attach-btn" onclick="novaVistoria('${apt}','${hospedagemNum}')" title="Nova vistoria" style="margin-left:auto">📋</button>
-      <button class="attach-btn" onclick="toggleAnexosDet('${id}',${fromPasseio?1:0})" title="Fotos / Arquivos">${nAnexos>0?'📎<sup style="font-size:8px;color:#185FA5">'+nAnexos+'</sup>':'📎'}</button>
+      <button class="attach-btn" onclick="toggleAnexosDet('${id}',${fromPasseio?1:0})" title="Fotos / Arquivos" style="margin-left:auto">${nAnexos>0?'📎<sup style="font-size:8px;color:#185FA5">'+nAnexos+'</sup>':'📎'}</button>
     </div>
     <div style="margin:8px 0 10px">${rows.map(([l,v])=>`<div class="dr"><span class="dl">${l}</span><span class="dv">${v}</span></div>`).join('')}</div>
     <div id="att-det-area"></div>
@@ -2352,14 +2348,14 @@ function showPasseioCheckout(apt){
   if(!d)return;
   const info=[d.model,d.color,d.plate].filter(Boolean).join(' · ');
   const _vstP=getVistoriaByHosp(d.hospedagem||'')||getVistoriaByApt(apt);
-  const _temVstPendP=MODULOS.vistorias&&_vstP&&!_vstP.ts_assinada;
+  const _temVstPendP=_vstP&&!_vstP.ts_assinada;
   showM(`<div class="mt">Check-out — Apt. ${apt}</div>
     <div class="ms">${info||'Sem detalhes'} · 🛣️ A passeio</div>
     ${_temVstPendP?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstP.numero} — pendente de assinatura</small></div>`:''}
     <div class="warn-box" style="font-size:11px">O hóspede fez check-out.<br>O carro será removido do sistema.</div>
     <div class="ag">
       <button class="ab ac" id="pco-sim">🚪 ${_temVstPendP?'Continuar mesmo assim':'Confirmar check-out'}</button>
-      ${_temVstPendP?`<button class="ab ao" onclick="navTo('vistorias');closeOv()" style="margin-top:0">📋 Cancelar — ir para Vistorias</button>`:''}
+      ${_temVstPendP?`<button class="ab ao" onclick="assinarVistoria('${_vstP.id}')" style="margin-top:0">✍ Assinar vistoria antes</button>`:''}
       <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
     </div>`);
   document.getElementById('pco-sim').onclick=function(){
@@ -2935,25 +2931,21 @@ function buscaNav(dir){
 // ── NAVBAR / PAINEL DO DIA ────────────────────────────────────────────────
 function navTo(v){
   if(v==='gestao'){ showGestaoMenu(); return; }
-  ['mapa','painel','vistorias','recarga'].forEach(n=>{
+  ['mapa','painel','recarga'].forEach(n=>{
     const btn=document.getElementById('nav-'+n); if(btn) btn.classList.toggle('nav-active',n===v);
   });
   const nb=document.getElementById('nav-gestao'); if(nb) nb.classList.remove('nav-active');
   const gi=document.getElementById('garage-inner');
   const pw=document.getElementById('painel-wrap');
   const rw=document.getElementById('recarga-wrap');
-  const vw=document.getElementById('vistorias-wrap');
   if(gi) gi.style.display=v==='mapa'?'':'none';
   if(pw) pw.style.display=v==='painel'?'':'none';
   if(rw) rw.style.display=v==='recarga'?'':'none';
-  if(vw) vw.style.display=v==='vistorias'?'':'none';
   if(v==='painel') renderPainelDia();
   if(v==='recarga') renderTelaRecarga();
-  if(v==='vistorias') renderTelaVistorias();
   if(v==='mapa') setTimeout(positionPilares,100);
   fecharBusca();
 }
-function irParaVistorias(){ navTo('vistorias'); }
 
 function renderPainelDia(){
   const pw=document.getElementById('painel-wrap'); if(!pw) return;
@@ -2989,8 +2981,6 @@ function renderPainelDia(){
   const filaRec=MODULOS.recarga?(FILA_RECARGA||[]):[];
 
   // vistorias pendentes
-  const vstPend=MODULOS.vistorias?Object.values(VISTORIAS||{}).filter(v=>!v.ts_assinada):[];
-
   // backup status
   const lastBkp=DRIVE_STATUS?.ultimo_backup;
 
@@ -3127,18 +3117,7 @@ function renderPainelDia(){
     ${filaRec.length>0?`<div style="font-size:11px;color:#854F0B;margin-top:4px">Fila: ${filaRec.map(f=>'Apt.'+f.apt).join(', ')}</div>`:''}
   </div>`:''}
 
-  <!-- SEÇ7: VISTORIA PENDENTE (só se módulo ativo) -->
-  ${MODULOS.vistorias&&vstPend.length>0?`
-  <div class="painel-sec" style="cursor:pointer" onclick="navTo('vistorias')" >
-    <div class="painel-sec-title" style="color:#A32D2D">❗ Vistorias sem assinatura (${vstPend.length})</div>
-    ${vstPend.slice(0,2).map(v=>`<div style="font-size:12px;display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f0f0ec">
-      <span style="color:#A32D2D">❗</span>
-      <div><div style="font-weight:700">${v.numero}${v.apt?' · Apt.'+v.apt:''}</div><div style="font-size:10px;color:#888">${v.modelo||'—'} · ${v.placa||'—'}</div></div>
-    </div>`).join('')}
-    ${vstPend.length>2?`<div style="font-size:11px;color:#A32D2D;margin-top:4px">+${vstPend.length-2} outras → toque para ver</div>`:''}
-  </div>`:''}
-
-  <!-- SEÇ8: PLANTÃO + BACKUP (rodapé) -->
+  <!-- SEÇ7: PLANTÃO + BACKUP (rodapé) -->
   <div class="painel-sec" style="border-top:1px solid #eee;padding-top:10px;margin-top:4px">
     <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
       <div style="flex:1;min-width:120px">
@@ -3190,7 +3169,6 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="closeOv();showModalTurnos()">🕒 <span>Cadastro de turnos</span></div>
     <div class="gestao-menu-sep">Relatórios e análises</div>
     <div class="gestao-menu-item" onclick="closeOv();showRelatorios()">📊 <span>Relatórios</span></div>
-    ${MODULOS.vistorias?`<div class="gestao-menu-item" onclick="closeOv();irParaVistorias()">📋 <span>Vistorias</span></div>`:''}
     <div class="gestao-menu-sep">Configurações</div>
     <div class="gestao-menu-item" onclick="closeOv();showConfiguracoesSistema()">⚙ <span>Configurações do Sistema</span></div>
     <div class="gestao-menu-item" onclick="closeOv();showConexoes()">🔗 <span>Backup e Conexões</span></div>
@@ -3345,17 +3323,14 @@ function loadRecargas(){
 function saveRecargaCfg(){ try{localStorage.setItem(RECARGA_CFG_LS,JSON.stringify(RECARGA_CONFIG));}catch(e){} }
 
 // ── MÓDULOS ATIVOS ────────────────────────────────────────────────────────
-let MODULOS = {recarga:true, vistorias:true};
+let MODULOS = {recarga:true};
 const MODULOS_LS = 'garagespot_modulos';
-function loadModulos(){ try{const m=localStorage.getItem(MODULOS_LS);if(m) MODULOS=Object.assign({recarga:true,vistorias:true},JSON.parse(m)||{});}catch(e){} }
+function loadModulos(){ try{const m=localStorage.getItem(MODULOS_LS);if(m) MODULOS=Object.assign({recarga:true},JSON.parse(m)||{});}catch(e){} }
 function saveModulos(){ try{localStorage.setItem(MODULOS_LS,JSON.stringify(MODULOS));}catch(e){} }
 function applyModulos(){
   const btnR=document.getElementById('nav-recarga');
   if(btnR) btnR.style.display=MODULOS.recarga?'':'none';
-  // Se estiver na tela desativada, volta para painel
   if(!MODULOS.recarga && document.getElementById('recarga-wrap')?.style?.display!=='none') navTo('painel');
-  if(!MODULOS.vistorias && document.getElementById('vistorias-wrap')?.style?.display!=='none') navTo('painel');
-  // Atualiza ícones de recarga nas vagas
   Object.keys(VAGAS_RECARGA).forEach(id=>refRecarga(id));
 }
 
@@ -3401,96 +3376,6 @@ const VST_VIEWS_META=[
   {id:'su',label:'Superior'},
 ];
 
-// ── Tela principal de vistorias ───────────────────────────────────────────
-function renderTelaVistorias(){
-  const vw=document.getElementById('vistorias-wrap'); if(!vw) return;
-
-  // Preserve filter state between renders
-  const q=(document.getElementById('vst-search-inp')?.value||'').trim().toLowerCase();
-  const stFilt=document.getElementById('vst-st-filt')?.value||'todas';
-  const deVal=document.getElementById('vst-de')?.value||'';
-  const ateVal=document.getElementById('vst-ate')?.value||'';
-
-  let list=Object.values(VISTORIAS).sort((a,b)=>b.ts_criada-a.ts_criada);
-
-  // Text search
-  if(q) list=list.filter(v=>
-    (v.apt||'').toLowerCase().includes(q)||
-    (v.numero||'').toLowerCase().includes(q)||
-    (v.hospede||'').toLowerCase().includes(q)||
-    (v.modelo||'').toLowerCase().includes(q)||
-    (v.placa||'').toLowerCase().includes(q)||
-    new Date(v.ts_criada).toLocaleDateString('pt-BR').includes(q)
-  );
-
-  // Status filter
-  if(stFilt==='assinada') list=list.filter(v=>!!v.ts_assinada);
-  else if(stFilt==='sem') list=list.filter(v=>!v.ts_assinada);
-
-  // Date range filter
-  if(deVal){ const t=new Date(deVal+'T00:00:00').getTime(); list=list.filter(v=>v.ts_criada>=t); }
-  if(ateVal){ const t=new Date(ateVal+'T23:59:59').getTime(); list=list.filter(v=>v.ts_criada<=t); }
-
-  const lixQtd=Object.keys(VISTORIAS_LIXEIRA).length;
-
-  vw.innerHTML=`
-    <div style="padding:10px 0 4px">
-      <!-- Linha 1: busca + botões -->
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <input id="vst-search-inp" type="text" placeholder="Buscar apt, VIST, placa, hóspede..." value="${q}" oninput="renderTelaVistorias()" style="flex:1;padding:7px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;outline:none;min-width:0">
-        ${lixQtd>0?`<button onclick="showLixeiraVistorias()" style="font-size:12px;padding:7px 10px;border:1.5px solid #ddd;border-radius:8px;background:#FFF5F5;color:#A32D2D;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🗑 ${lixQtd}</button>`:''}
-        <button class="bsv" style="padding:7px 12px;font-size:13px;white-space:nowrap;flex-shrink:0" onclick="novaVistoria()">＋ Nova</button>
-      </div>
-      <!-- Linha 2: filtros -->
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <select id="vst-st-filt" onchange="renderTelaVistorias()" style="padding:5px 8px;border:1.5px solid #ddd;border-radius:8px;font-size:12px;font-family:inherit;background:#fff;cursor:pointer;flex-shrink:0">
-          <option value="todas"${stFilt==='todas'?' selected':''}>Todas</option>
-          <option value="assinada"${stFilt==='assinada'?' selected':''}>✅ Assinada</option>
-          <option value="sem"${stFilt==='sem'?' selected':''}>❗ Sem assinatura</option>
-        </select>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          <span style="font-size:11px;color:#888">De</span>
-          <input type="date" id="vst-de" value="${deVal}" onchange="renderTelaVistorias()" style="padding:4px 6px;border:1.5px solid #ddd;border-radius:8px;font-size:12px;font-family:inherit">
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          <span style="font-size:11px;color:#888">Até</span>
-          <input type="date" id="vst-ate" value="${ateVal}" onchange="renderTelaVistorias()" style="padding:4px 6px;border:1.5px solid #ddd;border-radius:8px;font-size:12px;font-family:inherit">
-        </div>
-        ${(deVal||ateVal)?`<button onclick="document.getElementById('vst-de').value='';document.getElementById('vst-ate').value='';renderTelaVistorias()" style="font-size:11px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;background:#f5f5f5;cursor:pointer;font-family:inherit;flex-shrink:0">✕ Limpar</button>`:''}
-        <span style="margin-left:auto;font-size:11px;color:#aaa;flex-shrink:0">${list.length} resultado${list.length!==1?'s':''}</span>
-      </div>
-    </div>
-    ${list.length===0?`<div style="text-align:center;padding:40px 20px;color:#aaa;font-size:13px">${q||stFilt!=='todas'||deVal||ateVal?'Nenhuma vistoria encontrada':'Nenhuma vistoria registrada ainda'}</div>`:''}
-    ${list.map(v=>{
-      const assinada=!!v.ts_assinada;
-      const vinculada=!!v.hospedagem;
-      const nd=(v.danos||[]).length;
-      const hospStr=v.hospedagem?`<span style="font-size:11px;color:#888;font-weight:600">${v.hospedagem}</span> · `:'';
-      const stIcon=assinada?'✅':'❗';
-      const stLabel=assinada?'Assinada':'Sem assinatura';
-      const stBg=assinada?'#EEF9F2':'#FFF5F5';
-      const stClr=assinada?'#0F6E56':'#A32D2D';
-      const bdColor=assinada?'#b0dbc0':'#f0c0c0';
-      const dt=new Date(v.ts_criada).toLocaleDateString('pt-BR');
-      const hr=new Date(v.ts_criada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      return `<div onclick="verVistoria('${v.id}')" style="background:#fff;border-radius:10px;border:1.5px solid ${bdColor};margin-bottom:8px;padding:10px 12px;cursor:pointer;transition:box-shadow .15s" onmousedown="this.style.boxShadow='0 0 0 2px var(--cp)'" onmouseup="this.style.boxShadow=''" ontouchstart="this.style.boxShadow='0 0 0 2px var(--cp)'" ontouchend="this.style.boxShadow=''">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-          <span style="font-size:13px;font-weight:700;color:#222">${v.numero}</span>
-          <span style="font-size:10px;background:${stBg};color:${stClr};border-radius:10px;padding:1px 8px;font-weight:700">${stIcon} ${stLabel}</span>
-          ${nd>0?`<span style="font-size:10px;background:#FFF2F2;color:#A32D2D;border-radius:10px;padding:1px 7px;font-weight:700">${nd} avaria${nd>1?'s':''}</span>`:''}
-          <span style="margin-left:auto;font-size:11px;color:#aaa;flex-shrink:0">${dt} ${hr}</span>
-        </div>
-        <div style="font-size:12px;color:#555;margin-bottom:8px">${hospStr}<strong>Apt. ${v.apt||'—'}</strong> · ${v.modelo||'—'} · ${v.cor||'—'}${v.placa?' · <span style="font-family:monospace">'+v.placa+'</span>':''}${v.hospede?' · '+v.hospede:''}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
-          <button onclick="verVistoria('${v.id}')" style="font-size:11px;padding:4px 10px;border:1.5px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-family:inherit">👁 Ver</button>
-          ${!assinada?`<button onclick="assinarVistoria('${v.id}')" style="font-size:11px;padding:4px 10px;border:1.5px solid #27AE60;border-radius:6px;background:#EEF9F2;color:#27AE60;cursor:pointer;font-weight:700;font-family:inherit">✍ Assinar</button>`:''}
-          <button onclick="editarVistoria('${v.id}')" style="font-size:11px;padding:4px 10px;border:1.5px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-family:inherit">✏️ Editar</button>
-          <button onclick="gerarPDFVistoria('${v.id}')" style="font-size:11px;padding:4px 10px;border:1.5px solid var(--cp);border-radius:6px;background:var(--cp-lt);color:var(--cp);cursor:pointer;font-family:inherit">📤 PDF</button>
-          <button onclick="deletarVistoria('${v.id}')" style="font-size:11px;padding:4px 10px;border:1.5px solid #ddd;border-radius:6px;background:#fff;color:#A32D2D;cursor:pointer;font-family:inherit">🗑</button>
-        </div>
-      </div>`;
-    }).join('')}`;
-}
 
 // ── Criar nova vistoria — fluxo 4 etapas ─────────────────────────────────
 let _vstD = null;
@@ -3809,7 +3694,6 @@ function _vstConfirmar(assinatura){
     }
     const vagaId=Object.keys(S).find(k=>S[k].apt===_vstD.apt&&S[k].status==='occupied');
     if(vagaId) refVistoria(vagaId);
-    if(document.getElementById('vistorias-wrap')?.style?.display!=='none') renderTelaVistorias();
     _vstD=null;_vstDanos=[];
     showM(`<div class="mt">${assinatura?'✅':'📋'} Vistoria ${id}</div>
       <div class="ms" style="margin-bottom:10px">${isEdit?'Atualizada':(assinatura?'Registrada e assinada':'Registrada — pendente de assinatura')}</div>
@@ -3881,89 +3765,33 @@ function assinarVistoria(id){
       }
       closeOv();
       showToast('Vistoria '+id+' assinada');
-      if(document.getElementById('vistorias-wrap')?.style?.display!=='none') renderTelaVistorias();
     });
   };
 }
 
 function deletarVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
-  showM(`<div class="mt">🗑 Mover para Lixeira</div>
+  showM(`<div class="mt">🗑 Excluir Vistoria</div>
     <div class="ms">${v.numero} — Apt. ${v.apt} · ${v.modelo}</div>
-    <div class="warn-box" style="font-size:12px">A vistoria será movida para a lixeira.<br>Para excluir permanentemente, acesse Gestão → Vistorias.</div>
+    <div class="warn-box" style="font-size:12px">Esta ação é permanente e não pode ser desfeita.</div>
     <div class="ag">
-      <button class="ab ac" id="vst-del-ok">Mover para Lixeira</button>
+      <button class="ab ac" id="vst-del-ok">Excluir permanentemente</button>
       <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
     </div>`);
   document.getElementById('vst-del-ok').onclick=function(){
-    confirmarUsuario('movendo vistoria para lixeira',function(usuario){
+    confirmarUsuario('excluindo vistoria',function(usuario){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
       if(v.apt) addHistorico(v.apt,'vistoria_deletada','',v.numero,usuarioStr,v.hospedagem||'');
-      VISTORIAS_LIXEIRA[id]={...v, ts_deletada:Date.now(), deletada_por:usuarioStr};
       delete VISTORIAS[id];
-      saveVistorias(); saveLixeira();
+      saveVistorias();
       const vagaId=Object.keys(S).find(k=>S[k].apt===v.apt&&S[k].status==='occupied');
       if(vagaId) refVistoria(vagaId);
       closeOv();
-      showToast('Vistoria movida para lixeira');
-      if(document.getElementById('vistorias-wrap')?.style?.display!=='none') renderTelaVistorias();
+      showToast('Vistoria excluída');
     });
   };
 }
 
-function showLixeiraVistorias(){
-  const itens=Object.values(VISTORIAS_LIXEIRA).sort((a,b)=>b.ts_deletada-a.ts_deletada);
-  const mc=document.getElementById('mc');
-  mc.innerHTML=`
-    <div class="mt">🗑 Lixeira de Vistorias</div>
-    <div class="ms" style="margin-bottom:10px">${itens.length} item${itens.length!==1?'s':''} na lixeira</div>
-    ${itens.length===0?`<div style="text-align:center;color:#aaa;padding:20px;font-size:13px">Lixeira vazia</div>`:''}
-    ${itens.map(v=>`
-      <div style="background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px">
-        <div style="font-weight:700;color:#A32D2D">${v.numero}</div>
-        <div style="color:#555">Apt. ${v.apt||'—'} · ${v.modelo||'—'} · ${v.cor||'—'}</div>
-        <div style="color:#aaa;font-size:10px">Excluída em ${fmtTs(v.ts_deletada)} por ${v.deletada_por||'—'}</div>
-        <button onclick="restaurarVistoria('${v.id}')" style="font-size:11px;margin-top:4px;padding:3px 10px;border:1.5px solid #0F6E56;border-radius:5px;background:#EEF9F2;color:#0F6E56;cursor:pointer;font-family:inherit">↩ Restaurar</button>
-      </div>`).join('')}
-    ${itens.length>0?`<button class="ab ac" style="width:100%;margin-top:8px;font-size:12px" id="vst-lx-clear">🗑 Limpar lixeira</button>`:''}
-    <button class="bcx" style="width:100%;margin-top:6px" onclick="closeOv()">Fechar</button>`;
-  document.getElementById('ov').classList.add('on');
-  if(itens.length>0){
-    document.getElementById('vst-lx-clear').onclick=function(){
-      const pinAtual=localStorage.getItem('garagespot_gestao_pin')||'1200';
-      const mc2=document.getElementById('mc');
-      mc2.innerHTML=`
-        <div class="mt">🔒 Confirmar Limpeza</div>
-        <div class="ms" style="margin-bottom:10px">Digite o PIN de Gestão para limpar a lixeira permanentemente</div>
-        <input class="fi" id="lx-pin" type="password" inputmode="numeric" maxlength="6" placeholder="PIN" style="text-align:center;font-size:20px;letter-spacing:4px">
-        <div class="b2" style="margin-top:8px">
-          <button class="bcx" onclick="showLixeiraVistorias()">← Voltar</button>
-          <button class="bsv" id="lx-pin-ok" style="background:#A32D2D">Limpar definitivamente</button>
-        </div>`;
-      document.getElementById('lx-pin-ok').onclick=function(){
-        const pin=document.getElementById('lx-pin').value.trim();
-        if(pin!==pinAtual){showToast('PIN incorreto');return;}
-        VISTORIAS_LIXEIRA={};
-        saveLixeira();
-        closeOv();
-        showToast('Lixeira limpa');
-      };
-    };
-  }
-}
-
-function restaurarVistoria(id){
-  const v=VISTORIAS_LIXEIRA[id]; if(!v) return;
-  VISTORIAS[v.id]={...v};
-  delete VISTORIAS[v.id].ts_deletada;
-  delete VISTORIAS[v.id].deletada_por;
-  delete VISTORIAS_LIXEIRA[id];
-  saveVistorias(); saveLixeira();
-  const vagaId=Object.keys(S).find(k=>S[k].apt===v.apt&&S[k].status==='occupied');
-  if(vagaId) refVistoria(vagaId);
-  showToast('Vistoria '+id+' restaurada');
-  showLixeiraVistorias();
-}
 
 function editarVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
@@ -4061,7 +3889,7 @@ function gerarPDFVistoria(id){
 
 // ── Ícone ❗ no mapa ────────────────────────────────────────────────────────
 function getVistoriaIconForApt(apt){
-  if(!MODULOS.vistorias||!apt) return '';
+  if(!apt) return '';
   const vst=getVistoriaByApt(apt);
   if(!vst||vst.ts_assinada) return '';
   return `<span class="vst-icon" title="Vistoria ${vst.id} — pendente de assinatura" onclick="event.stopPropagation();verVistoria('${vst.id}')">❗</span>`;
@@ -4467,7 +4295,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   iniciarHistorico(p.apt,vagaId,p.gs,p.usuario);
   addHistorico(p.apt,'checkin',vagaId,'Check-in via NCI',usuario,p.gs);
 
-  if(MODULOS.vistorias&&(p.danos?.length>0||p.assinatura)){
+  if(p.danos?.length>0||p.assinatura){
     const vstId=_nciCriarVistoria(p);
     v.vistoria_id=vstId;
   }
@@ -4960,14 +4788,7 @@ function showConfiguracoesSistema(){
       </div>
       ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px">
-      <div>
-        <div style="font-size:13px;font-weight:600">📋 Vistorias</div>
-        <div style="font-size:11px;color:#999;margin-top:2px">Registro de condições dos veículos</div>
-      </div>
-      ${_togSwitch('tog-vistorias', MODULOS.vistorias, "MODULOS.vistorias=this.checked;saveModulos();applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Vistorias '+(this.checked?'ativadas':'desativadas'))")}
-    </div>
-    <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulos desativados ocultam os botões da barra. Os dados são preservados.</div>
+    <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
     <div class="gestao-menu-sep" style="margin-top:14px">Aparência</div>
     <div class="gestao-menu-item" onclick="closeOv();showTema()">🎨 <span>Cor do tema</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`;
@@ -6253,7 +6074,7 @@ function renderAnexosArea(id, fromPasseio, containerId){
       <div class="attach-header">
         <span class="attach-label">📎 Fotos ${lista.length>0?'('+lista.length+'/'+MAX_ANEXOS+')':''}</span>
         <div class="attach-actions">
-          ${(()=>{if(!MODULOS.vistorias) return '';const _ap=fromPasseio?id:(S[id]?.apt||'');const _vp=_ap?getVistoriaByApt(_ap):null;const _hasPend=_vp&&!_vp.ts_assinada;return `<button class="attach-act" title="${_hasPend?'Vistoria pendente de assinatura':'Abrir módulo de vistoria'}" onclick="navTo('vistorias')" style="cursor:pointer;border:none;background:none;font-size:12px;padding:2px 4px;${_hasPend?'color:#A32D2D;font-weight:700':''}">📋${_hasPend?' ❗':''}</button>`;})()}
+          ${(()=>{const _ap=fromPasseio?id:(S[id]?.apt||'');const _hosp=fromPasseio?(PASSEIO[id]?.hospedagem||''):(S[id]?.hospedagem||'');const _vp=_ap?getVistoriaByApt(_ap):null;const _hasPend=_vp&&!_vp.ts_assinada;const _onclick=_vp?`verVistoria('${_vp.id}')`:`novaVistoria('${_ap}','${_hosp}')`;return `<button class="attach-act" title="${_hasPend?'Vistoria pendente de assinatura':(_vp?'Ver vistoria':'Nova vistoria')}" onclick="${_onclick}" style="cursor:pointer;border:none;background:none;font-size:12px;padding:2px 4px;${_hasPend?'color:#A32D2D;font-weight:700':''}">📋${_hasPend?' ❗':''}</button>`;})()}
           <div ${restante<=0?'style="display:flex;gap:4px;opacity:.4;pointer-events:none"':'style="display:flex;gap:4px"'}>
             <label class="attach-act" title="Tirar foto" style="cursor:pointer">
               📷 Câmera
