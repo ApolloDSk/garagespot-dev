@@ -306,9 +306,24 @@ html.font-large{zoom:1.13}
 .nci-dot{width:22px;height:5px;border-radius:3px;background:#ddd;transition:background .2s}
 .nci-dot.done{background:#0F6E56}.nci-dot.active{background:var(--cp)}
 .nci-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px}
-.nci-body.portrait-vst{display:flex;flex-direction:column;overflow:hidden;padding:0}
-.nci-dz{flex:0 0 42vh;position:relative;overflow:hidden;background:#f7f8f9;border-bottom:1px solid #ddd;user-select:none;touch-action:none}
-.nci-iz{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding:10px}
+.nci-body.vst-mode{padding:0;overflow-y:auto}
+.nci-vst-wrap{position:relative;width:100%;background:#111;flex-shrink:0}
+.nci-vst-wrap img{width:100%;height:auto;display:block;pointer-events:none;user-select:none}
+.nci-vst-campo{position:absolute;pointer-events:none;white-space:nowrap;line-height:1.2;text-shadow:0 0 4px #fff,0 0 8px #fff;z-index:2}
+.nci-zona-btn{position:absolute;cursor:pointer;border-radius:5px;transition:background .15s;user-select:none;touch-action:manipulation;z-index:3}
+.nci-zona-a{background:rgba(15,110,86,.07);border:1.5px dashed rgba(15,110,86,.45)}
+.nci-zona-b{background:rgba(63,63,200,.07);border:1.5px dashed rgba(63,63,200,.4)}
+.nci-zona-btn:active{background:rgba(0,0,0,.15)!important}
+.nci-vst-bar{display:flex;align-items:center;gap:6px;padding:7px 12px;font-size:12px;font-weight:700;flex-shrink:0}
+.nci-vst-bar.com{background:#FCEBEB;color:#A32D2D}
+.nci-vst-bar.sem{background:#EEF9F2;color:#0F6E56}
+.nci-zpanel{position:fixed;inset:0;z-index:9999;background:#fff;display:flex;flex-direction:column;transform:translateY(100%);opacity:0;pointer-events:none;transition:transform .25s cubic-bezier(.2,.8,.3,1),opacity .22s}
+.nci-zpanel.open{transform:translateY(0);opacity:1;pointer-events:auto}
+.nci-zpanel-hdr{padding:11px 14px;font-size:14px;font-weight:700;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:var(--cp);color:#fff}
+.nci-zpanel-body{flex:1;min-height:0;position:relative}
+.nci-zpanel-ftr{border-top:1px solid #ddd;padding:8px 12px;display:flex;gap:8px;background:#fff;flex-shrink:0}
+.nci-za-canvas{position:relative;width:100%}
+.nci-za-canvas img{width:100%;height:auto;display:block;user-select:none}
 .nci-dano-mk{position:absolute;transform:translate(-50%,-50%);cursor:pointer;font-size:17px;color:#A32D2D;text-shadow:0 0 2px #fff,0 0 4px #fff;pointer-events:auto;user-select:none;z-index:10;line-height:1;touch-action:none}
 .nci-mini-pop{position:absolute;background:#fff;border:1.5px solid #ccc;border-radius:8px;padding:5px 7px;z-index:30;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;gap:5px;align-items:center;white-space:nowrap}
 .nci-mini-pop button{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;border:none;font-family:inherit}
@@ -2260,7 +2275,10 @@ function showDet(id, fromPasseio){
   const nAnexos = getAnexos(id, fromPasseio).length;
   const tituloTxt = fromPasseio ? 'Passeio — '+apt : apt;
   const hospSufixo = hospedagemNum ? ' · '+hospedagemNum : '';
+  const _vstDet = getVistoriaByApt(apt);
+  const _vstPendAssin = _vstDet && _vstDet.assinatura_pendente && !_vstDet.ts_assinada;
   mc.innerHTML=`
+    ${_vstPendAssin?`<div style="background:#FCEBEB;border:1px solid #E8A8A8;border-radius:7px;padding:7px 10px;font-size:11px;color:#A32D2D;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>⚠️ Assinatura da vistoria pendente</span><button style="font-size:10px;padding:3px 8px;border:none;background:#A32D2D;color:#fff;border-radius:5px;cursor:pointer;font-family:inherit" onclick="assinarVistoria('${_vstDet.id||_vstDet.numero}')">Coletar</button></div>`:''}
     <div class="mt" style="display:flex;align-items:center;gap:4px">
       <span style="white-space:nowrap;cursor:pointer;text-decoration:underline dotted" onclick="showHistoricoModal('${apt}','${hospedagemNum}','${id}',${fromPasseio?1:0})" title="Ver histórico">ℹ️ ${tituloTxt}${hospSufixo}</span>
       <button class="share-btn" onclick="doShare('${id}',${fromPasseio?1:0})" title="Compartilhar" style="flex-shrink:0"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" fill="none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
@@ -3169,6 +3187,7 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="closeOv();showModalTurnos()">🕒 <span>Cadastro de turnos</span></div>
     <div class="gestao-menu-sep">Relatórios e análises</div>
     <div class="gestao-menu-item" onclick="closeOv();showRelatorios()">📊 <span>Relatórios</span></div>
+    <div class="gestao-menu-item" onclick="closeOv();showGestaoVistorias()">📋 <span>Vistorias</span></div>
     <div class="gestao-menu-sep">Configurações</div>
     <div class="gestao-menu-item" onclick="closeOv();showConfiguracoesSistema()">⚙ <span>Configurações do Sistema</span></div>
     <div class="gestao-menu-item" onclick="closeOv();showConexoes()">🔗 <span>Backup e Conexões</span></div>
@@ -3181,6 +3200,43 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="closeOv();alterarPIN()" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
+}
+
+function showGestaoVistorias(){
+  const mc=document.getElementById('mc');
+  mc.innerHTML=`
+    <div class="mt">📋 Vistorias</div>
+    <input class="fi" id="vst-busca" placeholder="Apt, GS, modelo, hóspede, VIST..." oninput="_vstBuscar()" style="margin-bottom:8px">
+    <div id="vst-lista" style="max-height:55vh;overflow-y:auto"></div>
+    <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
+  document.getElementById('ov').classList.add('on');
+  _vstBuscar();
+}
+
+function _vstBuscar(){
+  const q=(document.getElementById('vst-busca')?.value||'').toLowerCase().trim();
+  const lista=document.getElementById('vst-lista'); if(!lista) return;
+  const vAll=Object.values(VISTORIAS).sort(function(a,b){return (b.ts_criada||0)-(a.ts_criada||0);});
+  const vFilt=q?vAll.filter(function(v){
+    return [(v.apt||''),(v.hospedagem||''),(v.modelo||''),(v.cor||''),(v.hospede||''),(v.numero||'')].some(function(s){return s.toLowerCase().includes(q);});
+  }):vAll;
+  if(vFilt.length===0){lista.innerHTML='<div style="text-align:center;color:#aaa;padding:20px;font-size:13px">Nenhuma vistoria encontrada</div>';return;}
+  lista.innerHTML=vFilt.map(function(v){
+    const nd=(v.danos||[]).length;
+    const assinada=!!v.ts_assinada;
+    const pendAssin=(v.assinatura_pendente&&!assinada);
+    return `<div style="border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;background:#fff;active:background:#f5f5f5" onclick="verVistoria('${v.id||v.numero}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:700;font-size:13px">${v.numero}</span>
+        <span style="font-size:10px;color:#888">${fmtTs(v.ts_criada)}</span>
+      </div>
+      <div style="font-size:11px;color:#555">Apt. ${v.apt||'—'} · ${[v.modelo,v.cor].filter(Boolean).join(' · ')||'—'}</div>
+      <div style="font-size:11px;margin-top:2px">
+        ${nd>0?`<span style="color:#A32D2D">❗ ${nd} avaria${nd>1?'s':''}</span>`:'<span style="color:#0F6E56">✅ sem avarias</span>'}
+        ${assinada?'<span style="color:#0F6E56"> · ✅ assinada</span>':pendAssin?'<span style="color:#A32D2D"> · ⚠️ assinatura pendente</span>':'<span style="color:#854F0B"> · ⏳ aguardando assinatura</span>'}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function showEntrarPIN(callback){
@@ -3840,17 +3896,11 @@ function _vstSvgComDanos(vmId, danos){
 function gerarPDFVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
   const nd=(v.danos||[]).length;
-  const viewsComDano=VST_VIEWS_META.filter(vm=>(v.danos||[]).some(d=>d.view===vm.id));
   let danosHtml='';
   if(nd>0){
-    // SVGs inline com as marcações
-    danosHtml=`<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;justify-content:flex-start">
-      ${viewsComDano.map(vm=>{
-        return `<div style="flex:0 0 auto;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:#555;margin-bottom:3px;text-transform:uppercase">${vm.label}</div>
-          <div style="width:${vm.id==='su'?'80px':vm.id==='le'||vm.id==='ld'?'160px':'120px'};border:1px solid #ddd;border-radius:4px;overflow:hidden;background:#f7f8f9;display:inline-block">${_vstSvgComDanos(vm.id,v.danos)}</div>
-        </div>`;
-      }).join('')}
+    danosHtml=`<div style="position:relative;max-width:500px;margin-top:8px;border:1px solid #ddd;border-radius:6px;overflow:hidden">
+      <img src="${VISTORIA_IMG_B64}" style="width:100%;height:auto;display:block">
+      ${(v.danos||[]).map(d=>`<div style="position:absolute;left:${d.x}%;top:${d.y}%;transform:translate(-50%,-50%);color:#A32D2D;font-size:18px;font-weight:700;text-shadow:0 0 3px #fff,0 0 6px #fff;line-height:1">✕</div>`).join('')}
     </div>`;
   }
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -4050,131 +4100,251 @@ function _nciNext2(){
   _nciRenderStep(3);
 }
 
+// Posições sobre a imagem real (1600×1211). Ajustar se necessário.
+const _NCI_CAMPOS=[
+  {id:'apt',  x:64,  y:11.5, sz:9,  bold:true,  val:function(d){return d.apt;}},
+  {id:'mc',   x:62,  y:20,   sz:8,  bold:true,  val:function(d){return [d.model,d.color].filter(Boolean).join(' · ')||'—';}},
+  {id:'func', x:62,  y:28.5, sz:8,  bold:true,  val:function(d){return (d.usuario||'').split(' ')[0]||'—';}},
+  {id:'data', x:62,  y:37,   sz:7.5,bold:false, val:function(d){return new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'});}},
+];
+const _NCI_ZA={x:0.5,y:1,w:57,h:82};  // Zona A: desenhos do carro (ajustar)
+const _NCI_ZB={x:0.5,y:84,w:99,h:12}; // Zona B: assinatura (ajustar)
+
 function _nciStep3(body,title,ftr,bk){
   title.textContent=`Vistoria — ${_nciD.gs} · Apt. ${_nciD.apt}`;
-  body.className='nci-body portrait-vst';
-  ftr.innerHTML=`<button class="nci-bv" onclick="_nciRenderStep(2)">← Voltar</button><button class="nci-bn" onclick="_nciNext3()">Confirmar →</button>`;
+  body.className='nci-body vst-mode';
+  ftr.innerHTML=`<button class="nci-bv" onclick="_nciRenderStep(2)">← Voltar</button><button class="nci-bn" onclick="_nciConfirmarVistoria()">Confirmar →</button>`;
   bk.onclick=function(){ _nciRenderStep(2); };
   const d=_nciD;
+  const nd=(d.danos||[]).length;
   body.innerHTML=`
-    <div class="nci-dz" id="nci-dz-wrap">
-      <img src="${VISTORIA_IMG_B64}" style="width:100%;height:100%;object-fit:contain;pointer-events:none;display:block">
+    <div class="nci-vst-wrap" id="nci-vst-wrap">
+      <img src="${VISTORIA_IMG_B64}" id="nci-vst-img">
+      ${_NCI_CAMPOS.map(function(c){return `<div class="nci-vst-campo" style="left:${c.x}%;top:${c.y}%;font-size:${c.sz}px;font-weight:${c.bold?700:400};color:#1a1a8a">${c.val(d)}</div>`;}).join('')}
+      <div class="nci-zona-btn nci-zona-a" style="left:${_NCI_ZA.x}%;top:${_NCI_ZA.y}%;width:${_NCI_ZA.w}%;height:${_NCI_ZA.h}%" onclick="_nciAbrirZonaA()">
+        <span style="position:absolute;bottom:3px;right:4px;font-size:8px;font-weight:700;color:rgba(15,110,86,.65);pointer-events:none">✕ avarias</span>
+      </div>
+      <div class="nci-zona-btn nci-zona-b" id="nci-zona-b-btn" style="left:${_NCI_ZB.x}%;top:${_NCI_ZB.y}%;width:${_NCI_ZB.w}%;height:${_NCI_ZB.h}%" onclick="_nciAbrirZonaB()">
+        <span id="nci-zb-label" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(63,63,200,.65);pointer-events:none">✍ assinar</span>
+      </div>
+      <div id="nci-vst-marcas" style="position:absolute;inset:0;pointer-events:none;z-index:4"></div>
     </div>
-    <div class="nci-iz" id="nci-info-zone">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;margin-bottom:8px;font-size:11px;flex-shrink:0">
-        <div><span style="color:#888">Apto:</span> <strong>${d.apt}</strong></div>
-        <div><span style="color:#888">Func.:</span> <strong>${(d.usuario||'').split(' ')[0]||'—'}</strong></div>
-        <div><span style="color:#888">Placa:</span> <strong>${d.plate||'—'}</strong></div>
-        <div><span style="color:#888">Data:</span> <strong>${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</strong></div>
-        <div style="grid-column:1/-1"><span style="color:#888">Modelo/Cor:</span> <strong>${[d.model,d.color].filter(Boolean).join(' · ')||'—'}</strong></div>
-        <div style="grid-column:1/-1"><span style="color:#888">Cód.:</span> <strong>${d.gs}</strong></div>
-      </div>
-      <div id="nci-avaria-strip" class="nci-avaria-strip ${(d.danos||[]).length>0?'com':'sem'}" style="flex-shrink:0">
-        ${(d.danos||[]).length>0?`❗ COM AVARIA (${d.danos.length})`:'✅ SEM AVARIA'}
-      </div>
-      <div style="font-size:9px;color:#888;margin-bottom:6px;flex-shrink:0">Toque na ficha acima para marcar avaria</div>
-      <div style="font-size:10px;font-weight:700;color:var(--cp);text-transform:uppercase;margin-bottom:4px;flex-shrink:0">Assinatura</div>
-      <div class="nci-sig-wrap" style="flex-shrink:0">
-        <canvas id="nci-sig-canvas" class="nci-sig-canvas" height="70"></canvas>
-        <div class="nci-sig-phrase">"O veículo de minha posse foi entregue com as condições acima descritas."</div>
-      </div>
-      <button onclick="_nciLimparSig()" style="font-size:10px;padding:3px 8px;border:1px solid #ddd;border-radius:5px;background:#fff;cursor:pointer;margin-top:4px;font-family:inherit;flex-shrink:0">↺ Limpar</button>
-    </div>`;
-  _nciRenderDanos();
-  const dzWrap=document.getElementById('nci-dz-wrap');
-  if(dzWrap) dzWrap.addEventListener('pointerdown',_nciDzTap,{passive:false});
-  _nciSetupSigCanvas();
+    <div id="nci-vst-bar" class="nci-vst-bar ${nd>0?'com':'sem'}">${nd>0?`❗ COM AVARIA (${nd})`:'✅ SEM AVARIA'}</div>
+    <div style="font-size:9px;color:#999;padding:3px 10px 5px;flex-shrink:0">Toque: zona verde = marcar avarias · zona azul = assinar</div>`;
+  _nciZonaPanelInit();
+  _nciVstRenderMarcas();
+  _nciVstUpdateSigLabel();
 }
 
-function _nciDzTap(e){
-  e.preventDefault();
+function _nciVstRenderMarcas(){
+  const wrap=document.getElementById('nci-vst-marcas'); if(!wrap||!_nciD) return;
+  wrap.innerHTML=(_nciD.danos||[]).map(function(d){
+    return `<div class="nci-dano-mk" style="left:${d.x}%;top:${d.y}%;pointer-events:none;font-size:14px">✕</div>`;
+  }).join('');
+}
+
+function _nciVstUpdateSigLabel(){
+  const lbl=document.getElementById('nci-zb-label'); if(!lbl) return;
+  if(_nciD&&_nciD.assinatura){lbl.textContent='✅ assinada';lbl.style.color='rgba(15,110,86,.75)';}
+  else{lbl.textContent='✍ assinar';lbl.style.color='rgba(63,63,200,.65)';}
+}
+
+function _nciVstBar(){
+  const bar=document.getElementById('nci-vst-bar'); if(!bar) return;
+  const nd=(_nciD.danos||[]).length;
+  bar.className='nci-vst-bar '+(nd>0?'com':'sem');
+  bar.textContent=nd>0?`❗ COM AVARIA (${nd})`:'✅ SEM AVARIA';
+}
+
+// ── ZONA A — Marcar Avarias ──────────────────────────────────────────────
+function _nciZonaPanelInit(){
+  const ov=document.getElementById('nci-overlay'); if(!ov) return;
+  if(!document.getElementById('nci-zpanel-a')){
+    const a=document.createElement('div'); a.className='nci-zpanel'; a.id='nci-zpanel-a';
+    a.innerHTML=`
+      <div class="nci-zpanel-hdr">
+        <span>🚗 Marcar Avarias</span>
+        <span id="nci-za-count" style="font-size:12px;opacity:.85"></span>
+      </div>
+      <div class="nci-zpanel-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch">
+        <div class="nci-za-canvas" id="nci-za-canvas">
+          <img src="${VISTORIA_IMG_B64}" id="nci-za-img">
+          <div id="nci-za-marks" style="position:absolute;inset:0;pointer-events:none"></div>
+          <div id="nci-za-tap" style="position:absolute;inset:0;cursor:crosshair;touch-action:pan-y;z-index:5"></div>
+        </div>
+      </div>
+      <div class="nci-zpanel-ftr">
+        <button class="nci-bn" onclick="_nciFecharZonaA()">✓ OK</button>
+      </div>`;
+    ov.appendChild(a);
+    document.getElementById('nci-za-tap').addEventListener('pointerdown',_nciZaTap,{passive:false});
+  }
+  if(!document.getElementById('nci-zpanel-b')){
+    const b=document.createElement('div'); b.className='nci-zpanel'; b.id='nci-zpanel-b';
+    b.innerHTML=`
+      <div class="nci-zpanel-hdr"><span>✍ Assinatura do Hóspede</span></div>
+      <div class="nci-zpanel-body" style="display:flex;flex-direction:column;padding:14px;overflow-y:auto">
+        <div style="font-size:11px;color:#555;font-style:italic;text-align:center;padding:8px 10px;background:#f8f8f8;border-radius:7px;border:1px solid #ddd;margin-bottom:12px;line-height:1.6">"O veículo de minha posse foi entregue com as condições acima descritas."</div>
+        <div class="nci-sig-wrap" style="flex-shrink:0">
+          <canvas id="nci-sig-canvas" class="nci-sig-canvas" height="70"></canvas>
+        </div>
+        <button onclick="_nciLimparSig()" style="font-size:11px;padding:5px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;margin-top:6px;font-family:inherit;align-self:flex-start">↺ Limpar</button>
+      </div>
+      <div class="nci-zpanel-ftr">
+        <button class="nci-bv" onclick="_nciFecharZonaB(false)">Cancelar</button>
+        <button class="nci-bn" onclick="_nciFecharZonaB(true)">✓ OK</button>
+      </div>`;
+    ov.appendChild(b);
+  }
+}
+
+function _nciAbrirZonaA(){
+  const panel=document.getElementById('nci-zpanel-a'); if(!panel) return;
+  _nciZaRenderMarcas();
+  _nciZaUpdateCount();
+  requestAnimationFrame(function(){panel.classList.add('open');});
+}
+
+function _nciFecharZonaA(){
+  const panel=document.getElementById('nci-zpanel-a'); if(!panel) return;
+  document.querySelectorAll('.nci-mini-pop').forEach(function(el){el.remove();});
+  panel.classList.remove('open');
+  _nciVstRenderMarcas();
+  _nciVstBar();
+}
+
+function _nciZaTap(e){
   if(e.target.classList.contains('nci-dano-mk')||e.target.closest?.('.nci-mini-pop')) return;
-  const dz=document.getElementById('nci-dz-wrap'); if(!dz) return;
-  const rect=dz.getBoundingClientRect();
-  const x=((e.clientX-rect.left)/rect.width)*100;
-  const y=((e.clientY-rect.top)/rect.height)*100;
+  e.preventDefault();
+  const img=document.getElementById('nci-za-img'); if(!img) return;
+  const rect=img.getBoundingClientRect();
+  const cx=e.touches?e.touches[0].clientX:e.clientX;
+  const cy=e.touches?e.touches[0].clientY:e.clientY;
+  const x=((cx-rect.left)/rect.width)*100;
+  const y=((cy-rect.top)/rect.height)*100;
   _nciD.danos.push({x,y});
   _nciD.com_avaria=true;
   _nciSalvarRascunho();
-  _nciRenderDanos();
-  _nciUpdateAvariaStrip();
+  _nciZaRenderMarcas();
+  _nciZaUpdateCount();
 }
 
-function _nciRenderDanos(){
-  const dz=document.getElementById('nci-dz-wrap'); if(!dz) return;
-  dz.querySelectorAll('.nci-dano-mk,.nci-mini-pop').forEach(el=>el.remove());
-  (_nciD.danos||[]).forEach((d,i)=>{
+function _nciZaRenderMarcas(){
+  const wrap=document.getElementById('nci-za-marks'); if(!wrap||!_nciD) return;
+  wrap.innerHTML='';
+  (_nciD.danos||[]).forEach(function(d,i){
     const mk=document.createElement('div');
     mk.className='nci-dano-mk';
-    mk.style.cssText=`left:${d.x}%;top:${d.y}%`;
+    mk.style.cssText=`left:${d.x}%;top:${d.y}%;font-size:20px;pointer-events:auto`;
     mk.textContent='✕';
     mk.dataset.idx=i;
-    mk.addEventListener('pointerdown',function(e){ e.stopPropagation(); e.preventDefault(); _nciShowMiniPop(mk,i); },{passive:false});
-    dz.appendChild(mk);
+    mk.addEventListener('pointerdown',function(ev){ev.stopPropagation();ev.preventDefault();_nciShowMiniPop(mk,i);},{passive:false});
+    wrap.appendChild(mk);
   });
 }
 
+function _nciZaUpdateCount(){
+  const el=document.getElementById('nci-za-count'); if(!el) return;
+  const n=(_nciD.danos||[]).length;
+  el.textContent=n>0?`${n} avaria${n>1?'s':''}`:' ';
+}
+
 function _nciShowMiniPop(mkEl,idx){
-  document.querySelectorAll('.nci-mini-pop').forEach(el=>el.remove());
+  document.querySelectorAll('.nci-mini-pop').forEach(function(el){el.remove();});
   const pop=document.createElement('div');
   pop.className='nci-mini-pop';
   const lft=Math.min(parseFloat(mkEl.style.left)+2,70);
   const top=Math.max(parseFloat(mkEl.style.top)-12,2);
-  pop.style.cssText=`left:${lft}%;top:${top}%`;
+  pop.style.cssText=`left:${lft}%;top:${top}%;z-index:20`;
   pop.innerHTML=`<button style="background:#A32D2D;color:#fff" onclick="_nciRemoveDano(${idx})">Excluir</button><button style="background:#eee;color:#333" onclick="this.closest('.nci-mini-pop').remove()">Manter</button>`;
-  const dz=document.getElementById('nci-dz-wrap'); if(dz) dz.appendChild(pop);
-  setTimeout(()=>{ const fn=ev=>{ if(!pop.contains(ev.target)){ pop.remove(); document.removeEventListener('pointerdown',fn); } }; document.addEventListener('pointerdown',fn); },100);
+  const marks=document.getElementById('nci-za-marks'); if(marks) marks.appendChild(pop);
+  setTimeout(function(){const fn=function(ev){if(!pop.contains(ev.target)){pop.remove();document.removeEventListener('pointerdown',fn);}};document.addEventListener('pointerdown',fn);},100);
 }
 
 function _nciRemoveDano(idx){
-  document.querySelectorAll('.nci-mini-pop').forEach(el=>el.remove());
+  document.querySelectorAll('.nci-mini-pop').forEach(function(el){el.remove();});
   _nciD.danos.splice(idx,1);
   if(_nciD.danos.length===0) _nciD.com_avaria=false;
   _nciSalvarRascunho();
-  _nciRenderDanos();
-  _nciUpdateAvariaStrip();
+  _nciZaRenderMarcas();
+  _nciZaUpdateCount();
 }
 
-function _nciUpdateAvariaStrip(){
-  const s=document.getElementById('nci-avaria-strip'); if(!s) return;
-  const nd=(_nciD.danos||[]).length;
-  s.className='nci-avaria-strip '+(nd>0?'com':'sem');
-  s.textContent=nd>0?`❗ COM AVARIA (${nd})`:'✅ SEM AVARIA';
+// ── ZONA B — Assinatura ──────────────────────────────────────────────────
+function _nciAbrirZonaB(){
+  const panel=document.getElementById('nci-zpanel-b'); if(!panel) return;
+  panel.classList.add('open');
+  requestAnimationFrame(function(){_nciSetupSigCanvas();});
+}
+
+function _nciFecharZonaB(salvar){
+  if(salvar) _nciCaptureSig();
+  const panel=document.getElementById('nci-zpanel-b'); if(panel) panel.classList.remove('open');
+  _nciVstUpdateSigLabel();
 }
 
 function _nciSetupSigCanvas(){
   const canvas=document.getElementById('nci-sig-canvas'); if(!canvas) return;
   const dpr=window.devicePixelRatio||1;
-  const w=canvas.parentElement.getBoundingClientRect().width||180;
-  const h=70;
+  const parent=canvas.closest('.nci-sig-wrap')||canvas.parentElement;
+  const w=parent?parent.getBoundingClientRect().width||280:280;
+  const h=150;
   canvas.width=Math.round(w*dpr); canvas.height=Math.round(h*dpr);
   canvas.style.width=w+'px'; canvas.style.height=h+'px';
   const ctx=canvas.getContext('2d');
   ctx.scale(dpr,dpr);
-  ctx.strokeStyle='#111'; ctx.lineWidth=1.5; ctx.lineCap='round'; ctx.lineJoin='round';
-  if(_nciD.assinatura){ const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,w,h); img.src=_nciD.assinatura; }
+  ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round';
+  if(_nciD&&_nciD.assinatura){const img2=new Image();img2.onload=function(){ctx.drawImage(img2,0,0,w,h);};img2.src=_nciD.assinatura;}
   let drawing=false,lx=0,ly=0;
-  function getPos(e){ const r=canvas.getBoundingClientRect(); return e.touches?{x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top}:{x:e.clientX-r.left,y:e.clientY-r.top}; }
-  canvas.addEventListener('pointerdown',function(e){ e.preventDefault(); drawing=true; const {x,y}=getPos(e); lx=x;ly=y; ctx.beginPath(); ctx.moveTo(x,y); canvas.setPointerCapture?.(e.pointerId); },{passive:false});
-  canvas.addEventListener('pointermove',function(e){ if(!drawing) return; e.preventDefault(); const {x,y}=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(x,y); ctx.stroke(); lx=x;ly=y; },{passive:false});
-  ['pointerup','pointercancel'].forEach(ev=>canvas.addEventListener(ev,function(){ if(!drawing) return; drawing=false; _nciCaptureSig(canvas); }));
+  function getPos(ev){const r=canvas.getBoundingClientRect();return ev.touches?{x:ev.touches[0].clientX-r.left,y:ev.touches[0].clientY-r.top}:{x:ev.clientX-r.left,y:ev.clientY-r.top};}
+  canvas.onpointerdown=function(ev){ev.preventDefault();drawing=true;const {x,y}=getPos(ev);lx=x;ly=y;ctx.beginPath();ctx.moveTo(x,y);canvas.setPointerCapture?.(ev.pointerId);};
+  canvas.onpointermove=function(ev){if(!drawing)return;ev.preventDefault();const {x,y}=getPos(ev);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(x,y);ctx.stroke();lx=x;ly=y;};
+  canvas.onpointerup=canvas.onpointercancel=function(){if(!drawing)return;drawing=false;_nciCaptureSig(canvas);};
 }
 
 function _nciCaptureSig(canvas){
   if(!canvas) canvas=document.getElementById('nci-sig-canvas'); if(!canvas) return;
   const data=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
-  if(data.some(v=>v!==0)){ _nciD.assinatura=canvas.toDataURL('image/png'); _nciSalvarRascunho(); }
+  if(data.some(function(v){return v!==0;})){_nciD.assinatura=canvas.toDataURL('image/png');_nciSalvarRascunho();}
 }
 
 function _nciLimparSig(){
   const canvas=document.getElementById('nci-sig-canvas'); if(!canvas) return;
-  const dpr=window.devicePixelRatio||1;
-  canvas.getContext('2d').clearRect(0,0,canvas.width/dpr,canvas.height/dpr);
+  canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
   _nciD.assinatura=null;
+  _nciSalvarRascunho();
 }
 
-function _nciNext3(){
+// ── Confirmar Vistoria ───────────────────────────────────────────────────
+function _nciConfirmarVistoria(){
   _nciCaptureSig();
+  _nciSalvarRascunho();
+  if(!_nciD.assinatura){
+    const ov=document.getElementById('nci-overlay'); if(!ov) return;
+    let dlg=document.getElementById('nci-sem-assin-dlg');
+    if(dlg) dlg.remove();
+    dlg=document.createElement('div');
+    dlg.id='nci-sem-assin-dlg';
+    dlg.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.58);z-index:9100;display:flex;align-items:center;justify-content:center;padding:20px';
+    dlg.innerHTML=`
+      <div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:320px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px">⚠️ Sem assinatura</div>
+        <div style="font-size:12px;color:#555;line-height:1.6;margin-bottom:16px">A assinatura do hóspede não foi coletada.<br>Deseja confirmar a vistoria mesmo assim?<br><span style="font-size:11px;color:#888">A assinatura poderá ser coletada depois nos detalhes do veículo.</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button style="padding:10px;border:none;border-radius:8px;background:#A32D2D;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="_nciConfSemAssin()">Confirmar mesmo assim</button>
+          <button style="padding:10px;border:1.5px solid #ccc;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;font-family:inherit" onclick="document.getElementById('nci-sem-assin-dlg')?.remove()">Cancelar</button>
+        </div>
+      </div>`;
+    ov.appendChild(dlg);
+    return;
+  }
+  document.getElementById('nci-sem-assin-dlg')?.remove();
+  _nciRenderStep(4);
+}
+
+function _nciConfSemAssin(){
+  _nciD.assinatura_pendente=true;
+  document.getElementById('nci-sem-assin-dlg')?.remove();
   _nciSalvarRascunho();
   _nciRenderStep(4);
 }
@@ -4194,7 +4364,7 @@ function _nciStep4(body,title,ftr,bk){
     <div class="nci-confirm-box">
       <div style="font-size:11px;font-weight:700;color:var(--cp);margin-bottom:6px;text-transform:uppercase">Vistoria</div>
       <div style="font-size:12px;margin-bottom:4px">${nd>0?`<span style="color:#A32D2D;font-weight:700">❗ ${nd} avaria${nd>1?'s':''}</span>`:'<span style="color:#0F6E56;font-weight:700">✅ Sem avarias</span>'}</div>
-      <div style="font-size:12px">Assinatura: ${d.assinatura?'<span style="color:#0F6E56;font-weight:700">✅ Coletada</span>':'<span style="color:#854F0B;font-weight:700">⚠️ Pendente</span>'}</div>
+      <div style="font-size:12px">Assinatura: ${d.assinatura?'<span style="color:#0F6E56;font-weight:700">✅ Coletada</span>':d.assinatura_pendente?'<span style="color:#A32D2D;font-weight:700">⚠️ Pendente — coletar depois</span>':'<span style="color:#854F0B;font-weight:700">⚠️ Não coletada</span>'}</div>
       ${d.assinatura?`<img src="${d.assinatura}" style="max-width:140px;border:1px solid #ccc;border-radius:4px;margin-top:6px">`:''}
     </div>
     <div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:8px;padding:8px 12px;font-size:11px;color:#185FA5">
@@ -4206,7 +4376,7 @@ function _nciSalvarCheckin(){
   if(!_nciD) return;
   const d=_nciD;
   const id='nci_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-  CHECKINS_PENDENTES[id]={id,gs:d.gs,apt:d.apt,model:d.model,color:d.color,plate:d.plate,guest:d.guest,obs:d.obs,size:d.size||'small',usuario:d.usuario||'',ts_inicio:d.ts_inicio||Date.now(),danos:[...(d.danos||[])],com_avaria:(d.danos||[]).length>0,assinatura:d.assinatura||null,fotos:[],status:'checkin_pendente'};
+  CHECKINS_PENDENTES[id]={id,gs:d.gs,apt:d.apt,model:d.model,color:d.color,plate:d.plate,guest:d.guest,obs:d.obs,size:d.size||'small',usuario:d.usuario||'',ts_inicio:d.ts_inicio||Date.now(),danos:[...(d.danos||[])],com_avaria:(d.danos||[]).length>0,assinatura:d.assinatura||null,assinatura_pendente:d.assinatura_pendente||false,fotos:[],status:'checkin_pendente'};
   saveCheckinsPendentes();
   _nciDescartarRascunho();
   _nciRenderStep(5);
@@ -4274,7 +4444,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   iniciarHistorico(p.apt,vagaId,p.gs,p.usuario);
   addHistorico(p.apt,'checkin',vagaId,'Check-in via NCI',usuario,p.gs);
 
-  if(p.danos?.length>0||p.assinatura){
+  if(true){  // NCI sempre cria vistoria
     const vstId=_nciCriarVistoria(p);
     v.vistoria_id=vstId;
   }
@@ -4290,7 +4460,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
 
 function _nciCriarVistoria(p){
   const id=nextNumVistoria();
-  VISTORIAS[id]={id,numero:id,apt:p.apt,hospedagem:p.gs,modelo:p.model,cor:p.color,placa:p.plate,hospede:p.guest,danos:p.danos||[],com_avaria:(p.danos||[]).length>0,assinatura:p.assinatura||null,ts_criada:p.ts_inicio,ts_assinada:p.assinatura?p.ts_inicio:null,usuario_criou:p.usuario,usuario_assinou:p.assinatura?p.guest:'',origem:'nci'};
+  VISTORIAS[id]={id,numero:id,apt:p.apt,hospedagem:p.gs,modelo:p.model,cor:p.color,placa:p.plate,hospede:p.guest,funcionario:p.usuario||'',data_criacao:new Date().toLocaleDateString('pt-BR'),danos:p.danos||[],com_avaria:(p.danos||[]).length>0,assinatura:p.assinatura||null,assinatura_pendente:p.assinatura_pendente||false,ts_criada:p.ts_inicio,ts_assinada:p.assinatura?p.ts_inicio:null,usuario_criou:p.usuario,usuario_assinou:p.assinatura?p.guest:'',origem:'nci'};
   saveVistorias();
   return id;
 }
