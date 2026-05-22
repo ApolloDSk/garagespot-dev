@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>GarageSpot</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -306,99 +309,163 @@ html.font-large{zoom:1.13}
 .nci-dot{width:22px;height:5px;border-radius:3px;background:#ddd;transition:background .2s}
 .nci-dot.done{background:#0F6E56}.nci-dot.active{background:var(--cp)}
 .nci-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px}
-/* ── Vistoria v1.9.4 — Documento HTML/CSS nativo ── */
-.nci-body.vst-mode{padding:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#eeebe4;display:block}
-.vst-doc{background:#fff;margin:0 auto;max-width:1100px;font-family:inherit;color:#1a1a1a;min-height:100%}
-.vst-header{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;background:#fafafa;border-bottom:2px solid #185FA5;gap:14px}
-.vst-logo-area{display:flex;align-items:center;gap:14px;min-width:0}
-.vst-logo{max-height:50px;max-width:180px;height:auto;width:auto;display:block;flex-shrink:0}
-.vst-titulo-doc{font-size:13px;color:#777;line-height:1.25}
-.vst-titulo-doc strong{display:block;font-size:17px;font-weight:700;color:#111}
-.vst-codigos{text-align:right;font-size:12px;color:#555;line-height:1.4;flex-shrink:0}
-.vst-codigos div:first-child{font-size:13px;color:#185FA5}
-.vst-codigos strong{font-weight:700}
-.vst-codigos .vst-timestamp{font-size:9px;color:#aaa;margin-top:2px;letter-spacing:.3px}
-.vst-body{display:grid;grid-template-columns:1.7fr 1fr;gap:18px;padding:18px 22px}
-.vst-carros{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px 12px 12px;cursor:pointer;transition:background .15s;display:flex;flex-direction:column;gap:8px}
-.vst-carros:active{background:#f0eee6}
-.vst-carros-titulo{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;text-align:center}
-.vst-carros-wrap{position:relative;width:100%;background:#fff;border-radius:6px;overflow:hidden}
-.vst-carros-img{width:100%;height:auto;display:block;pointer-events:none;user-select:none}
-.vst-avarias-layer{position:absolute;inset:0;pointer-events:none}
-.vst-toque-dica{font-size:10px;color:#aaa;text-align:center;font-style:italic}
+/* ── Vistoria v1.9.4.1 — Página única + Ativação contextual ── */
+/* Shell do NCI */
+.nci-body{display:none}/* legacy oculto */
+.nci-ftr{display:none}/* legacy oculto */
+.nci2-header{padding:10px 14px;background:#fff;border-bottom:1px solid #e8e8e8;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.nci2-voltar{background:none;border:none;font-size:22px;cursor:pointer;color:var(--cp);padding:4px 8px;line-height:1;min-width:44px;min-height:44px}
+.nci2-titulos{flex:1;min-width:0}
+.nci2-titulo{font-weight:700;font-size:15px;color:#111;line-height:1.2}
+.nci2-subtitulo{font-size:11px;color:#888;line-height:1.3;margin-top:2px}
+.nci2-progresso{display:flex;gap:6px;padding:8px 14px;background:#fafafa;border-bottom:1px solid #eee;flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.prog-item{flex-shrink:0;display:flex;align-items:center;gap:5px;font-size:11px;color:#aaa;font-weight:600;padding:4px 9px;border-radius:14px;background:#fff;border:1px solid #e0e0e0;white-space:nowrap}
+.prog-item span{font-size:12px;line-height:1}
+.prog-item.ok{color:#0F6E56;border-color:#bfe1cf;background:#EEF9F2}
+.prog-item.ativo{color:#185FA5;border-color:#185FA5;background:#EEF6FF}
+.nci2-corpo{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#f3f1ec;padding:12px;padding-bottom:120px}
+.secao{background:#fff;border-radius:10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.04);overflow:hidden}
+.secao-header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #f0f0f0}
+.secao-num{width:28px;height:28px;border-radius:50%;background:#e0e0e0;color:#888;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.secao-num.ok{background:#0F6E56;color:#fff}
+.secao-num.ativo{background:#185FA5;color:#fff}
+.secao-titulo{font-size:14px;font-weight:700;color:#111}
+.secao-body{padding:14px}
+.campo{margin-bottom:12px}
+.campo:last-child{margin-bottom:0}
+.campo-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.campo-row .campo{margin-bottom:0}
+.campo-label{font-size:11px;color:#666;font-weight:600;margin-bottom:4px;display:block}
+.campo-label .req{color:#E24B4A;font-weight:700}
+.campo-input{width:100%;border:1.5px solid #ccc;border-radius:7px;padding:9px 11px;font-size:14px;font-family:inherit;background:#fff;outline:none;box-sizing:border-box;min-height:44px}
+.campo-input.preenchido{background:#f8f8f8;color:#444;font-weight:600}
+.campo-input:focus{border-color:var(--cp)}
+.campo-input.err{border-color:#E24B4A;background:#fff5f5}
+textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
+/* Documento de vistoria inline */
+.vistoria-card{background:#fff;border:1px solid #e8e8e8;border-radius:8px;overflow:hidden}
+.vst-mini-header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fafafa;border-bottom:2px solid #185FA5}
+.vst-logo-mini{max-height:34px;max-width:120px;width:auto;height:auto;display:block;flex-shrink:0}
+.vst-titulo-mini{flex:1;font-size:13px;font-weight:700;color:#111}
+.vst-cod-mini{text-align:right;font-size:10px;color:#777;line-height:1.4}
+.vst-cod-mini .vst-cod-vist{font-size:11px;color:#185FA5;font-weight:700}
+.vst-cod-mini .vst-cod-gs{font-size:10px;color:#555}
+/* Área dos carros — interativa */
+.vst-area-carros{position:relative;margin:12px 14px;border:2px solid transparent;border-radius:8px;padding:8px;transition:border-color .15s,background .15s;background:#fafafa;cursor:pointer}
+.vst-area-carros.ativa{border-color:#185FA5;background:#EEF6FF}
+.vst-area-carros.bloqueada{opacity:.5;pointer-events:none}
+.vst-area-label{font-size:10px;color:#888;text-align:center;margin-bottom:6px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.vst-area-carros.ativa .vst-area-label{color:#185FA5}
+.vst-carros-wrap{position:relative;display:block;width:100%;background:#fff;border-radius:6px;overflow:hidden;line-height:0}
+.vst-carros-img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;touch-action:none}
+.vst-avarias-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 .vst-mk-wrap{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;touch-action:none}
 .vst-mk{font-size:22px;font-weight:700;color:#d32f2f;text-shadow:0 0 3px rgba(255,255,255,.95),0 0 6px rgba(255,255,255,.8);line-height:1;pointer-events:none;user-select:none}
-.vst-campos{display:flex;flex-direction:column;justify-content:center;gap:14px;min-width:0}
-.campo-grupo{min-width:0}
-.campo-label{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
-.campo-valor{font-size:17px;font-weight:700;color:#111;border-bottom:1px solid #e8e8e8;padding:4px 0 6px;word-break:break-word}
-.check-avarias{display:flex;flex-direction:column;gap:8px;margin-top:6px}
-.check-item{display:flex;align-items:center;gap:10px}
-.check-box{width:22px;height:22px;border:2px solid #ccc;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:900;transition:all .15s}
-.check-box.sem-on{background:#0F6E56;border-color:#0F6E56}
-.check-box.com-on{background:#A32D2D;border-color:#A32D2D}
-.check-label{font-size:13px;font-weight:700;color:#888}
-.check-label.sem{color:#0F6E56}
-.check-label.com{color:#A32D2D}
-.check-label .com-count{font-size:11px;font-weight:600;opacity:.85}
-.fotos-obs{font-size:10px;color:#888;font-style:italic;margin-top:2px;margin-left:32px}
-.vst-legal{font-size:11px;font-style:italic;color:#555;background:#fafafa;padding:12px 20px;text-align:center;line-height:1.5;border-top:1px solid #eee;border-bottom:1px solid #eee}
-.vst-assinatura{padding:14px 22px 18px}
-.assinatura-area{position:relative;height:90px;border:1px dashed #ddd;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px;cursor:pointer;background:#fff;transition:background .15s}
-.assinatura-area:active{background:#f7f7f7}
-.assinatura-img{position:absolute;left:10%;right:10%;top:6px;bottom:30px;width:auto;height:auto;max-width:80%;max-height:54px;margin:auto;object-fit:contain;pointer-events:none}
-.assinatura-toque{position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);font-size:13px;color:#999;font-style:italic;pointer-events:none}
-.assinatura-linha{width:80%;height:1px;background:#ccc;margin-bottom:4px}
-.assinatura-label{font-size:9px;color:#888;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-@media (orientation:portrait){
-  .vst-doc{max-width:420px}
-  .vst-logo{max-height:38px;max-width:130px}
-  .vst-titulo-doc{font-size:11px}
-  .vst-titulo-doc strong{font-size:14px}
-  .vst-codigos{font-size:11px}
-  .vst-codigos div:first-child{font-size:12px}
-  .vst-body{grid-template-columns:1fr;gap:14px;padding:14px}
-  .campo-valor{font-size:15px}
-  .vst-legal{padding:10px 14px}
-  .vst-assinatura{padding:12px 14px 16px}
-}
-/* ── Painéis expandidos ── */
-.vst-panel{position:fixed;inset:0;z-index:9990;background:#fff;display:flex;flex-direction:column;transform:scale(.92);opacity:0;pointer-events:none;transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .22s;will-change:transform,opacity}
-.vst-panel.open{transform:scale(1);opacity:1;pointer-events:auto}
-.vst-panel-hdr{padding:10px 16px;background:#185FA5;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0}
-.vst-panel-hdr .vst-h-title{font-size:14px;font-weight:700;line-height:1.25}
-.vst-panel-hdr .vst-info-line{font-size:10px;opacity:.85;margin-top:2px}
-.vst-cnt-badge{background:rgba(255,255,255,.2);padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap}
-.vst-panel-body{flex:1;min-height:0;position:relative;background:#fafafa;overflow:hidden}
-.vst-zoom-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none}
-.vst-img-zoom-container{position:relative;width:92%;height:88%;display:flex;align-items:center;justify-content:center;transform-origin:center;will-change:transform;transition:transform .12s}
-.vst-av-img{max-width:100%;max-height:100%;width:auto;height:auto;display:block;user-select:none;pointer-events:auto;touch-action:none}
-.vst-av-layer{position:absolute;inset:0;pointer-events:none}
-.vst-av-layer .vst-mk-wrap{pointer-events:auto}
-.vst-av-layer .vst-mk{font-size:24px}
-.vst-popup{position:absolute;transform:translate(-50%,-145%);background:#fff;border:1.5px solid #bbb;border-radius:8px;padding:5px;display:flex;gap:5px;box-shadow:0 3px 12px rgba(0,0,0,.28);z-index:25;white-space:nowrap;pointer-events:auto}
-.vst-popup button{padding:7px 13px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
-.vst-pop-del{background:#A32D2D;color:#fff}
-.vst-pop-keep{background:#eee;color:#333}
-.vst-panel-ftr{display:flex;gap:8px;padding:10px 14px;background:#fff;border-top:1px solid #e8e8e8;flex-shrink:0}
-.vst-btn-limpar{flex:1;padding:11px;border:1.5px solid #d32f2f;color:#d32f2f;background:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
-.vst-btn-cancel{flex:1;padding:11px;border:1.5px solid #bbb;color:#555;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
-.vst-btn-ok{flex:2;padding:11px;border:none;background:#185FA5;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
-.vst-sig-body{padding:20px;display:flex;align-items:center;justify-content:center}
-.vst-sig-container{position:relative;width:100%;height:100%;background:#fff;border:1.5px solid #ddd;border-radius:6px;overflow:hidden}
-.vst-sig-canvas-el{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:transparent;cursor:crosshair;display:block}
-.vst-sig-guide-line{position:absolute;left:8%;right:8%;bottom:18%;border-bottom:1.5px dashed #d0d0d0;pointer-events:none;height:0}
-.vst-sig-guide-line span{position:absolute;left:0;bottom:6px;font-size:10px;color:#bbb;font-style:italic}
-.vst-modal-overlay{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9120}
-.vst-modal-content{background:#fff;border-radius:14px;padding:22px 20px;width:100%;max-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
-.vst-modal-title{font-size:15px;font-weight:700;margin-bottom:8px;color:#111}
-.vst-modal-text{font-size:12px;color:#555;line-height:1.55;margin-bottom:16px}
-.vst-modal-buttons{display:flex;gap:8px}
-.vst-modal-cancel{flex:1;padding:11px;border:1.5px solid #ccc;background:#fff;color:#333;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
-.vst-modal-confirm{flex:1;padding:11px;border:none;background:#A32D2D;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.vst-mk-debug{position:absolute;width:6px;height:6px;background:#00c853;border-radius:50%;border:1px solid #fff;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 2px rgba(0,0,0,.4);z-index:10}
+/* Popup avaria */
+.vst-popup{position:absolute;transform:translate(-50%,-130%);background:#fff;border:1.5px solid #bbb;border-radius:8px;padding:5px;display:flex;gap:5px;box-shadow:0 3px 12px rgba(0,0,0,.28);z-index:25;white-space:nowrap;pointer-events:auto}
+.vst-popup button{padding:8px 14px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;min-height:38px}
+.vst-popup .pop-del{background:#A32D2D;color:#fff}
+.vst-popup .pop-keep{background:#eee;color:#333}
+/* Grid de info */
+.vst-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px}
+.vst-info-item{font-size:11px}
+.vst-info-label{color:#888;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;font-size:10px}
+.vst-info-valor{color:#111;font-weight:700;font-size:13px;word-break:break-word}
+.vst-check-row{display:flex;gap:14px;padding:8px 14px 12px}
+.vst-check{display:flex;align-items:center;gap:8px}
+.vst-check-box{width:20px;height:20px;border:2px solid #ccc;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;background:#fff}
+.vst-check-box.marked{}
+.vst-check[data-type="sem"] .vst-check-box.marked{background:#0F6E56;border-color:#0F6E56}
+.vst-check[data-type="com"] .vst-check-box.marked{background:#A32D2D;border-color:#A32D2D}
+.vst-check[data-type="sem"] .vst-check-box.marked::before,
+.vst-check[data-type="com"] .vst-check-box.marked::before{content:'✓'}
+.vst-check-lbl{font-size:12px;font-weight:700}
+.vst-check-lbl.sem{color:#0F6E56}
+.vst-check-lbl.com{color:#A32D2D}
+/* Assinatura — interativa */
+.vst-assinatura-box{position:relative;margin:8px 14px 12px;border:2px solid transparent;border-radius:8px;padding:10px;background:#fafafa;cursor:pointer;height:140px;transition:border-color .15s,background .15s;overflow:hidden}
+.vst-assinatura-box.ativa{border-color:#185FA5;background:#fff;cursor:default}
+.vst-assinatura-box.bloqueada{opacity:.5;pointer-events:none}
+.vst-assinatura-box canvas{position:absolute;left:10px;right:10px;top:10px;bottom:50px;width:calc(100% - 20px);height:calc(100% - 60px);background:transparent;touch-action:none;display:none;cursor:crosshair}
+.vst-assinatura-box.ativa canvas{display:block}
+.vst-assinatura-box .assinatura-img{position:absolute;left:10%;right:10%;top:10px;bottom:46px;width:auto;height:auto;max-width:80%;max-height:calc(100% - 56px);margin:auto;object-fit:contain;pointer-events:none}
+.vst-assinatura-box .assinatura-toque{position:absolute;top:50%;left:50%;transform:translate(-50%,-70%);font-size:13px;color:#999;font-style:italic;pointer-events:none}
+.vst-assinatura-box.ativa .assinatura-toque{display:none}
+.vst-assinatura-box .assinatura-linha{position:absolute;left:10%;right:10%;bottom:30px;height:1px;background:#ccc;pointer-events:none}
+.vst-assinatura-box.ativa .assinatura-linha{background:#185FA5}
+.vst-assinatura-box .assinatura-label{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:9px;color:#888;font-weight:700;letter-spacing:.5px;text-transform:uppercase;pointer-events:none}
+.vst-legal-mini{font-size:10px;font-style:italic;color:#666;background:#fafafa;padding:9px 14px;text-align:center;line-height:1.5;border-top:1px solid #eee}
+/* Barra de contexto sticky */
+.barra-contexto{position:absolute;left:0;right:0;bottom:64px;display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fff;border-top:1px solid #e8e8e8;box-shadow:0 -2px 8px rgba(0,0,0,.06);z-index:50}
+.ctx-label{flex:1;font-size:12px;font-weight:700;color:#185FA5}
+.ctx-btn{padding:9px 14px;border-radius:7px;font-size:12px;font-weight:700;border:none;cursor:pointer;font-family:inherit;min-height:40px}
+.ctx-btn.limpar{background:#fff;color:#d32f2f;border:1.5px solid #d32f2f}
+.ctx-btn.ok{background:#185FA5;color:#fff}
+/* Footer registrar */
+.nci2-footer{position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e8e8e8;padding:9px 14px;display:flex;flex-direction:column;gap:6px;flex-shrink:0;z-index:40}
+.registrar-status{font-size:10px;color:#888;text-align:center;min-height:14px}
+.registrar-status.ok{color:#0F6E56}
+.registrar-status.faltam{color:#A32D2D}
+.btn-registrar{padding:13px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;min-height:48px}
+.btn-registrar.pendente{background:#888}
+/* Loading + spinner (reuso v1.9.4) */
+.vst-loading-overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9150}
 .vst-loading-content{background:rgba(255,255,255,.97);border-radius:14px;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;color:#185FA5;font-weight:700;font-size:14px}
 .vst-spinner{width:42px;height:42px;border:4px solid #e0e8f4;border-top-color:#185FA5;border-radius:50%;animation:vst-spin .9s linear infinite}
 @keyframes vst-spin{to{transform:rotate(360deg)}}
+/* Modais genéricos (reuso) */
+.vst-modal-overlay{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9120}
+.vst-modal-content{background:#fff;border-radius:14px;padding:22px 20px;width:100%;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.3);max-height:85vh;overflow-y:auto}
+.vst-modal-title{font-size:15px;font-weight:700;margin-bottom:8px;color:#111;line-height:1.35}
+.vst-modal-text{font-size:13px;color:#555;line-height:1.55;margin-bottom:16px;white-space:pre-wrap}
+.vst-modal-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.vst-modal-buttons button{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;min-height:44px;border:1.5px solid #ccc;background:#fff;color:#333;flex:1;min-width:0}
+.vst-modal-buttons button.primary{background:#185FA5;color:#fff;border-color:#185FA5}
+.vst-modal-buttons button.danger{background:#A32D2D;color:#fff;border-color:#A32D2D}
+.vst-modal-buttons button.full{flex:1 1 100%}
+.vst-modal-info{background:#fafafa;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px}
+.vst-modal-info-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee}
+.vst-modal-info-row:last-child{border-bottom:none}
+.vst-modal-info-row.destaque{font-weight:700;color:#185FA5}
+.vst-modal-info-row span:first-child{color:#777}
+.vst-modal-info-row span:last-child{color:#111;font-weight:600;text-align:right}
+/* Prévia landscape */
+.previa-card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:14px;margin-bottom:10px}
+.previa-titulo{font-size:13px;font-weight:700;color:#185FA5;margin-bottom:10px;text-align:center}
+.previa-img{width:100%;height:auto;display:block;border:1px solid #eee;border-radius:6px}
+/* Banner de designação no mapa */
+.banner-designar{position:fixed;top:0;left:0;right:0;z-index:600;background:linear-gradient(135deg,#185FA5,#0C447C);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.18);font-family:inherit;animation:bd-slide .25s ease-out}
+@keyframes bd-slide{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.banner-designar .banner-icon{font-size:22px;flex-shrink:0;line-height:1}
+.banner-designar .banner-content{flex:1;min-width:0;line-height:1.3}
+.banner-designar .banner-titulo{font-size:13px;font-weight:700}
+.banner-designar .banner-info{font-size:11px;opacity:.92;margin-top:1px}
+.banner-designar .banner-cancelar{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:18px;width:34px;height:34px;border-radius:50%;cursor:pointer;flex-shrink:0;line-height:1;font-family:inherit;padding:0}
+/* Pulse animation vaga recém designada */
+@keyframes pulse-vaga{0%,100%{box-shadow:inset 0 0 0 0 rgba(15,110,86,0)}40%{box-shadow:inset 0 0 0 4px rgba(15,110,86,.55)}}
+td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
+/* Badge anexos */
+.attach-badge{background:#185FA5;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;margin-left:2px;line-height:1.4;vertical-align:middle}
+/* STEP5 sucesso */
+.nci-suc-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;background:#f3f1ec}
+.nci-suc-card{background:#fff;border-radius:14px;padding:28px 22px;text-align:center;max-width:380px;width:100%;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.nci-suc-ico{font-size:54px;color:#0F6E56;margin-bottom:8px}
+.nci-suc-titulo{font-size:18px;font-weight:700;color:#111;margin-bottom:6px}
+.nci-suc-gs{font-size:22px;font-weight:700;color:#185FA5;margin:14px 0 6px;background:#EEF6FF;padding:8px 16px;border-radius:10px;display:inline-block}
+.nci-suc-sub{font-size:13px;color:#555;margin-bottom:18px;line-height:1.4}
+.nci-suc-btns{display:flex;flex-direction:column;gap:8px}
+.nci-suc-btn-primario{padding:13px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;min-height:48px}
+.nci-suc-btn-secundario{padding:12px;background:#fff;color:#555;border:1.5px solid #ccc;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;min-height:44px}
+/* Lista discriminada anexos */
+.anx-lista{margin:6px 0}
+.anx-lista-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-bottom:1px solid #eee;font-size:12px;cursor:pointer}
+.anx-lista-item:last-child{border-bottom:none}
+.anx-lista-item:active{background:#f5f5f5}
+.anx-lista-ico{font-size:18px;flex-shrink:0;width:28px;text-align:center}
+.anx-lista-info{flex:1;min-width:0}
+.anx-lista-nome{font-weight:700;color:#111;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anx-lista-data{color:#888;font-size:10px;margin-top:2px}
 .nci-ftr{background:#fff;border-top:1px solid #ddd;padding:8px 12px;display:flex;gap:8px;flex-shrink:0}
 .nci-bv{flex:1;padding:9px;border:1.5px solid #ccc;border-radius:8px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .nci-bn{flex:2;padding:9px;border:none;border-radius:8px;background:var(--cp);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
@@ -424,6 +491,7 @@ html.font-large{zoom:1.13}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
+<!-- GarageSpot v1.9.4.1 -->
 <body>
 <div class="page">
 
@@ -1644,6 +1712,11 @@ function clkV(id){
   if(!S[id]) return;
   if(dragState) return;
   cur=id;
+  // v1.9.4.1: prioridade MODO_DESIGNACAO ativo
+  if(typeof MODO_DESIGNACAO!=='undefined' && MODO_DESIGNACAO){
+    _clkVModoDesignacao(id);
+    return;
+  }
   if(S[id].status==='free'){
     _clkVDesignar(id);
   } else {
@@ -2351,7 +2424,7 @@ function showDet(id, fromPasseio){
     <div class="mt" style="display:flex;align-items:center;gap:4px">
       <span style="white-space:nowrap;cursor:pointer;text-decoration:underline dotted" onclick="showHistoricoModal('${apt}','${hospedagemNum}','${id}',${fromPasseio?1:0})" title="Ver histórico">ℹ️ ${tituloTxt}${hospSufixo}</span>
       <button class="share-btn" onclick="doShare('${id}',${fromPasseio?1:0})" title="Compartilhar" style="flex-shrink:0"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" fill="none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
-      <button class="attach-btn" onclick="toggleAnexosDet('${id}',${fromPasseio?1:0})" title="Fotos / Arquivos" style="margin-left:auto">${nAnexos>0?'📎<sup style="font-size:8px;color:#185FA5">'+nAnexos+'</sup>':'📎'}</button>
+      <button class="attach-btn" onclick="toggleAnexosDet('${id}',${fromPasseio?1:0})" title="Anexos (vistorias + fotos)" style="margin-left:auto">📎 ${nAnexos>0?`<span class="attach-badge">${nAnexos}</span>`:''}</button>
     </div>
     <div style="margin:8px 0 10px">${rows.map(([l,v])=>`<div class="dr"><span class="dl">${l}</span><span class="dv">${v}</span></div>`).join('')}</div>
     <div id="att-det-area"></div>
@@ -3031,6 +3104,8 @@ function navTo(v){
   if(v==='painel') renderPainelDia();
   if(v==='recarga') renderTelaRecarga();
   if(v==='mapa') setTimeout(positionPilares,100);
+  // v1.9.4.1: banner de designação só aparece no mapa
+  if(typeof _atualizarBannerDesignacao==='function') _atualizarBannerDesignacao();
   fecharBusca();
 }
 
@@ -3056,7 +3131,12 @@ function renderPainelDia(){
   const out=Object.keys(PASSEIO).length;
   const pct=tot>0?Math.round((occ+out)/tot*100):0;
 
-  const pendentesNCI=Object.values(CHECKINS_PENDENTES||{});
+  // v1.9.4.1: aguardando vaga = CHECKINS_PENDENTES (legacy) + HOSPEDAGENS com status='aguardando_designacao'
+  const _hospAguard=Object.values(HOSPEDAGENS||{}).filter(h=>h&&h.status==='aguardando_designacao'&&!h.vaga_inicial).map(h=>({
+    id:'hosp_'+h.numero, gs:h.numero, apt:h.apt, model:h.model, color:h.color, plate:h.plate,
+    guest:h.guest, usuario:h.usuario_checkin, ts_inicio:h.checkin_ts, _fonte:'hosp'
+  }));
+  const pendentesNCI=Object.values(CHECKINS_PENDENTES||{}).map(p=>Object.assign({_fonte:'pend'},p)).concat(_hospAguard);
   const noExp=USUARIOS.filter(u=>estaNoExpediente(u));
   const turnoAtual=getTurnoAtual();
 
@@ -3124,12 +3204,15 @@ function renderPainelDia(){
     ${pendentesNCI.map(p=>{
       const hrChk=fmtHr(p.ts_inicio);
       const info=[p.model,p.color].filter(Boolean).join(' · ')||'—';
-      return `<div class="nci-pending-card" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="navTo('mapa');_nciHighlightLivres();showToast('Toque em vaga livre — Apt. ${p.apt}',3500)">
+      const ativarFn=p._fonte==='hosp'
+        ? `ativarDesignacaoHosp('${p.gs}')`
+        : `navTo('mapa');_nciHighlightLivres();showToast('Toque em vaga livre — Apt. ${p.apt}',3500)`;
+      return `<div class="nci-pending-card" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="${ativarFn}">
         <div style="flex:1">
           <div class="nci-pending-card-hd">${p.gs} · Apt. ${p.apt}${p.guest?' · '+p.guest:''}</div>
           <div class="nci-pending-card-sub">${info} · check-in ${hrChk}</div>
         </div>
-        <button onclick="event.stopPropagation();navTo('mapa');_nciHighlightLivres()" style="font-size:11px;padding:4px 10px;border:1.5px solid var(--cp);border-radius:6px;background:var(--cp-lt);color:var(--cp);cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🗺 Vagas</button>
+        <button onclick="event.stopPropagation();${ativarFn}" style="font-size:11px;padding:4px 10px;border:1.5px solid var(--cp);border-radius:6px;background:var(--cp-lt);color:var(--cp);cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">${p._fonte==='hosp'?'🚗 Designar':'🗺 Vagas'}</button>
       </div>`;
     }).join('')}
   </div>`:''}
@@ -4053,170 +4136,220 @@ function getPendentePorApt(apt){
 }
 
 
-function _nciSalvarRascunho(){
-  if(!_nciD) return;
-  try{ localStorage.setItem(VISTORIA_RASCUNHO_LS,JSON.stringify({_type:'nci',..._nciD})); }catch(e){}
-}
-function _nciContinuarRascunho(){
-  try{
-    const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
-    if(!dr||dr._type!=='nci') return;
-    const {_type,...data}=dr;
-    _nciD={...data};
-    _nciAbrir(3);
-  }catch(e){}
-}
-function _nciDescartarRascunho(){
-  try{ localStorage.removeItem(VISTORIA_RASCUNHO_LS); }catch(e){}
-}
-
-function novoCheckin(){
-  try{
-    const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
-    if(dr&&dr._type==='nci'){
-      const mc=document.getElementById('mc');
-      mc.innerHTML=`
-        <div class="mt">Rascunho encontrado</div>
-        <div class="warn-box">Há um check-in em andamento para Apt. <strong>${dr.apt||'—'}</strong>. Deseja continuar?</div>
-        <div class="ag">
-          <button class="bsv" onclick="closeOv();_nciContinuarRascunho()">Continuar</button>
-          <button class="bcx" onclick="closeOv();_nciDescartarRascunho();novoCheckin()">Descartar e novo</button>
-          <button class="bcx" onclick="closeOv()">Cancelar</button>
-        </div>`;
-      document.getElementById('ov').classList.add('on');
-      return;
-    }
-  }catch(e){}
-  confirmarUsuario('iniciando novo check-in',function(usuario){
-    _nciD={usuario,apt:'',model:'',color:'',plate:'',guest:'',obs:'',size:'small',saida_prevista:'',gs:'',danos:[],com_avaria:false,assinatura:null,documento_final_b64:null,ts_inicio:Date.now(),fotos:[]};
-    _nciAbrir(2);
-  });
-}
-
-function _nciAbrir(step){
-  _nciStep=step;
-  document.getElementById('nci-overlay').classList.add('on');
-  _nciRenderStep(step);
-}
-
-function _nciFechar(){
-  if(typeof _nciDestruirPaineis==='function') _nciDestruirPaineis();
-  document.getElementById('nci-overlay').classList.remove('on');
-  _nciD=null; _nciStep=0;
-}
-
-function _nciSetDots(active){
-  for(let i=1;i<=4;i++){
-    const el=document.getElementById('nci-d'+i);
-    if(!el) continue;
-    el.className='nci-dot'+(i<active?' done':i===active?' active':'');
-  }
-}
-
-function _nciRenderStep(step){
-  _nciStep=step;
-  const body=document.getElementById('nci-body');
-  const ftr=document.getElementById('nci-ftr');
-  const title=document.getElementById('nci-hdr-txt');
-  const bk=document.getElementById('nci-bk');
-  if(!body||!ftr||!title) return;
-  body.className='nci-body';
-  ftr.style.display='flex';
-  _nciSetDots(step-1);
-  switch(step){
-    case 2: _nciStep2(body,title,ftr,bk); break;
-    case 3: _nciStep3(body,title,ftr,bk); break;
-    case 4: _nciStep4(body,title,ftr,bk); break;
-    case 5: _nciStep5(body,title,ftr,bk); break;
-  }
-}
-
-function _nciStep2(body,title,ftr,bk){
-  title.textContent='Dados do Veículo';
-  ftr.innerHTML=`<button class="nci-bv" onclick="_nciFechar()">✕ Cancelar</button><button class="nci-bn" onclick="_nciNext2()">Próximo →</button>`;
-  bk.onclick=function(){ _nciFechar(); };
-  const d=_nciD;
-  body.innerHTML=`
-    <label class="nci-lbl">Apartamento <span style="color:#E24B4A">*</span></label>
-    <input class="nci-fi" id="nci-apt" type="text" inputmode="numeric" placeholder="Ex: 301" value="${d.apt||''}">
-    <label class="nci-lbl">Modelo <span style="color:#E24B4A">*</span></label>
-    <input class="nci-fi" id="nci-mod" type="text" placeholder="Ex: Civic, HB20..." value="${d.model||''}">
-    <label class="nci-lbl">Cor <span style="color:#E24B4A">*</span></label>
-    <input class="nci-fi" id="nci-cor" type="text" placeholder="Ex: Prata, Preto..." value="${d.color||''}">
-    <label class="nci-lbl">Data de saída prevista <span style="color:#E24B4A">*</span></label>
-    <input class="nci-fi" id="nci-sai" type="date" value="${d.saida_prevista||''}">
-    <label class="nci-lbl">Placa</label>
-    <input class="nci-fi" id="nci-pla" type="text" placeholder="ABC1D23" style="text-transform:uppercase" value="${d.plate||''}">
-    <label class="nci-lbl">Hóspede</label>
-    <input class="nci-fi" id="nci-gst" type="text" placeholder="Nome completo" value="${d.guest||''}">
-    <label class="nci-lbl">Observações</label>
-    <input class="nci-fi" id="nci-obs" type="text" placeholder="Obs..." value="${d.obs||''}">`;
-  setTimeout(()=>document.getElementById('nci-apt')?.focus(),80);
-}
-function _nciNext2(){
-  const apt=(document.getElementById('nci-apt')?.value||'').trim();
-  const mod=(document.getElementById('nci-mod')?.value||'').trim();
-  const cor=(document.getElementById('nci-cor')?.value||'').trim();
-  const sai=(document.getElementById('nci-sai')?.value||'').trim();
-  function _err(elId){ const e=document.getElementById(elId); if(e){e.classList.add('err');e.focus();e.addEventListener('input',()=>e.classList.remove('err'),{once:true});} }
-  if(!apt){ _err('nci-apt'); return; }
-  if(!mod){ _err('nci-mod'); showToast('Modelo é obrigatório',2500); return; }
-  if(!cor){ _err('nci-cor'); showToast('Cor é obrigatória',2500); return; }
-  if(!sai){ _err('nci-sai'); showToast('Data de saída prevista é obrigatória',2800); return; }
-  _nciD.apt=apt;
-  _nciD.model=mod;
-  _nciD.color=cor;
-  _nciD.saida_prevista=sai;
-  _nciD.plate=(document.getElementById('nci-pla')?.value||'').trim().toUpperCase();
-  _nciD.guest=(document.getElementById('nci-gst')?.value||'').trim();
-  _nciD.obs=(document.getElementById('nci-obs')?.value||'').trim();
-  _nciD.size=_nciD.size||'small';
-  if(!_nciD.gs) _nciD.gs=nextNumHospedagem();
-  _nciSalvarRascunho();
-  _nciRenderStep(3);
-}
 
 // ════════════════════════════════════════════════════════════════════════
-// VISTORIA — DOCUMENTO HTML/CSS NATIVO (v1.9.4)
-// Substitui a abordagem JPEG+sobreposição da v1.9.3. O documento da vistoria
-// é HTML/CSS renderizado nativamente; a imagem dos 5 ângulos do carro é um
-// <img> dentro do layout; as marcações ✕ são divs posicionados em % da
-// imagem renderizada. A composição final (PNG 1200x1700) é feita em canvas
-// off-screen apenas no momento da confirmação.
+// VISTORIA + NCI — PÁGINA ÚNICA + ATIVAÇÃO CONTEXTUAL (v1.9.4.1)
+// Substitui o NCI multi-step da v1.9.4. Tudo em uma única página scrolável
+// com 3 seções (Operador / Dados / Vistoria); a vistoria fica INLINE no
+// documento (sem expansões/modais), com ativação contextual sobre o
+// próprio lugar (borda azul sólida + barra contexto bottom).
 // ════════════════════════════════════════════════════════════════════════
-const VISTORIA_TPL_VERSAO = 'v2';
+const VISTORIA_TPL_VERSAO = 'v3';
 
 function _vtEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-function _vtFuncNome(d){ const u=d&&d.usuario; if(u&&typeof u==='object'&&u.nome) return u.nome; return (u||'').toString(); }
+function _vtFuncNome(d){ const u=d&&d.usuario; if(u&&typeof u==='object'&&u.nome) return u.nome+(u.cargo?' · '+u.cargo:''); return (u||'').toString(); }
 function _vtFuncNomeCurto(d){ return _vtFuncNome(d).split(' ')[0]||'—'; }
 function _vtHaptic(){
   try{
     if(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Haptics){
       window.Capacitor.Plugins.Haptics.impact({style:'LIGHT'});
-    } else if(navigator.vibrate){
-      navigator.vibrate(20);
-    }
+    } else if(navigator.vibrate){ navigator.vibrate(20); }
   }catch(e){}
 }
+function _vtUUID(){
+  if(window.crypto&&crypto.randomUUID){ try{ return 'vist-'+crypto.randomUUID(); }catch(_){} }
+  return 'vist-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+}
 
-// ── STEP 3 — Documento HTML/CSS ──────────────────────────────────────────
-function _nciStep3(body,title,ftr,bk){
+// Estado global
+let MODO_VISTORIA_ATIVO = null;   // 'avarias' | 'assinatura' | null
+let MODO_DESIGNACAO = null;       // {gs, apt, model, color, plate, guest, obs, vistoria_numero, timestamp}
+let _nciRascDeb = null;           // debounce timer rascunho
+let _nciSigDirty = false;         // canvas tem traço novo
+let _nciSigDpr = 1;
+let _nciSigCtx = null;
+let _nciSigBackup = null;         // backup base64 da assinatura para visibilitychange
+let _nciDebugTimer = null;        // timer para esconder marcador verde de debug
+
+// ════════════════════════════════════════════════════════════════════════
+// Abertura do NCI
+// ════════════════════════════════════════════════════════════════════════
+function novoCheckin(){
+  try{
+    const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
+    if(dr&&dr._type==='nci' && (Date.now()-(dr._ts||0))<4*3600*1000){
+      const mc=document.getElementById('mc');
+      const hhmm=new Date(dr._ts||Date.now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      mc.innerHTML=`
+        <div class="mt">Continuar check-in?</div>
+        <div class="warn-box">Apt <strong>${_vtEsc(dr.apt||'—')}</strong> iniciado às ${hhmm}. Deseja continuar de onde parou?</div>
+        <div class="ag">
+          <button class="bsv" onclick="closeOv();_nciRascContinuar()">Continuar</button>
+          <button class="bcx" onclick="closeOv();_nciRascDescartar();novoCheckin()">Descartar e iniciar novo</button>
+          <button class="bcx" onclick="closeOv()">Cancelar</button>
+        </div>`;
+      document.getElementById('ov').classList.add('on');
+      return;
+    } else if(dr){ _nciRascDescartar(); }
+  }catch(e){}
+  confirmarUsuario('iniciando novo check-in',function(usuario){
+    _nciD = _nciNovoState(usuario);
+    _nciAbrir();
+  });
+}
+
+function _nciNovoState(usuario,prefill){
+  return {
+    usuario,
+    uuid:_vtUUID(),
+    apt:(prefill&&prefill.apt)||'',
+    model:'',color:'',plate:'',guest:'',obs:'',saida_prevista:'',
+    gs:nextNumHospedagem(),
+    numero:nextNumVistoriaPreview(), // preview do número (não consome)
+    avarias:[],danos:[],
+    com_avaria:false,
+    assinatura:null,
+    documento_final_b64:null,
+    assinatura_pendente:false,
+    ts_inicio:Date.now(),
+    _vaga_origem:(prefill&&prefill.vaga)||null  // se veio de tap-em-vaga, fica para auto-designar depois
+  };
+}
+
+// Preview do próximo número de vistoria SEM incrementar (apenas leitura).
+// O contador real só avança em nextNumVistoria() no momento de criar a vistoria.
+function nextNumVistoriaPreview(){
+  try{
+    const n=parseInt(localStorage.getItem(VISTORIA_COUNTER_KEY)||'0')+1;
+    return 'VIST'+String(n).padStart(3,'0');
+  }catch(e){ return 'VIST???'; }
+}
+
+function _nciAbrir(){
+  const ov=document.getElementById('nci-overlay');
+  ov.classList.add('on');
+  _nciRenderPagina();
+}
+
+function _nciFechar(force){
+  // Se há alterações e não é forçado → modal sair
+  if(!force && _nciD && _nciTemAlteracoes()){
+    _nciAbrirModalSair();
+    return;
+  }
+  const ov=document.getElementById('nci-overlay');
+  ov.classList.remove('on');
+  // Restaurar shell legado mínimo (caso navegação reabra)
+  ov.innerHTML = `
+    <div class="nci-hdr">
+      <button id="nci-bk" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--cp);padding:0 8px 0 0;line-height:1">←</button>
+      <div class="nci-hdr-title" id="nci-hdr-txt">Novo Check-in</div>
+      <div class="nci-steps">
+        <div class="nci-dot" id="nci-d1"></div>
+        <div class="nci-dot" id="nci-d2"></div>
+        <div class="nci-dot" id="nci-d3"></div>
+        <div class="nci-dot" id="nci-d4"></div>
+      </div>
+    </div>
+    <div class="nci-body" id="nci-body"></div>
+    <div class="nci-ftr" id="nci-ftr"></div>`;
+  _nciD=null; MODO_VISTORIA_ATIVO=null; _nciSigCtx=null; _nciSigDirty=false; _nciSigBackup=null;
+}
+
+function _nciTemAlteracoes(){
+  if(!_nciD) return false;
   const d=_nciD;
-  // back-compat: novos dados usam 'avarias', mas mantemos 'danos' espelhado
-  if(!d.avarias) d.avarias=d.danos||[];
-  d.danos=d.avarias;
-  title.textContent=`Vistoria — ${d.gs} · Apt. ${d.apt}`;
-  body.className='nci-body vst-mode';
-  ftr.innerHTML=`<button class="nci-bv" onclick="_nciRenderStep(2)">← Voltar</button><button class="nci-bn" onclick="_nciConfirmarVistoria()">Confirmar →</button>`;
-  bk.onclick=function(){ _nciRenderStep(2); };
+  if(d.apt||d.model||d.color||d.plate||d.guest||d.obs||d.saida_prevista) return true;
+  if((d.avarias||d.danos||[]).length) return true;
+  if(d.assinatura) return true;
+  return false;
+}
 
-  _vtDestruirPaineis();
-  body.innerHTML=_vtRenderDoc(d);
-  _vtCriarPaineis();
-  _vtRenderAvariasLayer('vst-avarias-layer-main');
+function _nciAbrirModalSair(){
+  showModalAux({
+    titulo:'Cancelar check-in?',
+    texto:'As informações inseridas podem ser salvas como rascunho para você continuar depois.',
+    botoes:[
+      {label:'Cancelar',action:'close'},
+      {label:'Salvar e sair',action:function(){ _nciRascSalvar(); _nciFechar(true); }},
+      {label:'Descartar tudo',cls:'danger',action:function(){ _nciRascDescartar(); _nciFechar(true); }}
+    ]
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Rascunho silencioso (debounce 500ms)
+// ════════════════════════════════════════════════════════════════════════
+function _nciRascAgendar(){
+  if(_nciRascDeb) clearTimeout(_nciRascDeb);
+  _nciRascDeb=setTimeout(_nciRascSalvar,500);
+}
+function _nciRascSalvar(){
+  if(!_nciD) return;
+  try{
+    const payload={_type:'nci',_ts:Date.now(),..._nciD};
+    localStorage.setItem(VISTORIA_RASCUNHO_LS,JSON.stringify(payload));
+  }catch(e){ console.warn('[NCI] rascunho não salvo:',e); }
+}
+function _nciRascContinuar(){
+  try{
+    const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
+    if(!dr||dr._type!=='nci') return;
+    const {_type,_ts,...data}=dr;
+    _nciD={...data};
+    _nciD.avarias=_nciD.avarias||_nciD.danos||[];
+    _nciD.danos=_nciD.avarias;
+    _nciAbrir();
+  }catch(e){}
+}
+function _nciRascDescartar(){
+  try{ localStorage.removeItem(VISTORIA_RASCUNHO_LS); }catch(e){}
+}
+function _nciSalvarRascunho(){ _nciRascAgendar(); } // alias back-compat
+
+// ════════════════════════════════════════════════════════════════════════
+// Renderização da página única
+// ════════════════════════════════════════════════════════════════════════
+function _nciRenderPagina(){
+  if(!_nciD) return;
+  const d=_nciD;
+  const ov=document.getElementById('nci-overlay');
+  const nomeUsr=_vtFuncNome(d)||'—';
+  ov.innerHTML=`
+    <header class="nci2-header">
+      <button class="nci2-voltar" onclick="_nciFechar()" aria-label="Voltar">←</button>
+      <div class="nci2-titulos">
+        <div class="nci2-titulo">Novo Check-in</div>
+        <div class="nci2-subtitulo" id="nci2-sub">Preencha os dados do veículo</div>
+      </div>
+    </header>
+    <div class="nci2-progresso" id="nci2-prog">
+      <div class="prog-item ok"><span>✓</span> Operador</div>
+      <div class="prog-item ativo" id="prog-dados"><span>●</span> Dados</div>
+      <div class="prog-item" id="prog-vst"><span>○</span> Vistoria</div>
+    </div>
+    <main class="nci2-corpo" id="nci2-corpo">
+      ${_nciSecaoOperador(d,nomeUsr)}
+      ${_nciSecaoDados(d)}
+      ${_nciSecaoVistoria(d)}
+    </main>
+    <div class="barra-contexto" id="barra-contexto" style="display:none">
+      <span class="ctx-label" id="ctx-label"></span>
+      <button class="ctx-btn limpar" id="ctx-limpar" onclick="_vtCtxLimpar()">🗑 Limpar</button>
+      <button class="ctx-btn ok" id="ctx-concluir" onclick="_vtCtxConcluir()">✓ Concluir</button>
+    </div>
+    <footer class="nci2-footer">
+      <div class="registrar-status" id="registrar-status">Preencha os campos obrigatórios</div>
+      <button class="btn-registrar pendente" id="btn-registrar" onclick="_nciTentarRegistrar()">Registrar Check-in</button>
+    </footer>`;
+  _nciBindCampos();
+  _nciBindCarros();
+  _nciBindAssinatura();
+  _vtRenderAvariasLayer();
   _vtUpdateChecks();
-
-  // Aviso de orientação inteligente (só portrait, só 1ª vez)
+  _vtAtualizarSigUI();
+  _nciAtualizarProgresso();
+  // Aviso orientação portrait — 1ª vez
   try{
     if(window.matchMedia&&window.matchMedia('(orientation: portrait)').matches
        && !localStorage.getItem('garagespot_orientacao_aviso_visto')){
@@ -4228,396 +4361,1020 @@ function _nciStep3(body,title,ftr,bk){
   }catch(e){}
 }
 
-function _vtRenderDoc(d){
+function _nciSecaoOperador(d,nomeUsr){
+  return `
+    <section class="secao" id="secao-operador">
+      <header class="secao-header">
+        <div class="secao-num ok">✓</div>
+        <div class="secao-titulo">Operador</div>
+      </header>
+      <div class="secao-body">
+        <div class="campo">
+          <label class="campo-label">Quem está realizando</label>
+          <input class="campo-input preenchido" value="${_vtEsc(nomeUsr)}" readonly>
+        </div>
+      </div>
+    </section>`;
+}
+
+function _nciSecaoDados(d){
+  return `
+    <section class="secao" id="secao-dados">
+      <header class="secao-header">
+        <div class="secao-num ativo" id="secao-num-dados">2</div>
+        <div class="secao-titulo">Dados do Veículo</div>
+      </header>
+      <div class="secao-body">
+        <div class="campo">
+          <label class="campo-label">Apartamento <span class="req">*</span></label>
+          <input class="campo-input" id="campo-apt" type="text" inputmode="numeric" placeholder="Ex: 301" value="${_vtEsc(d.apt||'')}">
+        </div>
+        <div class="campo-row">
+          <div class="campo">
+            <label class="campo-label">Modelo <span class="req">*</span></label>
+            <input class="campo-input" id="campo-modelo" type="text" placeholder="Ex: Civic" value="${_vtEsc(d.model||'')}">
+          </div>
+          <div class="campo">
+            <label class="campo-label">Cor <span class="req">*</span></label>
+            <input class="campo-input" id="campo-cor" type="text" placeholder="Ex: Prata" value="${_vtEsc(d.color||'')}">
+          </div>
+        </div>
+        <div class="campo">
+          <label class="campo-label">Data de saída prevista <span class="req">*</span></label>
+          <input class="campo-input" id="campo-saida" type="date" value="${_vtEsc(d.saida_prevista||'')}">
+        </div>
+        <div class="campo">
+          <label class="campo-label">Placa (opcional)</label>
+          <input class="campo-input" id="campo-placa" type="text" placeholder="ABC1D23" style="text-transform:uppercase" value="${_vtEsc(d.plate||'')}">
+        </div>
+        <div class="campo">
+          <label class="campo-label">Nome do hóspede (opcional)</label>
+          <input class="campo-input" id="campo-hospede" type="text" placeholder="Nome completo" value="${_vtEsc(d.guest||'')}">
+        </div>
+        <div class="campo">
+          <label class="campo-label">Observações (opcional)</label>
+          <textarea class="campo-input" id="campo-obs" placeholder="Obs...">${_vtEsc(d.obs||'')}</textarea>
+        </div>
+      </div>
+    </section>`;
+}
+
+function _nciSecaoVistoria(d){
   const now=new Date();
   const dStr=now.toLocaleDateString('pt-BR');
   const hStr=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const numVst=d._previewVistNum||'—';
-  const list=d.avarias||d.danos||[];
-  const nd=list.length;
-  const comAv=nd>0;
-  const mc=[d.model,d.color].filter(Boolean).join(' · ')||'—';
   return `
-    <div class="vst-doc">
-      <header class="vst-header">
-        <div class="vst-logo-area">
-          <img class="vst-logo" src="${LOGO_CLIENTE_B64}" alt="Logo">
-          <div class="vst-titulo-doc">Termo de<strong>Vistoria Veicular</strong></div>
-        </div>
-        <div class="vst-codigos">
-          <div>Vistoria <strong>${_vtEsc(numVst)}</strong></div>
-          <div>Hospedagem <strong>${_vtEsc(d.gs)}</strong></div>
-          <div class="vst-timestamp">${dStr} · ${hStr}</div>
-        </div>
+    <section class="secao" id="secao-vistoria">
+      <header class="secao-header">
+        <div class="secao-num" id="secao-num-vst">3</div>
+        <div class="secao-titulo">Vistoria do Veículo</div>
       </header>
-      <div class="vst-body">
-        <div class="vst-carros" onclick="_vtAbrirAvarias()">
-          <div class="vst-carros-titulo">Avarias do veículo · Toque para marcar</div>
-          <div class="vst-carros-wrap">
-            <img class="vst-carros-img" id="vst-carros-img-main" src="${CARRO_5VISTAS_B64}" alt="5 ângulos do veículo">
-            <div class="vst-avarias-layer" id="vst-avarias-layer-main"></div>
-          </div>
-          <div class="vst-toque-dica">Toque na área dos carros para marcar avarias</div>
-        </div>
-        <div class="vst-campos">
-          <div class="campo-grupo"><div class="campo-label">Apartamento</div><div class="campo-valor">${_vtEsc(d.apt)}</div></div>
-          <div class="campo-grupo"><div class="campo-label">Modelo / Cor</div><div class="campo-valor">${_vtEsc(mc)}</div></div>
-          <div class="campo-grupo"><div class="campo-label">Funcionário Responsável</div><div class="campo-valor">${_vtEsc(_vtFuncNome(d)||'—')}</div></div>
-          <div class="check-avarias">
-            <div class="check-item">
-              <div class="check-box ${!comAv?'sem-on':''}" data-type="sem">${!comAv?'✓':''}</div>
-              <div class="check-label sem">SEM AVARIA</div>
+      <div class="secao-body" style="padding:0">
+        <div class="vistoria-card">
+          <header class="vst-mini-header">
+            <img class="vst-logo-mini" src="${LOGO_CLIENTE_B64}" alt="Logo">
+            <div class="vst-titulo-mini">Termo de Vistoria</div>
+            <div class="vst-cod-mini">
+              <div class="vst-cod-vist">${_vtEsc(d.numero||'VIST???')}</div>
+              <div class="vst-cod-gs">${_vtEsc(d.gs||'')}</div>
             </div>
-            <div class="check-item">
-              <div class="check-box ${comAv?'com-on':''}" data-type="com">${comAv?'✓':''}</div>
-              <div class="check-label com">COM AVARIA <span class="com-count" id="vst-com-cnt">${comAv?'· '+nd:''}</span></div>
+          </header>
+          <div class="vst-area-carros" id="area-carros">
+            <div class="vst-area-label" id="vst-area-label-carros">Toque para marcar avarias</div>
+            <div class="vst-carros-wrap" id="vst-carros-wrap">
+              <img class="vst-carros-img" id="carros-img" src="${CARRO_5VISTAS_B64}" alt="5 ângulos do veículo">
+              <div class="vst-avarias-layer" id="avarias-layer"></div>
             </div>
-            <div class="fotos-obs">*Fotos realizadas quando há avaria</div>
           </div>
+          <div class="vst-info-grid">
+            <div class="vst-info-item">
+              <div class="vst-info-label">Apto</div>
+              <div class="vst-info-valor" id="info-apt">${_vtEsc(d.apt||'—')}</div>
+            </div>
+            <div class="vst-info-item">
+              <div class="vst-info-label">Modelo/Cor</div>
+              <div class="vst-info-valor" id="info-modelo-cor">${_vtEsc([d.model,d.color].filter(Boolean).join(' · ')||'—')}</div>
+            </div>
+            <div class="vst-info-item">
+              <div class="vst-info-label">Funcionário</div>
+              <div class="vst-info-valor" id="info-funcionario">${_vtEsc(_vtFuncNomeCurto(d))}</div>
+            </div>
+            <div class="vst-info-item">
+              <div class="vst-info-label">Data/Hora</div>
+              <div class="vst-info-valor" id="info-data">${dStr} · ${hStr}</div>
+            </div>
+          </div>
+          <div class="vst-check-row">
+            <div class="vst-check" data-type="sem"><div class="vst-check-box"></div><span class="vst-check-lbl sem">SEM AVARIA</span></div>
+            <div class="vst-check" data-type="com"><div class="vst-check-box"></div><span class="vst-check-lbl com">COM AVARIA</span></div>
+          </div>
+          <div class="vst-assinatura-box" id="area-assinatura">
+            <canvas id="canvas-assinatura"></canvas>
+            <img class="assinatura-img" id="assinatura-preview" style="display:none">
+            <div class="assinatura-toque" id="assinatura-toque">Toque aqui para coletar assinatura</div>
+            <div class="assinatura-linha"></div>
+            <div class="assinatura-label">Assinatura do Proprietário</div>
+          </div>
+          <div class="vst-legal-mini">"Declaro que as marcações acima representam fielmente as avarias do meu veículo no momento do check-in."</div>
         </div>
       </div>
-      <div class="vst-legal">"Declaro que as marcações acima representam fielmente as avarias do meu veículo no momento do check-in."</div>
-      <div class="vst-assinatura">
-        <div class="assinatura-area" onclick="_vtAbrirAssinatura()">
-          <img class="assinatura-img" id="vst-assinatura-img" src="${d.assinatura||''}" style="display:${d.assinatura?'block':'none'}" alt="">
-          <div class="assinatura-toque" id="vst-assinatura-toque" style="display:${d.assinatura?'none':'block'}">Toque aqui para assinar</div>
-          <div class="assinatura-linha"></div>
-          <div class="assinatura-label">Assinatura do Proprietário do Veículo</div>
-        </div>
-      </div>
-    </div>`;
+    </section>`;
 }
 
-// Renderiza ✕ na camada (main = read-only, exp = interativa)
-function _vtRenderAvariasLayer(layerId){
-  const layer=document.getElementById(layerId);
-  if(!layer||!_nciD) return;
-  const list=_nciD.avarias||_nciD.danos||[];
-  layer.innerHTML=list.map(function(a,i){
-    return `<div class="vst-mk-wrap" data-i="${i}" style="left:${a.x}%;top:${a.y}%"><div class="vst-mk">✕</div></div>`;
-  }).join('');
-  if(layerId==='vst-avarias-layer-exp'){
-    layer.querySelectorAll('.vst-mk-wrap').forEach(function(el){
-      el.addEventListener('pointerdown',function(ev){
-        ev.stopPropagation(); ev.preventDefault();
-        _vtAvariaPopup(parseInt(el.dataset.i,10));
-      },{passive:false});
-    });
+// ════════════════════════════════════════════════════════════════════════
+// Bind dos campos + reatividade
+// ════════════════════════════════════════════════════════════════════════
+function _nciBindCampos(){
+  const ids=['campo-apt','campo-modelo','campo-cor','campo-saida','campo-placa','campo-hospede','campo-obs'];
+  ids.forEach(function(id){
+    const el=document.getElementById(id);
+    if(!el) return;
+    const handler=function(){
+      const v=(el.value||'').trim();
+      if(id==='campo-apt') _nciD.apt=v;
+      if(id==='campo-modelo') _nciD.model=v;
+      if(id==='campo-cor') _nciD.color=v;
+      if(id==='campo-saida') _nciD.saida_prevista=v;
+      if(id==='campo-placa') _nciD.plate=v.toUpperCase();
+      if(id==='campo-hospede') _nciD.guest=v;
+      if(id==='campo-obs') _nciD.obs=v;
+      // Atualizar preview na vistoria
+      const ia=document.getElementById('info-apt'); if(ia) ia.textContent=_nciD.apt||'—';
+      const im=document.getElementById('info-modelo-cor'); if(im) im.textContent=[_nciD.model,_nciD.color].filter(Boolean).join(' · ')||'—';
+      _nciAtualizarProgresso();
+      _nciRascAgendar();
+    };
+    el.addEventListener('input',handler);
+    el.addEventListener('blur',handler);
+  });
+}
+
+function _nciAtualizarProgresso(){
+  const d=_nciD; if(!d) return;
+  const dadosOk=!!(d.apt&&d.model&&d.color&&d.saida_prevista);
+  const vstOk=(d.avarias||d.danos||[]).length>0 || !!d.assinatura;
+  // Seções
+  const sndados=document.getElementById('secao-num-dados');
+  if(sndados){ sndados.className='secao-num '+(dadosOk?'ok':'ativo'); sndados.textContent=dadosOk?'✓':'2'; }
+  const snvst=document.getElementById('secao-num-vst');
+  if(snvst){ snvst.className='secao-num '+(vstOk?'ok':(dadosOk?'ativo':'')); snvst.textContent=vstOk?'✓':'3'; }
+  // Barra progresso
+  const pd=document.getElementById('prog-dados');
+  if(pd){ pd.className='prog-item '+(dadosOk?'ok':'ativo'); pd.innerHTML='<span>'+(dadosOk?'✓':'●')+'</span> Dados'; }
+  const pv=document.getElementById('prog-vst');
+  if(pv){ pv.className='prog-item '+(vstOk?'ok':(dadosOk?'ativo':'')); pv.innerHTML='<span>'+(vstOk?'✓':(dadosOk?'●':'○'))+'</span> Vistoria'; }
+  // Botão registrar + status
+  const btn=document.getElementById('btn-registrar');
+  const stt=document.getElementById('registrar-status');
+  if(btn&&stt){
+    if(!dadosOk){
+      btn.className='btn-registrar pendente';
+      stt.className='registrar-status faltam';
+      const f=[]; if(!d.apt)f.push('Apt'); if(!d.model)f.push('Modelo'); if(!d.color)f.push('Cor'); if(!d.saida_prevista)f.push('Saída prevista');
+      stt.textContent='Faltam: '+f.join(', ');
+    } else if(!vstOk){
+      btn.className='btn-registrar';
+      stt.className='registrar-status';
+      stt.textContent='Você pode marcar avarias e/ou coletar assinatura agora ou depois';
+    } else {
+      btn.className='btn-registrar';
+      stt.className='registrar-status ok';
+      const n=(d.avarias||d.danos||[]).length;
+      stt.textContent='Vistoria completa · '+(n>0?n+' avaria'+(n!==1?'s':''):'sem avarias')+(d.assinatura?' · assinatura coletada':' · sem assinatura');
+    }
+  }
+  const sub=document.getElementById('nci2-sub');
+  if(sub){
+    if(MODO_VISTORIA_ATIVO==='avarias') sub.textContent='Marcando avarias';
+    else if(MODO_VISTORIA_ATIVO==='assinatura') sub.textContent='Coletando assinatura';
+    else if(!dadosOk) sub.textContent='Preencha os dados do veículo';
+    else if(!vstOk) sub.textContent='Revise e finalize a vistoria';
+    else sub.textContent='Pronto para registrar';
   }
 }
 
-// Sincroniza checks SEM/COM AVARIA + contadores em todos os locais visíveis
+// ════════════════════════════════════════════════════════════════════════
+// ÁREA DE CARROS — Ativação contextual + 10 camadas de precisão
+// ════════════════════════════════════════════════════════════════════════
+function _nciBindCarros(){
+  const area=document.getElementById('area-carros');
+  const img=document.getElementById('carros-img');
+  if(!area||!img) return;
+  // Tap na área (mas fora da imagem) → ativa
+  area.addEventListener('click',function(ev){
+    if(MODO_VISTORIA_ATIVO==='avarias'){
+      // Se já ativa e tap fora da imagem → não desativa
+      if(ev.target===img||ev.target.closest('.vst-mk-wrap')) return;
+      return;
+    }
+    _vtAtivarAvarias();
+  });
+  // CAMADA 1: listener APENAS na imagem
+  img.addEventListener('click',_vtImgClick);
+  img.addEventListener('touchend',_vtImgTouchEnd,{passive:false});
+}
+
+function _vtAtivarAvarias(){
+  if(MODO_VISTORIA_ATIVO==='assinatura') _vtDesativarAssinatura();
+  MODO_VISTORIA_ATIVO='avarias';
+  const area=document.getElementById('area-carros');
+  const lbl=document.getElementById('vst-area-label-carros');
+  if(area) area.classList.add('ativa');
+  if(lbl) lbl.textContent='📍 Marcando avarias — toque na imagem';
+  _vtBloquearAssinatura(true);
+  _vtAtualizarBarraContexto();
+  _nciAtualizarProgresso();
+  // Scroll para centralizar
+  if(area) try{ area.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+}
+
+function _vtDesativarAvarias(){
+  if(MODO_VISTORIA_ATIVO!=='avarias') return;
+  MODO_VISTORIA_ATIVO=null;
+  const area=document.getElementById('area-carros');
+  const lbl=document.getElementById('vst-area-label-carros');
+  if(area) area.classList.remove('ativa');
+  if(lbl) lbl.textContent='Toque para marcar avarias';
+  // Remove popup se houver
+  document.querySelectorAll('.vst-popup').forEach(function(p){p.remove();});
+  _vtBloquearAssinatura(false);
+  _vtAtualizarBarraContexto();
+  _nciAtualizarProgresso();
+}
+
+function _vtBloquearAssinatura(bloq){
+  const a=document.getElementById('area-assinatura');
+  if(a) a.classList.toggle('bloqueada',bloq);
+}
+function _vtBloquearCarros(bloq){
+  const a=document.getElementById('area-carros');
+  if(a) a.classList.toggle('bloqueada',bloq);
+}
+
+function _vtAtualizarBarraContexto(){
+  const b=document.getElementById('barra-contexto'); if(!b) return;
+  if(MODO_VISTORIA_ATIVO==='avarias'){
+    const n=(_nciD.avarias||_nciD.danos||[]).length;
+    b.style.display='flex';
+    document.getElementById('ctx-label').textContent=n+' avaria'+(n!==1?'s':'')+' marcada'+(n!==1?'s':'');
+    document.getElementById('ctx-limpar').textContent='🗑 Limpar todas';
+    document.getElementById('ctx-limpar').style.display=n>0?'inline-block':'none';
+  } else if(MODO_VISTORIA_ATIVO==='assinatura'){
+    b.style.display='flex';
+    document.getElementById('ctx-label').textContent='Coletando assinatura';
+    document.getElementById('ctx-limpar').textContent='🗑 Limpar';
+    document.getElementById('ctx-limpar').style.display='inline-block';
+  } else {
+    b.style.display='none';
+  }
+}
+
+function _vtCtxLimpar(){
+  if(MODO_VISTORIA_ATIVO==='avarias'){
+    _vtAvariaLimparTodas();
+  } else if(MODO_VISTORIA_ATIVO==='assinatura'){
+    _vtSigLimpar();
+  }
+}
+function _vtCtxConcluir(){
+  if(MODO_VISTORIA_ATIVO==='avarias') _vtDesativarAvarias();
+  else if(MODO_VISTORIA_ATIVO==='assinatura') _vtFinalizarAssinatura(true);
+}
+
+// CAMADA 2 + 3: getBoundingClientRect da própria imagem + validação de bounds
+function _vtCoordPercent(event,imgEl){
+  if(!imgEl||!imgEl.complete||imgEl.naturalWidth===0) return null;
+  const rect=imgEl.getBoundingClientRect();
+  const t=event.touches||event.changedTouches;
+  const cx=t&&t[0]?t[0].clientX:event.clientX;
+  const cy=t&&t[0]?t[0].clientY:event.clientY;
+  if(cx==null||cy==null) return null;
+  const x=((cx-rect.left)/rect.width)*100;
+  const y=((cy-rect.top)/rect.height)*100;
+  return {x:Math.round(x*100)/100,y:Math.round(y*100)/100,cx,cy,rect};
+}
+function _vtBoundsOk(c){ return c && c.x>=0 && c.x<=100 && c.y>=0 && c.y<=100; }
+
+// CAMADA 4: stopPropagation OBRIGATÓRIO
+function _vtImgClick(ev){ _vtImgTap(ev,'click'); }
+function _vtImgTouchEnd(ev){ ev.preventDefault(); _vtImgTap(ev,'touchend'); }
+
+let _vtLastTap=0;
+function _vtImgTap(ev,kind){
+  ev.stopPropagation();
+  if(MODO_VISTORIA_ATIVO!=='avarias'){ _vtAtivarAvarias(); return; }
+  if(!_nciD) return;
+  const t=Date.now(); if(t-_vtLastTap<100) return; _vtLastTap=t;
+  const img=ev.currentTarget;
+  const coord=_vtCoordPercent(ev,img);
+  // CAMADA 8: logs de debug
+  console.log('[VST DEBUG]',{
+    'Tipo evento':kind,
+    'Target':ev.target.tagName+(ev.target.className?'.'+ev.target.className:''),
+    'É a imagem?':ev.target.id==='carros-img',
+    'Click X,Y':{cx:coord&&coord.cx,cy:coord&&coord.cy},
+    'Img rect':coord&&coord.rect,
+    'Calculado %':coord,
+    'Validação':_vtBoundsOk(coord)?'OK':'FORA'
+  });
+  if(!_vtBoundsOk(coord)){
+    console.log('[VST DEBUG] Toque fora da imagem, descartado:',coord);
+    return;
+  }
+  // Limite 20 avarias
+  if(!_nciD.avarias) _nciD.avarias=_nciD.danos||[];
+  if(_nciD.avarias.length>=20){
+    showToast('Limite de 20 avarias por vistoria atingido',2500);
+    return;
+  }
+  _nciD.avarias.push({x:coord.x,y:coord.y});
+  _nciD.danos=_nciD.avarias;
+  _nciD.com_avaria=true;
+  _vtHaptic();
+  // CAMADA 9: marcador verde de debug temporário
+  _vtMostrarDebugDot(coord.cx,coord.cy);
+  _vtRenderAvariasLayer();
+  _vtUpdateChecks();
+  _vtAtualizarBarraContexto();
+  _nciAtualizarProgresso();
+  _nciRascAgendar();
+}
+
+function _vtMostrarDebugDot(clientX,clientY){
+  const wrap=document.getElementById('vst-carros-wrap'); if(!wrap) return;
+  const wr=wrap.getBoundingClientRect();
+  const dot=document.createElement('div');
+  dot.className='vst-mk-debug';
+  dot.style.left=(clientX-wr.left)+'px';
+  dot.style.top=(clientY-wr.top)+'px';
+  wrap.appendChild(dot);
+  setTimeout(function(){ dot.remove(); },2500);
+}
+
+// CAMADA 5 + 10: layer espelhada, pointer-events:none, render do array
+function _vtRenderAvariasLayer(){
+  const layer=document.getElementById('avarias-layer'); if(!layer||!_nciD) return;
+  const list=_nciD.avarias||_nciD.danos||[];
+  layer.innerHTML=list.map(function(a,i){
+    return '<div class="vst-mk-wrap" data-i="'+i+'" style="left:'+a.x+'%;top:'+a.y+'%"><div class="vst-mk">✕</div></div>';
+  }).join('');
+  // Bind toque em cada ✕ → popup
+  layer.querySelectorAll('.vst-mk-wrap').forEach(function(el){
+    el.addEventListener('click',function(ev){
+      ev.stopPropagation();
+      ev.preventDefault();
+      if(MODO_VISTORIA_ATIVO!=='avarias') _vtAtivarAvarias();
+      _vtMostrarPopupAvaria(parseInt(el.dataset.i,10));
+    });
+    el.addEventListener('touchend',function(ev){
+      ev.stopPropagation();
+      ev.preventDefault();
+      if(MODO_VISTORIA_ATIVO!=='avarias') _vtAtivarAvarias();
+      _vtMostrarPopupAvaria(parseInt(el.dataset.i,10));
+    },{passive:false});
+  });
+}
+
 function _vtUpdateChecks(){
   if(!_nciD) return;
   const list=_nciD.avarias||_nciD.danos||[];
   _nciD.com_avaria=list.length>0;
-  _nciD.danos=list; // back-compat
-  // re-render layer(s)
-  ['vst-avarias-layer-main','vst-avarias-layer-exp'].forEach(function(id){
-    if(document.getElementById(id)) _vtRenderAvariasLayer(id);
-  });
-  // checks no documento principal
-  const cnt=document.getElementById('vst-com-cnt');
-  if(cnt) cnt.textContent=list.length>0?'· '+list.length:'';
-  document.querySelectorAll('.vst-doc .check-box').forEach(function(box){
-    const t=box.dataset.type;
-    const on=(t==='com'&&list.length>0)||(t==='sem'&&list.length===0);
-    box.classList.toggle('sem-on',t==='sem'&&on);
-    box.classList.toggle('com-on',t==='com'&&on);
-    box.textContent=on?'✓':'';
-  });
-  // contador no header do painel expandido
-  const eC=document.getElementById('vst-av-exp-cnt');
-  if(eC) eC.textContent=list.length+' avaria'+(list.length===1?'':'s');
-}
-
-// ── Painéis expandidos: criar/destruir a cada STEP3 (sem vazamento) ──────
-function _vtDestruirPaineis(){
-  ['vst-panel-av','vst-panel-as','vst-modal-conf','vst-sem-assin','vst-loading'].forEach(function(id){
-    const e=document.getElementById(id); if(e) e.remove();
-  });
-}
-function _vtCriarPaineis(){
-  const ov=document.getElementById('nci-overlay'); if(!ov||!_nciD) return;
-  const d=_nciD;
-  const mc=[d.model,d.color].filter(Boolean).join(' · ')||'—';
-  // Avarias
-  const av=document.createElement('div'); av.className='vst-panel'; av.id='vst-panel-av';
-  av.innerHTML=`
-    <div class="vst-panel-hdr">
-      <div class="vst-h-title">🚗 Marcar Avarias</div>
-      <span class="vst-cnt-badge" id="vst-av-exp-cnt">0 avarias</span>
-    </div>
-    <div class="vst-panel-body">
-      <div class="vst-zoom-wrap" id="vst-av-zoom-wrap">
-        <div class="vst-img-zoom-container" id="vst-av-zoom">
-          <img class="vst-av-img" id="vst-av-img" src="${CARRO_5VISTAS_B64}" alt="">
-          <div class="vst-av-layer" id="vst-avarias-layer-exp"></div>
-        </div>
-      </div>
-    </div>
-    <div class="vst-panel-ftr">
-      <button class="vst-btn-limpar" onclick="_vtAvariaLimparTodas()">🗑 Limpar todas</button>
-      <button class="vst-btn-ok" onclick="_vtFecharAvarias()">✓ OK</button>
-    </div>`;
-  ov.appendChild(av);
-  // Tap-to-add: usa getBoundingClientRect da <img> (coords reais da imagem renderizada)
-  const img=document.getElementById('vst-av-img');
-  let lastTap=0;
-  img.addEventListener('pointerdown',function(ev){
-    if(ev.target.closest&&ev.target.closest('.vst-mk-wrap')) return;
-    if(ev.target.closest&&ev.target.closest('.vst-popup')) return;
-    const t=Date.now(); if(t-lastTap<100) return; lastTap=t;
-    const rect=img.getBoundingClientRect();
-    const x=((ev.clientX-rect.left)/rect.width)*100;
-    const y=((ev.clientY-rect.top)/rect.height)*100;
-    if(x<0||x>100||y<0||y>100) return;
-    if(!_nciD.avarias) _nciD.avarias=_nciD.danos||[];
-    _nciD.avarias.push({x:Math.round(x*100)/100,y:Math.round(y*100)/100});
-    _nciSalvarRascunho();
-    _vtHaptic();
-    _vtUpdateChecks();
-  },{passive:false});
-  // Pinch-to-zoom (1..3)
-  _vtBindPinchZoom('vst-av-zoom-wrap','vst-av-zoom');
-  // Assinatura
-  const as=document.createElement('div'); as.className='vst-panel'; as.id='vst-panel-as';
-  as.innerHTML=`
-    <div class="vst-panel-hdr">
-      <div>
-        <div class="vst-h-title">✍️ Assinatura do Hóspede</div>
-        <div class="vst-info-line">Apt ${_vtEsc(d.apt)} · ${_vtEsc(mc)} · ${_vtEsc(d._previewVistNum||'')}</div>
-      </div>
-    </div>
-    <div class="vst-panel-body vst-sig-body">
-      <div class="vst-sig-container">
-        <canvas class="vst-sig-canvas-el" id="vst-sig-canvas"></canvas>
-        <div class="vst-sig-guide-line"><span>Assine acima da linha</span></div>
-      </div>
-    </div>
-    <div class="vst-panel-ftr">
-      <button class="vst-btn-limpar" onclick="_vtSigLimpar()">🗑 Limpar</button>
-      <button class="vst-btn-cancel" onclick="_vtFecharAssinatura(false)">Cancelar</button>
-      <button class="vst-btn-ok" onclick="_vtFecharAssinatura(true)">✓ OK</button>
-    </div>`;
-  ov.appendChild(as);
-}
-
-// Pinch-to-zoom no container dos carros (scale 1..3, pan quando ampliado)
-function _vtBindPinchZoom(wrapId,zoomId){
-  const wrap=document.getElementById(wrapId), z=document.getElementById(zoomId);
-  if(!wrap||!z) return;
-  let scale=1, startScale=1, lastDist=0;
-  let tx=0, ty=0, startTx=0, startTy=0, panX=0, panY=0, panning=false;
-  function apply(){ z.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')'; }
-  function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.sqrt(dx*dx+dy*dy); }
-  function mid(a,b){ return {x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2}; }
-  wrap.addEventListener('touchstart',function(ev){
-    if(ev.touches.length===2){
-      lastDist=dist(ev.touches[0],ev.touches[1]);
-      startScale=scale;
-      ev.preventDefault();
-    } else if(ev.touches.length===1 && scale>1){
-      panning=true; panX=ev.touches[0].clientX; panY=ev.touches[0].clientY; startTx=tx; startTy=ty;
+  _nciD.danos=list;
+  document.querySelectorAll('.vst-check').forEach(function(el){
+    const t=el.dataset.type;
+    const box=el.querySelector('.vst-check-box');
+    if(!box) return;
+    if((t==='com'&&list.length>0)||(t==='sem'&&list.length===0)){
+      box.classList.add('marked');
+    } else {
+      box.classList.remove('marked');
     }
-  },{passive:false});
-  wrap.addEventListener('touchmove',function(ev){
-    if(ev.touches.length===2){
-      const d=dist(ev.touches[0],ev.touches[1]);
-      if(lastDist>0){
-        scale=Math.max(1,Math.min(3,startScale*(d/lastDist)));
-        if(scale<=1.01){ tx=0; ty=0; }
-        apply();
-      }
-      ev.preventDefault();
-    } else if(panning && ev.touches.length===1){
-      tx=startTx+(ev.touches[0].clientX-panX);
-      ty=startTy+(ev.touches[0].clientY-panY);
-      apply();
-      ev.preventDefault();
-    }
-  },{passive:false});
-  wrap.addEventListener('touchend',function(){ lastDist=0; panning=false; if(scale<=1.01){ scale=1; tx=0; ty=0; apply(); } });
-  // reset ao abrir
-  z._vtResetZoom=function(){ scale=1; tx=0; ty=0; apply(); };
+  });
 }
 
-function _vtAbrirAvarias(){
-  const p=document.getElementById('vst-panel-av'); if(!p) return;
-  const z=document.getElementById('vst-av-zoom'); if(z&&z._vtResetZoom) z._vtResetZoom();
-  p.classList.add('open');
-  setTimeout(function(){ _vtRenderAvariasLayer('vst-avarias-layer-exp'); _vtUpdateChecks(); },280);
-}
-function _vtFecharAvarias(){
-  const p=document.getElementById('vst-panel-av'); if(p) p.classList.remove('open');
-  _vtRenderAvariasLayer('vst-avarias-layer-main');
-  _vtUpdateChecks();
-}
-
-function _vtAvariaPopup(idx){
-  const layer=document.getElementById('vst-avarias-layer-exp'); if(!layer||!_nciD) return;
+function _vtMostrarPopupAvaria(idx){
+  const layer=document.getElementById('avarias-layer'); if(!layer||!_nciD) return;
   layer.querySelectorAll('.vst-popup').forEach(function(p){p.remove();});
   const list=_nciD.avarias||_nciD.danos||[];
   const a=list[idx]; if(!a) return;
-  const pop=document.createElement('div'); pop.className='vst-popup';
-  pop.style.left=a.x+'%'; pop.style.top=a.y+'%';
-  pop.innerHTML=`<button class="vst-pop-del" data-act="del">Excluir</button><button class="vst-pop-keep" data-act="keep">Manter</button>`;
-  pop.addEventListener('pointerdown',function(ev){ ev.stopPropagation(); },{passive:false});
+  const pop=document.createElement('div');
+  pop.className='vst-popup';
+  pop.style.left=a.x+'%';
+  pop.style.top=a.y+'%';
+  pop.innerHTML='<button class="pop-del" data-act="del">Excluir</button><button class="pop-keep" data-act="keep">Manter</button>';
+  pop.addEventListener('click',function(ev){ ev.stopPropagation(); });
+  pop.addEventListener('touchend',function(ev){ ev.stopPropagation(); },{passive:true});
   pop.querySelector('[data-act="del"]').addEventListener('click',function(ev){
     ev.stopPropagation(); ev.preventDefault();
-    if(!_nciD.avarias) _nciD.avarias=_nciD.danos||[];
     _nciD.avarias.splice(idx,1);
     _nciD.danos=_nciD.avarias;
-    _nciSalvarRascunho();
+    _nciD.com_avaria=_nciD.avarias.length>0;
     _vtHaptic();
-    _vtUpdateChecks();   // re-render do zero, sem ✕ fantasma
+    _vtRenderAvariasLayer();
+    _vtUpdateChecks();
+    _vtAtualizarBarraContexto();
+    _nciAtualizarProgresso();
+    _nciRascAgendar();
   });
   pop.querySelector('[data-act="keep"]').addEventListener('click',function(ev){
-    ev.stopPropagation(); ev.preventDefault(); pop.remove();
+    ev.stopPropagation(); ev.preventDefault();
+    pop.remove();
   });
   layer.appendChild(pop);
 }
 
 function _vtAvariaLimparTodas(){
   const list=(_nciD&&(_nciD.avarias||_nciD.danos))||[];
-  if(list.length===0){ showToast('Nenhuma avaria marcada',2000); return; }
-  const p=document.getElementById('vst-panel-av'); if(!p) return;
-  const old=document.getElementById('vst-modal-conf'); if(old) old.remove();
-  const m=document.createElement('div'); m.id='vst-modal-conf'; m.className='vst-modal-overlay';
-  m.innerHTML=`<div class="vst-modal-content">
-    <div class="vst-modal-title">🗑 Limpar todas as avarias?</div>
-    <div class="vst-modal-text">Esta ação não pode ser desfeita.</div>
-    <div class="vst-modal-buttons">
-      <button class="vst-modal-cancel" onclick="document.getElementById('vst-modal-conf').remove()">Cancelar</button>
-      <button class="vst-modal-confirm" onclick="_vtAvariaLimparOK()">Limpar</button>
-    </div></div>`;
-  p.appendChild(m);
-}
-function _vtAvariaLimparOK(){
-  if(_nciD){ _nciD.avarias=[]; _nciD.danos=[]; _nciD.com_avaria=false; _nciSalvarRascunho(); }
-  const m=document.getElementById('vst-modal-conf'); if(m) m.remove();
-  _vtHaptic();
-  _vtUpdateChecks();
+  if(list.length===0){ showToast('Nenhuma avaria marcada',1800); return; }
+  showModalAux({
+    titulo:'Limpar todas as '+list.length+' avaria'+(list.length!==1?'s':'')+'?',
+    texto:'Esta ação não pode ser desfeita.',
+    botoes:[
+      {label:'Cancelar',action:'close'},
+      {label:'Limpar',cls:'danger',action:function(){
+        _nciD.avarias=[]; _nciD.danos=[]; _nciD.com_avaria=false;
+        _vtHaptic();
+        _vtRenderAvariasLayer();
+        _vtUpdateChecks();
+        _vtAtualizarBarraContexto();
+        _nciAtualizarProgresso();
+        _nciRascAgendar();
+      }}
+    ]
+  });
 }
 
-// ── Assinatura (canvas DPR + touch+mouse) ────────────────────────────────
-let _vtSigCtx=null, _vtSigDirty=false, _vtSigDpr=1;
-function _vtAbrirAssinatura(){
-  const p=document.getElementById('vst-panel-as'); if(!p) return;
-  p.classList.add('open');
-  setTimeout(_vtSigSetup,280);
+// ════════════════════════════════════════════════════════════════════════
+// ÁREA DE ASSINATURA — Ativação contextual + canvas DPR
+// ════════════════════════════════════════════════════════════════════════
+function _nciBindAssinatura(){
+  const area=document.getElementById('area-assinatura');
+  if(!area) return;
+  area.addEventListener('click',function(ev){
+    // Se já ativa, clicks dentro não desativam
+    if(MODO_VISTORIA_ATIVO==='assinatura') return;
+    _vtAtivarAssinatura();
+  });
 }
+
+function _vtAtivarAssinatura(){
+  if(MODO_VISTORIA_ATIVO==='avarias') _vtDesativarAvarias();
+  MODO_VISTORIA_ATIVO='assinatura';
+  const a=document.getElementById('area-assinatura');
+  if(a) a.classList.add('ativa');
+  _vtBloquearCarros(true);
+  _vtAtualizarBarraContexto();
+  _nciAtualizarProgresso();
+  if(a) try{ a.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  setTimeout(_vtSigSetup,200);
+}
+
+function _vtDesativarAssinatura(salvar){
+  if(MODO_VISTORIA_ATIVO!=='assinatura') return;
+  if(salvar){
+    const cv=document.getElementById('canvas-assinatura');
+    if(cv&&_nciSigDirty){
+      _nciD.assinatura=cv.toDataURL('image/png');
+      _nciSigBackup=null;
+      _nciRascAgendar();
+    }
+  }
+  MODO_VISTORIA_ATIVO=null;
+  const a=document.getElementById('area-assinatura');
+  if(a) a.classList.remove('ativa');
+  _vtBloquearCarros(false);
+  _vtAtualizarBarraContexto();
+  _vtAtualizarSigUI();
+  _nciAtualizarProgresso();
+}
+
+function _vtFinalizarAssinatura(salvar){
+  // Se vazio e salvar=true → avisar
+  if(salvar && !_nciSigDirty && !_nciD.assinatura){
+    showToast('Nenhuma assinatura registrada',2000);
+    return;
+  }
+  _vtDesativarAssinatura(salvar);
+}
+
+function _vtAtualizarSigUI(){
+  const img=document.getElementById('assinatura-preview');
+  const toq=document.getElementById('assinatura-toque');
+  if(!img||!toq) return;
+  if(_nciD&&_nciD.assinatura){
+    img.src=_nciD.assinatura;
+    img.style.display='block';
+    toq.style.display='none';
+  } else {
+    img.style.display='none';
+    toq.style.display='block';
+  }
+}
+
+// CAMADA 6: canvas com DPR aplicado corretamente
 function _vtSigSetup(){
-  const cv=document.getElementById('vst-sig-canvas'); if(!cv) return;
-  const dpr=window.devicePixelRatio||1;
+  const cv=document.getElementById('canvas-assinatura'); if(!cv) return;
   const r=cv.getBoundingClientRect();
   if(!r.width||!r.height){ setTimeout(_vtSigSetup,120); return; }
-  // Preservar desenho atual se houver
-  const prev=(_vtSigCtx&&_vtSigDirty)?cv.toDataURL('image/png'):null;
-  cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+  // Preservar desenho existente
+  const prev=(_nciSigCtx&&_nciSigDirty)?cv.toDataURL('image/png'):null;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(r.width*dpr);
+  cv.height=Math.round(r.height*dpr);
+  cv.style.width=r.width+'px';
+  cv.style.height=r.height+'px';
   const ctx=cv.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,r.width,r.height);
-  ctx.strokeStyle='#000000'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
-  _vtSigCtx=ctx; _vtSigDpr=dpr;
-  _vtSigDirty=false;
-  function drawSaved(src){ const im=new Image(); im.onload=function(){ ctx.drawImage(im,0,0,r.width,r.height); _vtSigDirty=true; }; im.src=src; }
-  if(prev) drawSaved(prev);
-  else if(_nciD&&_nciD.assinatura) drawSaved(_nciD.assinatura);
+  ctx.strokeStyle='#000000';
+  ctx.lineWidth=2.5;
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  _nciSigCtx=ctx; _nciSigDpr=dpr; _nciSigDirty=false;
+  function drawFrom(src){ const im=new Image(); im.onload=function(){ ctx.drawImage(im,0,0,r.width,r.height); _nciSigDirty=true; }; im.src=src; }
+  if(prev) drawFrom(prev);
+  else if(_nciSigBackup) drawFrom(_nciSigBackup);
+  else if(_nciD&&_nciD.assinatura) drawFrom(_nciD.assinatura);
 
   let drawing=false, lx=0, ly=0;
-  function pos(e){ const b=cv.getBoundingClientRect(); const cx=e.touches?e.touches[0].clientX:e.clientX; const cy=e.touches?e.touches[0].clientY:e.clientY; return {x:cx-b.left,y:cy-b.top}; }
-  function down(e){ e.preventDefault(); drawing=true; const p=pos(e); lx=p.x; ly=p.y; if(cv.setPointerCapture&&e.pointerId!=null){ try{ cv.setPointerCapture(e.pointerId); }catch(_){} } }
-  function move(e){ if(!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p.x,p.y); ctx.stroke(); lx=p.x; ly=p.y; _vtSigDirty=true; }
-  function up(){ drawing=false; }
+  function getPos(e){ const b=cv.getBoundingClientRect(); const t=e.touches||e.changedTouches; const cx=t&&t[0]?t[0].clientX:e.clientX; const cy=t&&t[0]?t[0].clientY:e.clientY; return {x:cx-b.left,y:cy-b.top}; }
+  function down(e){ e.preventDefault(); drawing=true; const p=getPos(e); lx=p.x; ly=p.y; if(cv.setPointerCapture&&e.pointerId!=null){ try{ cv.setPointerCapture(e.pointerId); }catch(_){} } }
+  function move(e){ if(!drawing) return; e.preventDefault(); const p=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p.x,p.y); ctx.stroke(); lx=p.x; ly=p.y; _nciSigDirty=true; }
+  function up(){ if(!drawing) return; drawing=false; try{ _nciSigBackup=cv.toDataURL('image/png'); }catch(_){} }
   cv.onpointerdown=down; cv.onpointermove=move; cv.onpointerup=up; cv.onpointercancel=up;
-  // Fallback mouse/touch para browsers sem PointerEvents
   cv.ontouchstart=function(e){ down(e); };
   cv.ontouchmove=function(e){ move(e); };
   cv.ontouchend=cv.ontouchcancel=function(){ up(); };
   cv.onmousedown=down; cv.onmousemove=function(e){ if(drawing) move(e); }; cv.onmouseup=cv.onmouseleave=up;
-  // resize: reconfigurar mantendo desenho
-  if(!cv._vtResizeBound){
-    cv._vtResizeBound=true;
-    const onResize=function(){
-      if(!document.getElementById('vst-panel-as')) return;
-      _vtSigSetup();
-    };
-    window.addEventListener('resize',onResize);
-    window.addEventListener('orientationchange',function(){ setTimeout(onResize,260); });
-  }
-}
-function _vtSigLimpar(){
-  const cv=document.getElementById('vst-sig-canvas'); if(!cv||!_vtSigCtx) return;
-  _vtSigCtx.clearRect(0,0,cv.width/_vtSigDpr,cv.height/_vtSigDpr);
-  _vtSigDirty=false;
-}
-function _vtFecharAssinatura(salvar){
-  const cv=document.getElementById('vst-sig-canvas');
-  if(salvar&&cv&&_vtSigDirty){
-    _nciD.assinatura=cv.toDataURL('image/png');
-    _nciSalvarRascunho();
-  }
-  const p=document.getElementById('vst-panel-as'); if(p) p.classList.remove('open');
-  // Atualiza visualmente o documento principal
-  const img=document.getElementById('vst-assinatura-img');
-  const toq=document.getElementById('vst-assinatura-toque');
-  if(_nciD&&_nciD.assinatura){
-    if(img){ img.src=_nciD.assinatura; img.style.display='block'; }
-    if(toq) toq.style.display='none';
-  } else {
-    if(img) img.style.display='none';
-    if(toq) toq.style.display='block';
-  }
 }
 
-// ── Confirmar vistoria ──────────────────────────────────────────────────
-function _nciConfirmarVistoria(){
+function _vtSigLimpar(){
+  const cv=document.getElementById('canvas-assinatura');
+  if(!cv||!_nciSigCtx) return;
+  _nciSigCtx.clearRect(0,0,cv.width/_nciSigDpr,cv.height/_nciSigDpr);
+  _nciSigDirty=false; _nciSigBackup=null;
+}
+
+// CAMADA 7: resize handler preservando desenho
+let _vtResizeTimer=null;
+function _vtOnResize(){
+  if(_vtResizeTimer) clearTimeout(_vtResizeTimer);
+  _vtResizeTimer=setTimeout(function(){
+    if(!_nciD) return;
+    if(document.getElementById('avarias-layer')) _vtRenderAvariasLayer();
+    if(MODO_VISTORIA_ATIVO==='assinatura' && _nciSigCtx) _vtSigSetup();
+  },250);
+}
+window.addEventListener('resize',_vtOnResize);
+window.addEventListener('orientationchange',function(){ setTimeout(_vtOnResize,260); });
+
+// visibilitychange — restaurar canvas após app em background
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible' && MODO_VISTORIA_ATIVO==='assinatura' && _nciSigBackup){
+    setTimeout(_vtSigSetup,150);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// BOTÃO REGISTRAR + Modais + Prévia
+// ════════════════════════════════════════════════════════════════════════
+function _nciTentarRegistrar(){
   if(!_nciD) return;
-  _nciSalvarRascunho();
-  if(!_nciD.assinatura){
-    const ov=document.getElementById('nci-overlay'); if(!ov) return;
-    let dlg=document.getElementById('vst-sem-assin'); if(dlg) dlg.remove();
-    dlg=document.createElement('div'); dlg.id='vst-sem-assin'; dlg.className='vst-modal-overlay'; dlg.style.zIndex='9130';
-    dlg.innerHTML=`<div class="vst-modal-content">
-      <div class="vst-modal-title">⚠️ Vistoria sem assinatura</div>
-      <div class="vst-modal-text">A assinatura do hóspede não foi coletada.<br>Deseja confirmar mesmo assim?<br><span style="font-size:11px;color:#888">A assinatura precisará ser coletada depois.</span></div>
-      <div class="vst-modal-buttons">
-        <button class="vst-modal-cancel" onclick="document.getElementById('vst-sem-assin').remove()">Cancelar</button>
-        <button class="vst-modal-confirm" onclick="_vtConfSemAssin()">Confirmar mesmo assim</button>
-      </div></div>`;
-    ov.appendChild(dlg);
+  const d=_nciD;
+  const faltam=[];
+  if(!d.apt) faltam.push('Apartamento');
+  if(!d.model) faltam.push('Modelo');
+  if(!d.color) faltam.push('Cor');
+  if(!d.saida_prevista) faltam.push('Data de saída prevista');
+  if(faltam.length){
+    showModalAux({
+      titulo:'Campos obrigatórios faltando',
+      texto:'Preencha: '+faltam.join(', '),
+      botoes:[{label:'OK',cls:'primary',action:'close'}]
+    });
     return;
   }
-  _vtFinalizar(false);
-}
-function _vtConfSemAssin(){
-  const dlg=document.getElementById('vst-sem-assin'); if(dlg) dlg.remove();
-  _nciD.assinatura_pendente=true;
-  _vtFinalizar(true);
-}
-function _vtFinalizar(pend){
-  const ov=document.getElementById('nci-overlay'); if(!ov) return;
-  const old=document.getElementById('vst-loading'); if(old) old.remove();
-  const ld=document.createElement('div'); ld.id='vst-loading'; ld.className='vst-modal-overlay'; ld.style.zIndex='9150';
-  ld.innerHTML=`<div class="vst-loading-content"><div class="vst-spinner"></div><div>Finalizando vistoria…</div></div>`;
-  ov.appendChild(ld);
-  setTimeout(function(){
-    _vtComporPNG(_nciD).then(function(png){
-      _nciD.documento_final_b64=png;
-    }).catch(function(){
-      _nciD.documento_final_b64=null;
-    }).then(function(){
-      _nciD.ts_finalizacao=Date.now();
-      _nciD.template_versao=VISTORIA_TPL_VERSAO;
-      _nciSalvarRascunho();
-      const r=document.getElementById('vst-loading'); if(r) r.remove();
-      _nciRenderStep(4);
+  // Sair de modo ativo se houver
+  if(MODO_VISTORIA_ATIVO==='avarias') _vtDesativarAvarias();
+  if(MODO_VISTORIA_ATIVO==='assinatura') _vtDesativarAssinatura(true);
+  // Sem assinatura → modal
+  if(!d.assinatura){
+    const semAv=(d.avarias||d.danos||[]).length===0;
+    const txt=semAv?'Vistoria sem avarias nem assinatura.\nConfirmar mesmo assim?':'Vistoria sem assinatura do hóspede.\nA assinatura precisará ser coletada depois.\n\nConfirmar mesmo assim?';
+    showModalAux({
+      titulo:'⚠️ Confirmar sem assinatura?',
+      texto:txt,
+      botoes:[
+        {label:'Cancelar',action:'close'},
+        {label:'Confirmar mesmo assim',cls:'danger',action:function(){
+          _nciD.assinatura_pendente=true;
+          _nciShowPrevia();
+        }}
+      ]
     });
-  },50);
+    return;
+  }
+  _nciShowPrevia();
 }
 
-// Quebra texto longo dentro da largura informada
+function _nciShowPrevia(){
+  if(window.matchMedia && window.matchMedia('(orientation: portrait)').matches){
+    showModalAux({
+      titulo:'📱 Vire o celular na horizontal',
+      texto:'Para revisar a vistoria no formato oficial, gire o aparelho.\n\nVocê também pode confirmar agora mesmo sem revisão visual.',
+      botoes:[
+        {label:'Cancelar',action:'close'},
+        {label:'Confirmar mesmo assim',cls:'primary',action:function(){ _nciFinalizar(); }}
+      ]
+    });
+    // Listener de orientação — se virar, mostra prévia automaticamente
+    const handler=function(){
+      window.removeEventListener('orientationchange',handler);
+      // fechar modal atual
+      const m=document.getElementById('vst-modal-aux'); if(m) m.remove();
+      _nciAbrirPreviaLandscape();
+    };
+    window.addEventListener('orientationchange',handler,{once:true});
+    return;
+  }
+  _nciAbrirPreviaLandscape();
+}
+
+function _nciAbrirPreviaLandscape(){
+  // Modal grande com prévia do documento
+  // Compor PNG primeiro para mostrar
+  showModalAux({
+    titulo:'Compondo prévia...',
+    texto:'Aguarde um instante.',
+    botoes:[]
+  });
+  _vtComporPNG(_nciD).then(function(png){
+    _nciD.documento_final_b64=png;
+    showModalAux({
+      titulo:'Revisar antes de registrar',
+      texto:'',
+      html:`<div class="previa-card"><div class="previa-titulo">Vistoria ${_vtEsc(_nciD.numero)}</div><img class="previa-img" src="${png}"></div>`,
+      botoes:[
+        {label:'← Voltar e editar',action:'close'},
+        {label:'✓ Confirmar e Registrar',cls:'primary',action:function(){ _nciFinalizar(); }}
+      ]
+    });
+  }).catch(function(e){
+    console.error('[NCI] erro composição prévia:',e);
+    showModalAux({
+      titulo:'Erro ao gerar prévia',
+      texto:'Não foi possível gerar a prévia. Continuar mesmo assim?',
+      botoes:[
+        {label:'Cancelar',action:'close'},
+        {label:'Continuar',cls:'primary',action:function(){ _nciFinalizar(); }}
+      ]
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Finalização — composição, salvamento, anexo, HOSPEDAGENS, vistoria, STEP5
+// ════════════════════════════════════════════════════════════════════════
+function _nciFinalizar(){
+  // Fechar modal de prévia
+  const m=document.getElementById('vst-modal-aux'); if(m) m.remove();
+  // Loading
+  const ov=document.getElementById('nci-overlay');
+  const ld=document.createElement('div');
+  ld.id='vst-loading';
+  ld.className='vst-loading-overlay';
+  ld.innerHTML='<div class="vst-loading-content"><div class="vst-spinner"></div><div>Finalizando vistoria…</div></div>';
+  ov.appendChild(ld);
+  // Compor se ainda não temos
+  const p = _nciD.documento_final_b64
+    ? Promise.resolve(_nciD.documento_final_b64)
+    : _vtComporPNG(_nciD).catch(function(){
+        // Fallback resolução menor
+        return _vtComporPNG(_nciD,{largura:800,altura:1100}).catch(function(){return null;});
+      });
+  p.then(function(png){
+    _nciD.documento_final_b64=png;
+    _nciD.ts_finalizacao=Date.now();
+    _nciD.template_versao=VISTORIA_TPL_VERSAO;
+    try{
+      _nciCommitCheckin();
+      _nciRascDescartar();
+      const ldEl=document.getElementById('vst-loading'); if(ldEl) ldEl.remove();
+      _vtHaptic();
+      _nciShowStep5();
+    }catch(e){
+      const ldEl=document.getElementById('vst-loading'); if(ldEl) ldEl.remove();
+      console.error('[NCI] erro commit:',e);
+      showModalAux({
+        titulo:'Erro ao finalizar vistoria',
+        texto:'Não foi possível gerar o documento. Tente novamente. Se persistir, verifique o espaço disponível no aparelho.',
+        botoes:[{label:'OK',cls:'primary',action:'close'}]
+      });
+    }
+  });
+}
+
+function _nciCommitCheckin(){
+  const d=_nciD;
+  // Consumir o número de vistoria (incrementar agora)
+  const numero=nextNumVistoria();
+  d.numero=numero;
+  // Criar HOSPEDAGEM com status='aguardando_designacao'
+  const gs=d.gs;
+  const nomeUsr=_vtFuncNome(d);
+  HOSPEDAGENS[gs]={
+    numero:gs, apt:d.apt, checkin_ts:d.ts_inicio||Date.now(),
+    vaga_inicial:null, checkout_ts:null,
+    model:d.model, color:d.color, plate:d.plate||null,
+    guest:d.guest||null, obs:d.obs||null,
+    size:'small', saida_prevista:d.saida_prevista||'',
+    usuario_checkin:nomeUsr,
+    vistorias:[numero],
+    status:'aguardando_designacao'
+  };
+  saveHospedagens();
+  // Criar VISTORIA via _nciCriarVistoria (compatível v1.9.4)
+  const numCriado=_nciCriarVistoriaV2(d,numero);
+  // Salvar histórico
+  iniciarHistorico(d.apt,null,gs,nomeUsr);
+  addHistorico(d.apt,'vistoria_criada',null,
+    numero+' — '+(d.model||'')+' '+(d.color||'')+((d.avarias||d.danos||[]).length?' · '+(d.avarias||d.danos||[]).length+' avaria(s)':''),
+    nomeUsr,gs);
+  // Anexar PNG composto à HOSPEDAGEM (chave h_ ou v_ — usar v_ quando vaga designada)
+  // Por enquanto: anexar em chave 'h_'+gs (geral da hospedagem)
+  if(d.documento_final_b64){
+    const keyH='h_'+gs;
+    if(!ANEXOS[keyH]) ANEXOS[keyH]=[];
+    const dd=new Date(d.ts_inicio||Date.now());
+    const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
+    const limpa=function(s){return (s||'').replace(/[^a-zA-Z0-9À-ú]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');};
+    const nome=`${d.apt||'000'}_${ds}_${limpa(d.model)}-${limpa(d.color)}_${numero}.png`;
+    ANEXOS[keyH].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
+    saveAnexos();
+  }
+}
+
+function _nciCriarVistoriaV2(d,numero){
+  const now=Date.now();
+  const list=d.avarias||d.danos||[];
+  const dataHora=new Date(d.ts_inicio||now);
+  VISTORIAS[numero]={
+    id:numero, numero:numero,
+    uuid:d.uuid||_vtUUID(),
+    template_versao:d.template_versao||VISTORIA_TPL_VERSAO,
+    origem:'nci', tipo:'entrada',
+    apt:d.apt, hospedagem:d.gs, hospedagem_gs:d.gs,
+    modelo:d.model, cor:d.color, placa:d.plate, hospede:d.guest,
+    saida_prevista:d.saida_prevista||'',
+    funcionario:_vtFuncNome(d),
+    data_criacao:dataHora.toLocaleDateString('pt-BR'),
+    dados:{
+      apt:d.apt, modelo:d.model, cor:d.color,
+      funcionario:_vtFuncNome(d),
+      data:dataHora.toLocaleDateString('pt-BR'),
+      hora:dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+    },
+    avarias:[...list], danos:[...list],
+    com_avaria:list.length>0,
+    assinatura:d.assinatura||null, assinatura_b64:d.assinatura||null,
+    assinatura_pendente:d.assinatura_pendente||false,
+    documento_final_b64:d.documento_final_b64||null,
+    ts_criacao:d.ts_inicio||now,
+    ts_criada:d.ts_inicio||now,
+    ts_finalizacao:d.ts_finalizacao||now,
+    ts_assinada:d.assinatura?(d.ts_finalizacao||now):null,
+    usuario_criou:_vtFuncNome(d),
+    usuario_assinou:d.assinatura?(d.guest||''):''
+  };
+  saveVistorias();
+  return numero;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// STEP5 — Tela de sucesso (substitui body do overlay)
+// ════════════════════════════════════════════════════════════════════════
+function _nciShowStep5(){
+  if(!_nciD) return;
+  const d=_nciD;
+  const ov=document.getElementById('nci-overlay');
+  const nomeUsr=_vtFuncNome(d);
+  ov.innerHTML=`
+    <header class="nci2-header">
+      <div style="width:44px"></div>
+      <div class="nci2-titulos">
+        <div class="nci2-titulo">Check-in Registrado</div>
+        <div class="nci2-subtitulo">Designe uma vaga para guardar o veículo</div>
+      </div>
+    </header>
+    <div class="nci-suc-wrap">
+      <div class="nci-suc-card">
+        <div class="nci-suc-ico">✓</div>
+        <div class="nci-suc-titulo">Check-in registrado!</div>
+        <div class="nci-suc-gs">${_vtEsc(d.gs)} · Apt ${_vtEsc(d.apt)}</div>
+        <div class="nci-suc-sub">${_vtEsc((d.model||'')+(d.color?' '+d.color:''))}<br>Operador: ${_vtEsc(nomeUsr)}</div>
+        <div class="nci-suc-btns">
+          <button class="nci-suc-btn-primario" onclick="_nciStep5DesignarAgora()">Designar vaga agora</button>
+          <button class="nci-suc-btn-secundario" onclick="_nciStep5DesignarDepois()">Designar depois</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _nciStep5DesignarAgora(){
+  const d=_nciD; if(!d) return;
+  // Ativar MODO_DESIGNACAO
+  MODO_DESIGNACAO={
+    gs:d.gs, apt:d.apt,
+    model:d.model, color:d.color,
+    plate:d.plate, guest:d.guest, obs:d.obs,
+    vistoria_numero:d.numero,
+    timestamp:Date.now()
+  };
+  // Fechar NCI sem confirmação (commit já feito)
+  const ov=document.getElementById('nci-overlay');
+  ov.classList.remove('on');
+  ov.innerHTML='<div class="nci-hdr"><button id="nci-bk" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--cp);padding:0 8px 0 0;line-height:1">←</button><div class="nci-hdr-title" id="nci-hdr-txt">Novo Check-in</div><div class="nci-steps"><div class="nci-dot" id="nci-d1"></div><div class="nci-dot" id="nci-d2"></div><div class="nci-dot" id="nci-d3"></div><div class="nci-dot" id="nci-d4"></div></div></div><div class="nci-body" id="nci-body"></div><div class="nci-ftr" id="nci-ftr"></div>';
+  _nciD=null; MODO_VISTORIA_ATIVO=null; _nciSigCtx=null; _nciSigBackup=null;
+  // Ir para o mapa
+  if(typeof navTo==='function') navTo('mapa');
+  _atualizarBannerDesignacao();
+  showToast('Toque numa vaga livre para guardar o veículo',3500);
+}
+
+function _nciStep5DesignarDepois(){
+  // Apenas fecha o NCI; HOSPEDAGENS já está com status='aguardando_designacao'
+  const ov=document.getElementById('nci-overlay');
+  ov.classList.remove('on');
+  ov.innerHTML='<div class="nci-hdr"><button id="nci-bk" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--cp);padding:0 8px 0 0;line-height:1">←</button><div class="nci-hdr-title" id="nci-hdr-txt">Novo Check-in</div><div class="nci-steps"><div class="nci-dot" id="nci-d1"></div><div class="nci-dot" id="nci-d2"></div><div class="nci-dot" id="nci-d3"></div><div class="nci-dot" id="nci-d4"></div></div></div><div class="nci-body" id="nci-body"></div><div class="nci-ftr" id="nci-ftr"></div>';
+  _nciD=null; MODO_VISTORIA_ATIVO=null; _nciSigCtx=null; _nciSigBackup=null;
+  if(typeof renderPainelDia==='function') renderPainelDia();
+  showToast('Check-in registrado — designar quando quiser pela tela do Painel',3500);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MODO DESIGNAÇÃO — Banner no Mapa + handlers clkV
+// ════════════════════════════════════════════════════════════════════════
+function _atualizarBannerDesignacao(){
+  let b=document.getElementById('banner-designar');
+  if(!MODO_DESIGNACAO){
+    if(b) b.remove();
+    return;
+  }
+  // Só mostra no mapa
+  const mapaVis=document.getElementById('mapa-wrap')?.style?.display!=='none';
+  if(!mapaVis){
+    if(b) b.style.display='none';
+    return;
+  }
+  const m=MODO_DESIGNACAO;
+  if(!b){
+    b=document.createElement('div');
+    b.id='banner-designar';
+    b.className='banner-designar';
+    document.body.appendChild(b);
+  }
+  b.style.display='flex';
+  b.innerHTML=`
+    <div class="banner-icon">🚗</div>
+    <div class="banner-content">
+      <div class="banner-titulo">Aguardando designação</div>
+      <div class="banner-info">Apt ${_vtEsc(m.apt)} · ${_vtEsc((m.model||'')+(m.color?' '+m.color:''))} · ${_vtEsc(m.gs)}</div>
+    </div>
+    <button class="banner-cancelar" onclick="cancelarDesignacao()" aria-label="Cancelar designação">✕</button>`;
+}
+
+function cancelarDesignacao(){
+  MODO_DESIGNACAO=null;
+  _atualizarBannerDesignacao();
+  if(typeof showToast==='function') showToast('Designação cancelada — disponível em "Aguardando vaga"',3000);
+  if(typeof renderPainelDia==='function') renderPainelDia();
+}
+
+// Ativar MODO_DESIGNACAO a partir de uma HOSPEDAGENS aguardando (clicar no card do painel)
+function ativarDesignacaoHosp(gs){
+  const h=HOSPEDAGENS[gs];
+  if(!h||h.status!=='aguardando_designacao'){
+    if(typeof showToast==='function') showToast('Hospedagem não está aguardando designação',2500);
+    return;
+  }
+  MODO_DESIGNACAO={
+    gs:gs, apt:h.apt,
+    model:h.model, color:h.color,
+    plate:h.plate, guest:h.guest, obs:h.obs,
+    vistoria_numero:(h.vistorias&&h.vistorias[0])||null,
+    timestamp:Date.now()
+  };
+  if(typeof navTo==='function') navTo('mapa');
+  _atualizarBannerDesignacao();
+  if(typeof showToast==='function') showToast('Toque numa vaga livre para guardar o veículo',3500);
+}
+
+function _clkVModoDesignacao(vagaId){
+  const vaga=S[vagaId];
+  if(!vaga) return;
+  if(vaga.status==='occupied'){
+    showToast('Vaga já ocupada por Apt '+(vaga.apt||'?')+'. Escolha outra.',2800);
+    return;
+  }
+  if(vaga.status!=='free') return;
+  // Livre — modal de confirmação
+  _showModalDesignacao(vagaId);
+}
+
+function _showModalDesignacao(vagaId){
+  const m=MODO_DESIGNACAO;
+  showModalAux({
+    titulo:'Designar carro na vaga '+vagaId+'?',
+    texto:'',
+    html:`<div class="vst-modal-info">
+      <div class="vst-modal-info-row"><span>Hospedagem</span><span>${_vtEsc(m.gs)}</span></div>
+      <div class="vst-modal-info-row"><span>Apartamento</span><span>${_vtEsc(m.apt)}</span></div>
+      <div class="vst-modal-info-row"><span>Veículo</span><span>${_vtEsc((m.model||'')+(m.color?' · '+m.color:''))}</span></div>
+      <div class="vst-modal-info-row destaque"><span>Vaga escolhida</span><span>${_vtEsc(vagaId)}</span></div>
+    </div>`,
+    botoes:[
+      {label:'Cancelar',action:'close'},
+      {label:'✓ Confirmar',cls:'primary',action:function(){ _aplicarDesignacaoDireta(vagaId); }}
+    ]
+  });
+}
+
+function _aplicarDesignacaoDireta(vagaId){
+  const m=MODO_DESIGNACAO; if(!m) return;
+  const hosp=HOSPEDAGENS[m.gs]; if(!hosp){ showToast('Hospedagem não encontrada',2500); return; }
+  const v=S[vagaId];
+  if(!v||v.status!=='free'){ showToast('Vaga não disponível',2500); return; }
+  // Aplicar
+  v.status='occupied'; v.apt=m.apt; v.model=m.model; v.color=m.color;
+  v.plate=m.plate; v.guest=m.guest; v.obs=m.obs; v.hospedagem=m.gs;
+  v.size=v.size||'small';
+  hosp.vaga_inicial=vagaId;
+  hosp.status='ativa';
+  // Histórico
+  addHistorico(m.apt,'checkin',vagaId,'Check-in via NCI (designação contextual)',m.usuario||_vtFuncNome({usuario:m.usuario}),m.gs);
+  saveData(); saveHospedagens();
+  if(typeof ref==='function') ref(vagaId);
+  if(typeof refVistoria==='function') refVistoria(vagaId);
+  if(typeof upd==='function') upd();
+  // Vibração
+  _vtHaptic();
+  // Limpar MODO_DESIGNACAO
+  MODO_DESIGNACAO=null;
+  _atualizarBannerDesignacao();
+  // Mover anexo h_<gs> para v_<vagaId> (junta vistoria com a vaga)
+  const keyH='h_'+m.gs, keyV='v_'+vagaId;
+  if(ANEXOS[keyH]&&ANEXOS[keyH].length){
+    ANEXOS[keyV]=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]);
+    delete ANEXOS[keyH];
+    saveAnexos();
+  }
+  // Toast + pulse
+  showToast('✓ Carro guardado na vaga '+vagaId+' · Apt '+m.apt,3500);
+  setTimeout(function(){
+    const td=getTd ? getTd(vagaId) : document.querySelector('[data-id="'+vagaId+'"]');
+    if(td){ td.classList.add('pulse-novo'); setTimeout(function(){ td.classList.remove('pulse-novo'); },2200); }
+  },50);
+  if(typeof renderPainelDia==='function') renderPainelDia();
+  if(typeof addLogSistema==='function') addLogSistema('Designação contextual: '+m.gs+' → vaga '+vagaId);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Modal genérico (showModalAux)
+// ════════════════════════════════════════════════════════════════════════
+function showModalAux(opts){
+  // Remove modal anterior se houver
+  const old=document.getElementById('vst-modal-aux'); if(old) old.remove();
+  const ov=document.getElementById('nci-overlay');
+  const parent=(ov&&ov.classList.contains('on'))?ov:document.body;
+  const m=document.createElement('div');
+  m.id='vst-modal-aux';
+  m.className='vst-modal-overlay';
+  const btnsHtml=(opts.botoes||[]).map(function(b,i){
+    const cls=b.cls?(' '+b.cls):'';
+    return '<button data-i="'+i+'"'+(cls?' class="'+cls.trim()+'"':'')+'>'+_vtEsc(b.label)+'</button>';
+  }).join('');
+  m.innerHTML=`<div class="vst-modal-content">
+    <div class="vst-modal-title">${_vtEsc(opts.titulo||'')}</div>
+    ${opts.texto?'<div class="vst-modal-text">'+_vtEsc(opts.texto)+'</div>':''}
+    ${opts.html||''}
+    ${btnsHtml?'<div class="vst-modal-buttons">'+btnsHtml+'</div>':''}
+  </div>`;
+  if(parent===document.body){ m.style.position='fixed'; }
+  parent.appendChild(m);
+  // Bind botões
+  (opts.botoes||[]).forEach(function(b,i){
+    const el=m.querySelector('button[data-i="'+i+'"]');
+    if(!el) return;
+    el.addEventListener('click',function(){
+      if(b.action==='close'||!b.action){ m.remove(); return; }
+      if(typeof b.action==='function'){ b.action(); m.remove(); return; }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Composição PNG (mantida da v1.9.4 com pequenos ajustes)
+// ════════════════════════════════════════════════════════════════════════
 function _vtWrapText(ctx,text,x,y,maxW,lh){
   const words=String(text||'').split(' ');
   let line=''; const lines=[];
@@ -4631,14 +5388,13 @@ function _vtWrapText(ctx,text,x,y,maxW,lh){
   lines.forEach(function(l,i){ ctx.fillText(l,x,startY+i*lh); });
 }
 
-// Composição A4 retrato 1200x1700
-function _vtComporPNG(d){
+function _vtComporPNG(d,opcoes){
   return new Promise(function(resolve,reject){
-    const W=1200, H=1700;
+    const W=(opcoes&&opcoes.largura)||1200;
+    const H=(opcoes&&opcoes.altura)||1700;
     const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
     const ctx=cv.getContext('2d');
     ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
-
     const logoImg=new Image(), carroImg=new Image();
     let sigImg=null;
     const tasks=[
@@ -4649,67 +5405,62 @@ function _vtComporPNG(d){
       sigImg=new Image();
       tasks.push(new Promise(function(r){ sigImg.onload=r; sigImg.onerror=r; sigImg.src=d.assinatura; }));
     }
-
     Promise.all(tasks).then(function(){
       try{
-        const padX=40, padY=36;
+        const padX=Math.round(W*0.033), padY=Math.round(H*0.021);
         // Logo
         const lAR=(logoImg.width||356)/(logoImg.height||102);
-        const lH=60, lW=lH*lAR;
+        const lH=Math.round(H*0.035), lW=lH*lAR;
         ctx.drawImage(logoImg,padX,padY,lW,lH);
         // Título
-        ctx.fillStyle='#777'; ctx.font='400 20px Arial,sans-serif'; ctx.textBaseline='top'; ctx.textAlign='left';
+        ctx.fillStyle='#777'; ctx.font='400 '+Math.round(H*0.012)+'px Arial,sans-serif'; ctx.textBaseline='top'; ctx.textAlign='left';
         ctx.fillText('Termo de',padX+lW+24,padY+8);
-        ctx.fillStyle='#111'; ctx.font='bold 28px Arial,sans-serif';
+        ctx.fillStyle='#111'; ctx.font='bold '+Math.round(H*0.0165)+'px Arial,sans-serif';
         ctx.fillText('Vistoria Veicular',padX+lW+24,padY+32);
-        // Direita: VIST + GS + timestamp
-        ctx.textAlign='right'; ctx.fillStyle='#185FA5'; ctx.font='bold 18px Arial,sans-serif';
-        ctx.fillText('Vistoria '+(d.numero||d._previewVistNum||''),W-padX,padY+6);
-        ctx.fillStyle='#555'; ctx.font='16px Arial,sans-serif';
+        // VIST + GS + timestamp
+        ctx.textAlign='right'; ctx.fillStyle='#185FA5'; ctx.font='bold '+Math.round(H*0.0106)+'px Arial,sans-serif';
+        ctx.fillText('Vistoria '+(d.numero||''),W-padX,padY+6);
+        ctx.fillStyle='#555'; ctx.font=Math.round(H*0.0094)+'px Arial,sans-serif';
         ctx.fillText('Hospedagem '+(d.gs||''),W-padX,padY+32);
-        ctx.fillStyle='#888'; ctx.font='12px Arial,sans-serif';
-        const now=new Date();
-        ctx.fillText(now.toLocaleDateString('pt-BR')+' · '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),W-padX,padY+56);
+        ctx.fillStyle='#888'; ctx.font=Math.round(H*0.007)+'px Arial,sans-serif';
+        const now=new Date(d.ts_inicio||Date.now());
+        ctx.fillText(now.toLocaleDateString('pt-BR')+' · '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),W-padX,padY+54);
         // Linha azul
-        ctx.fillStyle='#185FA5'; ctx.fillRect(padX,padY+82,W-2*padX,2);
-
+        ctx.fillStyle='#185FA5'; ctx.fillRect(padX,padY+78,W-2*padX,2);
         // Body
-        const bodyY=padY+110, bodyH=820;
+        const bodyY=padY+108, bodyH=Math.round(H*0.48);
         const colGap=24;
         const carroBoxW=Math.floor((W-2*padX-colGap)*0.6);
-        const carroBoxH=bodyH;
-        // Subtítulo carros
-        ctx.fillStyle='#888'; ctx.font='bold 12px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+        // Subtítulo
+        ctx.fillStyle='#888'; ctx.font='bold '+Math.round(H*0.0071)+'px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
         ctx.fillText('AVARIAS DO VEÍCULO',padX+carroBoxW/2,bodyY+6);
         // Imagem dos carros (contain)
         const cAR=(carroImg.width||800)/(carroImg.height||533);
-        const innerH=carroBoxH-40;
+        const innerH=bodyH-40;
         const boxAR=carroBoxW/innerH;
         let cdW,cdH;
         if(cAR>boxAR){ cdW=carroBoxW; cdH=carroBoxW/cAR; } else { cdH=innerH; cdW=innerH*cAR; }
         const cdX=padX+(carroBoxW-cdW)/2;
         const cdY=bodyY+30+(innerH-cdH)/2;
         ctx.drawImage(carroImg,cdX,cdY,cdW,cdH);
-        // ✕ avarias
+        // ✕
         const list=d.avarias||d.danos||[];
-        ctx.fillStyle='#d32f2f'; ctx.font='bold 30px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        list.forEach(function(m){
-          const xPx=cdX+(m.x/100)*cdW;
-          const yPx=cdY+(m.y/100)*cdH;
-          // halo branco
+        ctx.fillStyle='#d32f2f'; ctx.font='bold '+Math.round(H*0.0176)+'px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        list.forEach(function(mark){
+          const xPx=cdX+(mark.x/100)*cdW;
+          const yPx=cdY+(mark.y/100)*cdH;
           ctx.shadowColor='rgba(255,255,255,0.95)'; ctx.shadowBlur=8;
           ctx.fillText('✕',xPx,yPx);
         });
         ctx.shadowBlur=0;
-
-        // Campos à direita
+        // Campos direita
         const fX=padX+carroBoxW+colGap;
         const fW=W-fX-padX;
         let fy=bodyY+50;
         function field(label,value){
-          ctx.fillStyle='#888'; ctx.font='bold 11px Arial,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
+          ctx.fillStyle='#888'; ctx.font='bold '+Math.round(H*0.0065)+'px Arial,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
           ctx.fillText(label.toUpperCase(),fX,fy);
-          ctx.fillStyle='#111'; ctx.font='bold 22px Arial,sans-serif';
+          ctx.fillStyle='#111'; ctx.font='bold '+Math.round(H*0.0129)+'px Arial,sans-serif';
           ctx.fillText(String(value==null||value===''?'—':value),fX,fy+18);
           ctx.strokeStyle='#e8e8e8'; ctx.lineWidth=1;
           ctx.beginPath(); ctx.moveTo(fX,fy+52); ctx.lineTo(fX+fW,fy+52); ctx.stroke();
@@ -4719,37 +5470,28 @@ function _vtComporPNG(d){
         field('Modelo / Cor',[d.model,d.color].filter(Boolean).join(' · '));
         field('Funcionário Responsável',_vtFuncNome(d));
         field('Data',now.toLocaleDateString('pt-BR')+' '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
-
-        // Check boxes
+        // Checks
         fy+=8;
         const isCom=list.length>0;
         function chk(label,checked,color,x,y){
           if(checked){ ctx.fillStyle=color; ctx.fillRect(x,y,26,26); }
           ctx.strokeStyle=checked?color:'#bbb'; ctx.lineWidth=2; ctx.strokeRect(x,y,26,26);
-          if(checked){
-            ctx.fillStyle='#fff'; ctx.font='bold 20px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-            ctx.fillText('✓',x+13,y+14);
-          }
+          if(checked){ ctx.fillStyle='#fff'; ctx.font='bold 20px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('✓',x+13,y+14); }
           ctx.fillStyle=color; ctx.font='bold 15px Arial,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
           ctx.fillText(label,x+38,y+13);
         }
         chk('SEM AVARIA',!isCom,'#0F6E56',fX,fy);
         chk('COM AVARIA'+(isCom?' · '+list.length:''),isCom,'#A32D2D',fX,fy+44);
-        ctx.fillStyle='#888'; ctx.font='italic 10px Arial,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top';
-        ctx.fillText('*Fotos realizadas quando há avaria',fX+38,fy+80);
-
-        // Texto legal
+        // Legal
         const legalY=bodyY+bodyH+30;
         ctx.fillStyle='#fafafa'; ctx.fillRect(padX,legalY,W-2*padX,80);
         ctx.strokeStyle='#eee'; ctx.lineWidth=1;
         ctx.beginPath(); ctx.moveTo(padX,legalY); ctx.lineTo(W-padX,legalY); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(padX,legalY+80); ctx.lineTo(W-padX,legalY+80); ctx.stroke();
-        ctx.fillStyle='#555'; ctx.font='italic 16px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle='#555'; ctx.font='italic '+Math.round(H*0.0094)+'px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
         _vtWrapText(ctx,'"Declaro que as marcações acima representam fielmente as avarias do meu veículo no momento do check-in."',W/2,legalY+40,W-2*padX-40,22);
-
         // Assinatura
-        const sigY=legalY+120;
-        const sigLineY=sigY+90;
+        const sigY=legalY+120, sigLineY=sigY+90;
         const sigLineX=W*0.2, sigLineW=W*0.6;
         if(sigImg){
           const sAR=(sigImg.width||400)/(sigImg.height||100);
@@ -4759,33 +5501,19 @@ function _vtComporPNG(d){
         }
         ctx.strokeStyle='#ccc'; ctx.lineWidth=1;
         ctx.beginPath(); ctx.moveTo(sigLineX,sigLineY); ctx.lineTo(sigLineX+sigLineW,sigLineY); ctx.stroke();
-        ctx.fillStyle='#888'; ctx.font='bold 11px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+        ctx.fillStyle='#888'; ctx.font='bold '+Math.round(H*0.0065)+'px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
         ctx.fillText('ASSINATURA DO PROPRIETÁRIO DO VEÍCULO',W/2,sigLineY+8);
         if(d.assinatura_pendente&&!d.assinatura){
-          ctx.fillStyle='#A32D2D'; ctx.font='italic 12px Arial,sans-serif';
+          ctx.fillStyle='#A32D2D'; ctx.font='italic '+Math.round(H*0.0071)+'px Arial,sans-serif';
           ctx.fillText('⚠️ Assinatura pendente — coletar depois',W/2,sigLineY+26);
         }
-
         try{ resolve(cv.toDataURL('image/png',0.92)); }catch(e){ reject(e); }
       }catch(e){ reject(e); }
     });
   });
 }
 
-// ── Recompor após assinar depois (assinatura pendente) ──────────────────
-function _vtRecomporVistoria(id){
-  const v=VISTORIAS[id]; if(!v||v.origem!=='nci') return Promise.resolve();
-  const d={apt:v.apt,model:v.modelo,color:v.cor,usuario:v.usuario_criou||v.funcionario||'',
-           avarias:(v.avarias||v.danos||[]),danos:(v.avarias||v.danos||[]),
-           assinatura:v.assinatura||null,gs:v.hospedagem||'',numero:v.numero,assinatura_pendente:!!v.assinatura_pendente};
-  return _vtComporPNG(d).then(function(png){
-    v.documento_final_b64=png; v.ts_finalizacao=Date.now(); saveVistorias();
-    const vagaId=Object.keys(S).find(function(k){return S[k].apt===v.apt&&S[k].status==='occupied';});
-    if(vagaId) _vtAnexarDocumento(vagaId,v);
-  }).catch(function(){});
-}
-
-// Anexa/atualiza o PNG da vistoria em ANEXOS['v_'+vagaId] (entra no PDF do checkout)
+// Anexar/atualizar PNG da vistoria nos ANEXOS apropriados (entra no PDF do checkout)
 function _vtAnexarDocumento(vagaId,v){
   if(!v||!v.documento_final_b64) return;
   const key='v_'+vagaId;
@@ -4800,69 +5528,82 @@ function _vtAnexarDocumento(vagaId,v){
   saveAnexos();
 }
 
-function _nciStep4(body,title,ftr,bk){
-  title.textContent='Confirmar Check-in';
-  ftr.innerHTML=`<button class="nci-bv" onclick="_nciRenderStep(3)">← Vistoria</button><button class="nci-bn" onclick="_nciSalvarCheckin()">✓ Registrar</button>`;
-  bk.onclick=function(){ _nciRenderStep(3); };
-  const d=_nciD;
-  const nd=(d.danos||[]).length;
-  const saiFmt=d.saida_prevista?new Date(d.saida_prevista+'T00:00:00').toLocaleDateString('pt-BR'):'—';
-  body.innerHTML=`
-    <div class="nci-confirm-box">
-      <div style="font-size:11px;font-weight:700;color:var(--cp);margin-bottom:8px;text-transform:uppercase">Dados do Veículo</div>
-      ${[['Apto',d.apt],['Hóspede',d.guest||'—'],['Modelo',d.model||'—'],['Cor',d.color||'—'],['Placa',d.plate||'—'],['Saída prevista',saiFmt],['Código',d.gs],['Funcionário',_vtFuncNome(d)]]
-        .map(([l,v])=>`<div class="nci-conf-row"><span class="nci-conf-lbl">${l}</span><span class="nci-conf-val">${v}</span></div>`).join('')}
-    </div>
-    <div class="nci-confirm-box">
-      <div style="font-size:11px;font-weight:700;color:var(--cp);margin-bottom:6px;text-transform:uppercase">Vistoria</div>
-      <div style="font-size:12px;margin-bottom:4px">${nd>0?`<span style="color:#A32D2D;font-weight:700">❗ ${nd} avaria${nd>1?'s':''}</span>`:'<span style="color:#0F6E56;font-weight:700">✅ Sem avarias</span>'}</div>
-      <div style="font-size:12px">Assinatura: ${d.assinatura?'<span style="color:#0F6E56;font-weight:700">✅ Coletada</span>':d.assinatura_pendente?'<span style="color:#A32D2D;font-weight:700">⚠️ Pendente — coletar depois</span>':'<span style="color:#854F0B;font-weight:700">⚠️ Não coletada</span>'}</div>
-      ${d.documento_final_b64?`<img src="${d.documento_final_b64}" style="width:100%;max-width:340px;border:1px solid #ccc;border-radius:6px;margin-top:8px;display:block">`:''}
-    </div>
-    <div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:8px;padding:8px 12px;font-size:11px;color:#185FA5">
-      Após registrar, toque em uma vaga livre no mapa para designar.
-    </div>`;
+function _vtRecomporVistoria(id){
+  const v=VISTORIAS[id]; if(!v||v.origem!=='nci') return Promise.resolve();
+  const d={apt:v.apt,model:v.modelo,color:v.cor,
+           usuario:v.usuario_criou||v.funcionario||'',
+           avarias:(v.avarias||v.danos||[]),danos:(v.avarias||v.danos||[]),
+           assinatura:v.assinatura||null,gs:v.hospedagem||'',numero:v.numero,
+           assinatura_pendente:!!v.assinatura_pendente,ts_inicio:v.ts_criacao||v.ts_criada||Date.now()};
+  return _vtComporPNG(d).then(function(png){
+    v.documento_final_b64=png; v.ts_finalizacao=Date.now(); saveVistorias();
+    const vagaId=Object.keys(S).find(function(k){return S[k].apt===v.apt&&S[k].status==='occupied';});
+    if(vagaId){
+      _vtAnexarDocumento(vagaId,v);
+    } else if(v.hospedagem){
+      // anexar em h_<gs>
+      const key='h_'+v.hospedagem;
+      if(!ANEXOS[key]) ANEXOS[key]=[];
+      const dd=new Date(v.ts_criada||Date.now());
+      const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
+      const limpa=function(s){return (s||'').replace(/[^a-zA-Z0-9À-ú]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');};
+      const nome=`${v.apt||'000'}_${ds}_${limpa(v.modelo)}-${limpa(v.cor)}_${v.numero}.png`;
+      const item={name:nome,type:'image/png',data:v.documento_final_b64,isImg:true,vistoria:v.numero,tipo:'vistoria'};
+      const ix=ANEXOS[key].findIndex(function(a){return a.vistoria===v.numero;});
+      if(ix>=0) ANEXOS[key][ix]=item; else ANEXOS[key].push(item);
+      saveAnexos();
+    }
+  }).catch(function(){});
 }
 
-function _nciSalvarCheckin(){
-  if(!_nciD) return;
-  const d=_nciD;
-  const u=d.usuario;
-  const uStr=(u&&u.nome)?(u.nome+(u.cargo?' · '+u.cargo:'')):(u||'');
-  const id='nci_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-  const _vAv=d.avarias||d.danos||[];
-  CHECKINS_PENDENTES[id]={id,gs:d.gs,apt:d.apt,model:d.model,color:d.color,plate:d.plate,guest:d.guest,obs:d.obs,size:d.size||'small',saida_prevista:d.saida_prevista||'',usuario:uStr,ts_inicio:d.ts_inicio||Date.now(),avarias:[..._vAv],danos:[..._vAv],com_avaria:_vAv.length>0,assinatura:d.assinatura||null,assinatura_pendente:d.assinatura_pendente||false,documento_final_b64:d.documento_final_b64||null,ts_finalizacao:d.ts_finalizacao||null,template_versao:d.template_versao||VISTORIA_TPL_VERSAO,fotos:[],status:'checkin_pendente'};
-  saveCheckinsPendentes();
-  _nciDescartarRascunho();
-  _nciRenderStep(5);
-}
-
-function _nciStep5(body,title,ftr,bk){
-  title.textContent='Check-in Registrado';
-  bk.style.display='none';
-  ftr.innerHTML=`<button class="nci-bv" onclick="_nciFechar();renderPainelDia?.()">Fechar</button><button class="nci-bn" onclick="_nciFechar();navTo('mapa')">Ver Mapa</button>`;
-  const d=_nciD;
-  body.innerHTML=`
-    <div class="nci-success">
-      <div style="font-size:44px">✅</div>
-      <div style="font-size:17px;font-weight:700;color:#111">Check-in registrado!</div>
-      <div class="nci-gs-badge">${d.gs}</div>
-      <div style="font-size:13px;color:#555">Apt. ${d.apt}${d.guest?' · '+d.guest:''}</div>
-      <div style="font-size:12px;color:#888;text-align:center;line-height:1.5">Aguardando designação de vaga.<br>Toque em uma vaga livre no mapa para designar.</div>
-      ${(d.danos||[]).length>0&&!d.assinatura?`<div style="background:#FFF3CD;border:1px solid #E8A800;border-radius:7px;padding:8px 12px;font-size:11px;color:#7A5700">⚠️ Vistoria sem assinatura — colete antes do checkout.</div>`:''}
-    </div>`;
-  upd();
-  if(document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
+// ════════════════════════════════════════════════════════════════════════
+// _nciCriarVistoria back-compat (chamada por _aplicarDesignacao legacy)
+// ════════════════════════════════════════════════════════════════════════
+function _nciCriarVistoria(p){
+  // Legacy path para CHECKINS_PENDENTES → compatibilidade.
+  // Cria uma vistoria a partir de um pendente (estrutura antiga).
+  const id=nextNumVistoria();
+  const now=Date.now();
+  const list=p.avarias||p.danos||[];
+  const dataHora=new Date(p.ts_inicio||now);
+  const usrNome=(p.usuario&&p.usuario.nome)?p.usuario.nome:(p.usuario||'');
+  VISTORIAS[id]={
+    id, numero:id,
+    uuid:p.uuid||_vtUUID(),
+    template_versao:p.template_versao||VISTORIA_TPL_VERSAO,
+    origem:'nci', tipo:'entrada',
+    apt:p.apt, hospedagem:p.gs, hospedagem_gs:p.gs,
+    modelo:p.model, cor:p.color, placa:p.plate, hospede:p.guest,
+    saida_prevista:p.saida_prevista||'',
+    funcionario:usrNome,
+    data_criacao:dataHora.toLocaleDateString('pt-BR'),
+    dados:{apt:p.apt,modelo:p.model,cor:p.color,funcionario:usrNome,data:dataHora.toLocaleDateString('pt-BR'),hora:dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})},
+    avarias:[...list], danos:[...list],
+    com_avaria:list.length>0,
+    assinatura:p.assinatura||null, assinatura_b64:p.assinatura||null,
+    assinatura_pendente:p.assinatura_pendente||false,
+    documento_final_b64:p.documento_final_b64||null,
+    ts_criacao:p.ts_inicio||now, ts_criada:p.ts_inicio||now,
+    ts_finalizacao:p.ts_finalizacao||now,
+    ts_assinada:p.assinatura?(p.ts_finalizacao||now):null,
+    usuario_criou:usrNome,
+    usuario_assinou:p.assinatura?(p.guest||''):''
+  };
+  saveVistorias();
+  return id;
 }
 
 function _nciHighlightLivres(){
-  const livres=Object.entries(S).filter(([id,d])=>d.status==='free'&&!d.mergedSlave&&!d.overbook);
-  livres.forEach(([id])=>{ const td=getTd(id); if(td){ td.style.outline='3px solid var(--cp)'; td.style.outlineOffset='2px'; } });
+  const livres=Object.entries(S).filter(function(e){return e[1].status==='free'&&!e[1].mergedSlave&&!e[1].overbook;});
+  livres.forEach(function(e){ const td=getTd?getTd(e[0]):null; if(td){ td.style.outline='3px solid var(--cp)'; td.style.outlineOffset='2px'; } });
   if(livres.length===0){ showToast('Nenhuma vaga livre disponível',2500); return; }
-  showToast(`${livres.length} vaga${livres.length>1?'s':''} livre${livres.length>1?'s':''} destacada${livres.length>1?'s':''}`,3000);
-  setTimeout(()=>{ livres.forEach(([id])=>{ const td=getTd(id); if(td){ td.style.outline=''; td.style.outlineOffset=''; } }); },5000);
+  showToast(livres.length+' vaga'+(livres.length>1?'s':'')+' livre'+(livres.length>1?'s':'')+' destacada'+(livres.length>1?'s':''),3000);
+  setTimeout(function(){ livres.forEach(function(e){ const td=getTd?getTd(e[0]):null; if(td){ td.style.outline=''; td.style.outlineOffset=''; } }); },5000);
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// LEGACY — _aplicarDesignacao / showDesignarVaga (back-compat CHECKINS_PENDENTES)
+// ════════════════════════════════════════════════════════════════════════
 function showDesignarVaga(vagaId,pendenteId){
   const p=CHECKINS_PENDENTES[pendenteId]; if(!p) return;
   const info=[p.model,p.color,p.plate].filter(Boolean).join(' · ')||'Sem detalhes';
@@ -4879,80 +5620,34 @@ function showDesignarVaga(vagaId,pendenteId){
     </div>`;
   document.getElementById('ov').classList.add('on');
 }
-
 function _aplicarDesignacao(vagaId,pendenteId,usuario){
   const p=CHECKINS_PENDENTES[pendenteId];
   if(!p){ showToast('Check-in pendente não encontrado',3000); return; }
   const v=S[vagaId];
   if(!v||v.status!=='free'){ showToast('Vaga não disponível',3000); return; }
-
   v.status='occupied'; v.apt=p.apt; v.model=p.model; v.color=p.color;
   v.plate=p.plate; v.guest=p.guest; v.obs=p.obs; v.size=p.size; v.hospedagem=p.gs;
-
   if(p.size==='large'&&vagaId.endsWith('A')){
     const bId=vagaId.slice(0,-1)+'B';
     if(S[bId]&&S[bId].status==='free'){ S[bId].status='occupied'; S[bId].mergedSlave=vagaId; v.mergedMaster=true; }
   }
-
-  HOSPEDAGENS[p.gs]={numero:p.gs,apt:p.apt,checkin_ts:p.ts_inicio,vaga_inicial:vagaId,model:p.model,color:p.color,plate:p.plate,guest:p.guest,obs:p.obs,size:p.size,saida_prevista:p.saida_prevista||'',usuario_checkin:p.usuario,checkout_ts:null,usuario_checkout:null};
-
+  HOSPEDAGENS[p.gs]={numero:p.gs,apt:p.apt,checkin_ts:p.ts_inicio,vaga_inicial:vagaId,model:p.model,color:p.color,plate:p.plate,guest:p.guest,obs:p.obs,size:p.size,saida_prevista:p.saida_prevista||'',usuario_checkin:p.usuario,checkout_ts:null,usuario_checkout:null,vistorias:[],status:'ativa'};
   iniciarHistorico(p.apt,vagaId,p.gs,p.usuario);
   addHistorico(p.apt,'checkin',vagaId,'Check-in via NCI',usuario,p.gs);
-
-  // NCI sempre cria vistoria + anexa o PNG composto à vaga (entra no PDF de checkout)
   const vstId=_nciCriarVistoria(p);
   v.vistoria_id=vstId;
+  HOSPEDAGENS[p.gs].vistorias=[vstId];
   if(VISTORIAS[vstId]&&VISTORIAS[vstId].documento_final_b64) _vtAnexarDocumento(vagaId,VISTORIAS[vstId]);
-
   delete CHECKINS_PENDENTES[pendenteId];
   saveCheckinsPendentes();
   saveData(); saveHospedagens(); saveHistorico();
-  ref(vagaId); refVistoria(vagaId); upd();
-  if(document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
-  showToast(`✅ ${p.gs} · Apt. ${p.apt} → vaga ${vagaId}`,3500);
-  addLogSistema(`NCI designação: ${p.gs} → ${vagaId} por ${usuario&&usuario.nome?usuario.nome:usuario}`);
+  if(typeof ref==='function') ref(vagaId);
+  if(typeof refVistoria==='function') refVistoria(vagaId);
+  if(typeof upd==='function') upd();
+  if(document.getElementById('painel-wrap')?.style?.display!=='none' && typeof renderPainelDia==='function') renderPainelDia();
+  showToast('✅ '+p.gs+' · Apt. '+p.apt+' → vaga '+vagaId,3500);
+  if(typeof addLogSistema==='function') addLogSistema('NCI designação: '+p.gs+' → '+vagaId+' por '+(usuario&&usuario.nome?usuario.nome:usuario));
 }
-
-function _nciCriarVistoria(p){
-  const id=nextNumVistoria();
-  const now=Date.now();
-  const list=p.avarias||p.danos||[];
-  const dataHora=new Date(p.ts_inicio||now);
-  VISTORIAS[id]={
-    id,numero:id,
-    template_versao:p.template_versao||VISTORIA_TPL_VERSAO,
-    origem:'nci',
-    apt:p.apt,hospedagem:p.gs,hospedagem_gs:p.gs,
-    modelo:p.model,cor:p.color,placa:p.plate,hospede:p.guest,
-    saida_prevista:p.saida_prevista||'',
-    funcionario:p.usuario||'',
-    data_criacao:dataHora.toLocaleDateString('pt-BR'),
-    dados:{
-      apt:p.apt,
-      modelo:p.model,
-      cor:p.color,
-      funcionario:p.usuario||'',
-      data:dataHora.toLocaleDateString('pt-BR'),
-      hora:dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
-    },
-    avarias:[...list],
-    danos:[...list],
-    com_avaria:list.length>0,
-    assinatura:p.assinatura||null,
-    assinatura_b64:p.assinatura||null,
-    assinatura_pendente:p.assinatura_pendente||false,
-    documento_final_b64:p.documento_final_b64||null,
-    ts_criacao:p.ts_inicio||now,
-    ts_criada:p.ts_inicio||now,
-    ts_finalizacao:p.ts_finalizacao||now,
-    ts_assinada:p.assinatura?(p.ts_finalizacao||now):null,
-    usuario_criou:p.usuario,
-    usuario_assinou:p.assinatura?p.guest:'',
-  };
-  saveVistorias();
-  return id;
-}
-
 // ── BACKUP LOCAL ──────────────────────────────────────────────────────────
 let DRIVE_STATUS = {conectado:false,email:'',ultimo_backup:null,falha_backup:false};
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
@@ -6247,12 +6942,35 @@ function buildRegistroHTML(apt,dv,hist,anexos){
     ['Vaga',        ni(dv.vaga)],
   ];
 
-  // Imagens: cada uma em página própria, landscape dentro do portrait
-  const imgPages=(anexos||[]).filter(a=>a.isImg).map(a=>`
-    <div class="img-page">
-      <img src="${a.data}" alt="${a.name}">
-      <div class="img-nome">${a.name}</div>
-    </div>`).join('');
+  // v1.9.4.1: ordenar imagens — vistorias primeiro (mais recente→antiga, por VIST{nnn}), depois fotos
+  const _imgs=(anexos||[]).filter(a=>a.isImg).slice();
+  _imgs.sort(function(a,b){
+    const av=a.tipo==='vistoria'||/VIST\d+\.png$/i.test(a.name||'');
+    const bv=b.tipo==='vistoria'||/VIST\d+\.png$/i.test(b.name||'');
+    if(av&&!bv) return -1;
+    if(!av&&bv) return 1;
+    if(av&&bv){
+      const an=parseInt((a.vistoria||a.name||'').match(/VIST(\d+)/i)?.[1]||'0',10);
+      const bn=parseInt((b.vistoria||b.name||'').match(/VIST(\d+)/i)?.[1]||'0',10);
+      return bn-an; // desc — mais recente primeiro
+    }
+    return 0;
+  });
+  const _falhadas=[];
+  const imgPages=_imgs.map(function(a){
+    try{
+      const isVst=a.tipo==='vistoria'||/VIST\d+\.png$/i.test(a.name||'');
+      const titulo=isVst?`Vistoria · ${(a.vistoria||a.name||'').match(/VIST\d+/i)?.[0]||a.name}`:`Foto · ${a.name||''}`;
+      return `<div class="img-page">
+        <div style="font-size:11px;font-weight:700;color:#185FA5;margin-bottom:6px;text-align:center;text-transform:uppercase;letter-spacing:.4px">${titulo}</div>
+        <img src="${a.data}" alt="${a.name}">
+        <div class="img-nome">${a.name}</div>
+      </div>`;
+    } catch(e){ _falhadas.push(a.vistoria||a.name); return ''; }
+  }).join('');
+  if(_falhadas.length){
+    console.warn('[PDF] vistorias/fotos não incluídas:',_falhadas);
+  }
 
   const guestNome = dv.guest ? dv.guest.trim() : '';
   const pdfTitle = hospedagemNum

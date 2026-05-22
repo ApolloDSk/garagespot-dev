@@ -33,3 +33,24 @@
 - Reportar entregáveis
 - Aguardar validação antes de avançar para próxima versão
 - Se houver bugs, criar v1.9.x.y de correção
+
+---
+
+## Protocolo de APK Build (até v2.0)
+
+Antes de mexer em:
+- `capacitor.config.json`
+- Plugins Capacitor (`@capacitor/*`)
+- `AndroidManifest.xml`
+- Permissões nativas
+
+O Code DEVE:
+1. **Parar antes de implementar**
+2. **Avisar Douglas**: "Esta mudança exigirá build de APK porque [motivo]"
+3. **Aguardar autorização explícita**
+4. Se autorizado, implementar + buildar APK
+5. Se não autorizado, propor alternativa em HTML/JS puro
+
+**Em versões puramente HTML/CSS/JS: NÃO buildar APK.** O `GarageSpot-dev.apk`
+configurado em modo online via `server.url` atualiza automaticamente do
+GitHub Pages do `garagespot-dev` a cada push.

@@ -24,22 +24,23 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - Atualizações atuais: v1.9.x, v1.9.x.y (nunca pular para 2.0)
 - Toda atualização vai PRIMEIRO no dev (sync automática), depois aprovação manual para hotel
 - APK dev online (server.url) atualiza automaticamente; APK hotel offline empacotado
+- **NÃO buildar APK em versões puramente HTML/CSS/JS** — só quando mexer em capacitor.config.json, plugin Capacitor ou permissões Android. Ver DEPLOY.md
 
 ## Versão atual
 - Em produção (hotel): versão estável anterior à v1.8
-- Em dev: v1.9.4
+- Em dev: v1.9.4.1
 - Próxima etapa: validação do Douglas no celular
 
 ## Roadmap
-1. ✅ Check-in com vistoria integrada — v1.9.4 (núcleo HTML/CSS + UX + deploy)
-2. ⏳ v1.9.5 — STEP2 obrigatórios + Painel do Dia melhorado + coletar assinatura depois + limpeza
-3. ⏳ Recarga (3 prompts: visual com bateria animada / fluxo / finalização e PDF integrado no checkout)
-4. ⏳ Bugs gerais consolidados
-5. ⏳ Tema por cliente (paleta + Padrão)
-6. ⏳ Histórico de ações por usuário + Relatório de Produtividade
-7. ⏳ Melhorias UX/UI no mapa (drag&drop som/vibração, long-press, visual moderno)
-8. ⏳ Google Drive backup
-9. ⏳ v2.0 — banco de dados + servidor externo
+1. ✅ v1.9.4.1 — Vistoria + Check-in + Designação (NCI página única + ativação contextual)
+2. ⏳ v1.9.4.2 — Recarga visual (bateria animada)
+3. ⏳ v1.9.4.3 — Recarga fluxo
+4. ⏳ v1.9.4.4 — Recarga finalização (PDF + config + painel)
+5. ⏳ v1.9.4.5 — Mapa: bugs + drag&drop + UX + Gestão (qualidade vida)
+6. ⏳ v1.9.4.6 — Tema + Relatórios + Histórico
+7. ⏳ v1.9.4.7 — Google Drive backup (APK build necessário)
+8. 🟢 Atualização do app do hotel (versão estabilizada)
+9. ⏳ v2.0 — Banco de dados + servidor externo
 
 ## Bugs conhecidos pendentes
 - Dois carros no mesmo apto (GS separado) — validar
@@ -64,7 +65,8 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - Linguagem específica e literal (Opus 4.7)
 - Listar explicitamente o que NÃO fazer
 - Sempre: testar, debugar, atualizar CLAUDE.md + CHAT_HANDOFF.md
-- Sempre finalizar com: sync, APK vX.X, push master, deploy dev, verificar Pages
+- Sempre finalizar com: sync, push master, deploy dev, verificar Pages
+- APK build SOMENTE quando necessário
 
 ## Última atualização deste handoff
-v1.9.4 — 2026-05-20
+v1.9.4.1 — 2026-05-21
