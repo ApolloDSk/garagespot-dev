@@ -28,19 +28,20 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 
 ## Versão atual
 - Em produção (hotel): versão estável anterior à v1.8
-- Em dev: v1.9.4.1
-- Próxima etapa: validação do Douglas no celular
+- Em dev: v1.9.4.1.1
+- Próxima etapa: validação do Douglas no celular (Bug 1 com 1 dedo, Bug 3 calibragem ao girar, etapa de fotos)
 
 ## Roadmap
-1. ✅ v1.9.4.1 — Vistoria + Check-in + Designação (NCI página única + ativação contextual)
-2. ⏳ v1.9.4.2 — Recarga visual (bateria animada)
-3. ⏳ v1.9.4.3 — Recarga fluxo
-4. ⏳ v1.9.4.4 — Recarga finalização (PDF + config + painel)
-5. ⏳ v1.9.4.5 — Mapa: bugs + drag&drop + UX + Gestão (qualidade vida)
-6. ⏳ v1.9.4.6 — Tema + Relatórios + Histórico
-7. ⏳ v1.9.4.7 — Google Drive backup (APK build necessário)
-8. 🟢 Atualização do app do hotel (versão estabilizada)
-9. ⏳ v2.0 — Banco de dados + servidor externo
+1. ✅ v1.9.4.1.1 — Correções vistoria (1 dedo, assinatura, landscape, desativar, revisão) + etapa de fotos + designação automática via vaga + Hospedados corrigido
+2. ⏳ v1.9.4.2 — Coletar assinatura depois + Painel + Gestão + bugs gerais
+3. ⏳ v1.9.4.3 — Recarga visual (bateria animada)
+4. ⏳ v1.9.4.4 — Recarga fluxo
+5. ⏳ v1.9.4.5 — Recarga finalização (PDF + config + painel)
+6. ⏳ v1.9.4.6 — Mapa: bugs + drag&drop + UX + Gestão (qualidade vida)
+7. ⏳ v1.9.4.7 — Tema + Relatórios + Histórico
+8. ⏳ v1.9.4.8 — Google Drive backup (APK build necessário)
+9. 🟢 Atualização do app do hotel (versão estabilizada)
+10. ⏳ v2.0 — Banco de dados + servidor externo
 
 ## Bugs conhecidos pendentes
 - Dois carros no mesmo apto (GS separado) — validar
@@ -69,4 +70,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - APK build SOMENTE quando necessário
 
 ## Última atualização deste handoff
-v1.9.4.1 — 2026-05-21
+v1.9.4.1.1 — 2026-05-23
