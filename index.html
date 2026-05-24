@@ -385,18 +385,18 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 .vst-check-lbl.sem{color:#0F6E56}
 .vst-check-lbl.com{color:#A32D2D}
 /* Assinatura — interativa */
-.vst-assinatura-box{position:relative;margin:8px 14px 12px;border:3px solid transparent;border-radius:8px;padding:10px;background:#fafafa;cursor:pointer;height:140px;transition:border-color .15s,background .15s;overflow:hidden}
-.vst-assinatura-box.ativa{border-color:#185FA5;background:#fff;cursor:default}
+.vst-assinatura-box{position:relative;margin:8px 14px 12px;border:1.5px solid #ddd;border-radius:6px;padding:0;background:#fff;cursor:pointer;height:140px;transition:border-color .15s,background .15s;overflow:hidden}
+.vst-assinatura-box.ativa{border:3px solid #185FA5;background:#fff;cursor:default}
 .vst-assinatura-box.bloqueada{opacity:.5;pointer-events:none}
-/* Canvas z-index 3 — ACIMA da linha (z 1) e label (z 1) */
-.vst-assinatura-box canvas{position:absolute;left:10px;right:10px;top:10px;bottom:30px;width:calc(100% - 20px);height:calc(100% - 40px);background:transparent;touch-action:none;cursor:crosshair;z-index:3;pointer-events:none}
+/* Bug A: canvas cobre TUDO com z-index:10 — traços sempre por cima da linha decorativa */
+.vst-assinatura-box canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important;background:transparent;touch-action:none;cursor:crosshair;z-index:10;pointer-events:none;display:block}
 .vst-assinatura-box.ativa canvas{pointer-events:auto}
-.vst-assinatura-box .assinatura-img{position:absolute;left:10%;right:10%;top:10px;bottom:30px;width:auto;height:auto;max-width:80%;max-height:calc(100% - 40px);margin:auto;object-fit:contain;pointer-events:none;z-index:2}
-.vst-assinatura-box .assinatura-toque{position:absolute;top:50%;left:50%;transform:translate(-50%,-70%);font-size:13px;color:#999;font-style:italic;pointer-events:none;z-index:2}
+.vst-assinatura-box .assinatura-img{position:absolute;top:10px;left:10%;right:10%;bottom:30px;width:auto;height:auto;max-width:80%;max-height:calc(100% - 40px);margin:auto;object-fit:contain;pointer-events:none;z-index:5}
+.vst-assinatura-box .assinatura-toque{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;color:#999;font-style:italic;pointer-events:none;z-index:2}
 .vst-assinatura-box.ativa .assinatura-toque{display:none}
-.vst-assinatura-box .assinatura-linha{position:absolute;left:10%;right:10%;bottom:24px;height:1px;background:#ccc;pointer-events:none;z-index:1}
+.vst-assinatura-box .assinatura-linha{position:absolute;left:10%;right:10%;bottom:28px;height:1px;background:#ccc;pointer-events:none;z-index:1}
 .vst-assinatura-box.ativa .assinatura-linha{background:#185FA5}
-.vst-assinatura-box .assinatura-label{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:9px;color:#888;font-weight:700;letter-spacing:.5px;text-transform:uppercase;pointer-events:none;z-index:1}
+.vst-assinatura-box .assinatura-label{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:9px;color:#888;font-weight:700;letter-spacing:1px;text-transform:uppercase;pointer-events:none;z-index:1}
 .vst-legal-mini{font-size:10px;font-style:italic;color:#666;background:#fafafa;padding:9px 14px;text-align:center;line-height:1.5;border-top:1px solid #eee}
 .vst-body{display:flex;flex-direction:column}
 .vst-campos-bloc{display:flex;flex-direction:column}
@@ -444,12 +444,19 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 .vst-modal-info-row span:last-child{color:#111;font-weight:600;text-align:right}
 /* Prévia landscape */
 .previa-card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:14px;margin-bottom:10px}
-/* Bug 5: modal de revisão em landscape — caixa maior, botões lado a lado */
+/* Modal de revisão — adaptado para landscape (Bug 5 v1.9.4.1.1) */
 @media (orientation:landscape){
   .vst-modal-content:has(.previa-card){max-width:1100px;width:92%;max-height:92vh}
   .vst-modal-content:has(.previa-card) .vst-modal-buttons{flex-direction:row;gap:12px}
   .vst-modal-content:has(.previa-card) .vst-modal-buttons button{flex:1;padding:14px}
-  .vst-modal-content:has(.previa-card) .previa-img{max-height:60vh;object-fit:contain;margin:0 auto}
+  .vst-modal-content:has(.previa-card) .previa-img{max-height:60vh;object-fit:contain;margin:0 auto;display:block}
+}
+/* Bug C v1.9.4.1.2: modal de revisão em portrait — sem precisar virar celular */
+@media (orientation:portrait){
+  .vst-modal-content:has(.previa-card){max-width:600px;width:95%;max-height:88vh}
+  .vst-modal-content:has(.previa-card) .vst-modal-buttons{flex-direction:row;gap:10px}
+  .vst-modal-content:has(.previa-card) .vst-modal-buttons button{flex:1;padding:13px}
+  .vst-modal-content:has(.previa-card) .previa-img{max-height:55vh;object-fit:contain;margin:0 auto;display:block}
 }
 .previa-titulo{font-size:13px;font-weight:700;color:#185FA5;margin-bottom:10px;text-align:center}
 .previa-img{width:100%;height:auto;display:block;border:1px solid #eee;border-radius:6px}
@@ -538,7 +545,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.1 -->
+<!-- GarageSpot v1.9.4.1.2 -->
 <body>
 <div class="page">
 
@@ -4881,10 +4888,44 @@ function _nciBindAssinatura(){
   const area=document.getElementById('area-assinatura');
   if(!area) return;
   area.addEventListener('click',function(ev){
-    // Se já ativa, clicks dentro não desativam
-    if(MODO_VISTORIA_ATIVO==='assinatura') return;
+    if(MODO_VISTORIA_ATIVO==='assinatura') return; // já ativa
+    // Bug B: se já há assinatura coletada → modal [Manter]/[Refazer]
+    if(_nciD && _nciD.assinatura && !_nciD.assinatura_pendente){
+      _vtAssinaturaModalReativar();
+      return;
+    }
     _vtAtivarAssinatura();
   });
+}
+
+function _vtAssinaturaModalReativar(){
+  showModalAux({
+    titulo:'Assinatura já registrada',
+    texto:'O que deseja fazer?',
+    botoes:[
+      {label:'Manter assinatura',action:'close'},
+      {label:'Refazer assinatura',cls:'danger',action:function(){
+        // Limpa TUDO completamente antes de reativar
+        _vtAssinaturaLimparCompleto();
+        _vtAtivarAssinatura();
+      }}
+    ]
+  });
+}
+
+// Limpa canvas + estado por completo (não restaura assinatura antiga)
+function _vtAssinaturaLimparCompleto(){
+  if(!_nciD) return;
+  _nciD.assinatura=null;
+  _nciSigBackup=null;
+  _nciSigDirty=false;
+  const cv=document.getElementById('canvas-assinatura');
+  if(cv && _nciSigCtx){
+    try{ _nciSigCtx.clearRect(0,0,cv.width/(_nciSigDpr||1),cv.height/(_nciSigDpr||1)); }catch(_){}
+  }
+  _vtAtualizarSigUI();
+  _nciAtualizarProgresso();
+  console.log('[VST] Assinatura limpa completamente');
 }
 
 function _vtAtivarAssinatura(){
@@ -4979,10 +5020,8 @@ function _vtSigSetup(){
 }
 
 function _vtSigLimpar(){
-  const cv=document.getElementById('canvas-assinatura');
-  if(!cv||!_nciSigCtx) return;
-  _nciSigCtx.clearRect(0,0,cv.width/_nciSigDpr,cv.height/_nciSigDpr);
-  _nciSigDirty=false; _nciSigBackup=null;
+  // Bug B: [🗑 Limpar] da barra de contexto limpa TUDO (canvas + estado)
+  _vtAssinaturaLimparCompleto();
 }
 
 // CAMADA 7: resize handler preservando desenho (avarias + assinatura + debug)
@@ -5088,25 +5127,8 @@ function _nciTentarRegistrar(){
 }
 
 function _nciShowPrevia(){
-  if(window.matchMedia && window.matchMedia('(orientation: portrait)').matches){
-    showModalAux({
-      titulo:'📱 Vire o celular na horizontal',
-      texto:'Para revisar a vistoria no formato oficial, gire o aparelho.\n\nVocê também pode confirmar agora mesmo sem revisão visual.',
-      botoes:[
-        {label:'Cancelar',action:'close'},
-        {label:'Confirmar mesmo assim',cls:'primary',action:function(){ _nciFinalizar(); }}
-      ]
-    });
-    // Listener de orientação — se virar, mostra prévia automaticamente
-    const handler=function(){
-      window.removeEventListener('orientationchange',handler);
-      // fechar modal atual
-      const m=document.getElementById('vst-modal-aux'); if(m) m.remove();
-      _nciAbrirPreviaLandscape();
-    };
-    window.addEventListener('orientationchange',handler,{once:true});
-    return;
-  }
+  // Bug C: modal "Vire o celular" REMOVIDO. Abre a caixa de revisão direto
+  // em qualquer orientação (media queries já cobrem portrait/landscape).
   _nciAbrirPreviaLandscape();
 }
 
@@ -5255,32 +5277,34 @@ function _nciFotosVoltar(){
   _nciAbrirPreviaLandscape();
 }
 
-async function _nciFotosCapturarCamera(){
-  if(!window.Capacitor||!window.Capacitor.Plugins||!window.Capacitor.Plugins.Camera){
-    showToast('Câmera nativa não disponível neste dispositivo. Use Selecionar Arquivo.',3000);
-    return;
-  }
-  // Salvar rascunho completo antes de abrir câmera (proteção contra webview morrer)
+function _nciFotosCapturarCamera(){
+  // Bug D v1.9.4.1.2: usar EXATAMENTE o mesmo método dos anexos de detalhes
+  // (<input type="file" accept="image/*" capture="environment">). Funciona em
+  // Android moderno sem precisar do plugin @capacitor/camera.
   _nciSalvarRascunhoCompleto();
-  try{
-    const photo=await window.Capacitor.Plugins.Camera.getPhoto({
-      quality:85, width:1920, height:1080,
-      resultType:'base64', source:'CAMERA',
-      allowEditing:false, correctOrientation:true
+  let input=document.getElementById('ef-input-camera');
+  if(!input){
+    input=document.createElement('input');
+    input.type='file';
+    input.accept='image/*';
+    input.capture='environment'; // força câmera traseira em Android
+    input.id='ef-input-camera';
+    input.style.display='none';
+    document.body.appendChild(input);
+    input.addEventListener('change',function(ev){
+      const files=Array.from(ev.target.files||[]);
+      if(files.length===0){ console.log('[FOTO] câmera cancelada'); return; }
+      const f=files[0];
+      _nciFotoFileToB64Compr(f).then(function(b64){
+        _nciFotoAdicionar(b64);
+      }).catch(function(err){
+        console.error('[FOTO] erro processando foto câmera:',err);
+        showToast('Erro ao processar foto',2500);
+      });
+      ev.target.value=''; // permite tirar nova foto em seguida
     });
-    if(!photo||!photo.base64String){ console.log('[FOTO] cancelada'); return; }
-    const fotoB64='data:image/jpeg;base64,'+photo.base64String;
-    _nciFotoAdicionar(fotoB64);
-  }catch(e){
-    const msg=String(e&&e.message||e||'');
-    if(/cancel/i.test(msg)){ console.log('[FOTO] cancelada pelo usuário'); return; }
-    if(/permission/i.test(msg)){
-      showModalAux({titulo:'Permissão negada',texto:'Permita acesso à câmera nas configurações do Android.',botoes:[{label:'OK',cls:'primary',action:'close'}]});
-      return;
-    }
-    console.error('[FOTO] erro:',e);
-    showToast('Erro ao capturar foto. Tente Selecionar Arquivo.',3000);
   }
+  input.click();
 }
 
 function _nciFotosOnFileInput(ev){
@@ -5628,12 +5652,14 @@ function _nciShowStep5(){
 function _nciStep5DesignarAgora(ev){
   if(ev){ try{ ev.stopPropagation(); ev.preventDefault(); }catch(_){} }
   const d=_nciD; if(!d) return;
-  // Ativar MODO_DESIGNACAO
+  // Ativar MODO_DESIGNACAO — Bug E: origem='pos_checkin' + operador do NCI
   MODO_DESIGNACAO={
     gs:d.gs, apt:d.apt,
     model:d.model, color:d.color,
     plate:d.plate, guest:d.guest, obs:d.obs,
     vistoria_numero:d.numero,
+    origem:'pos_checkin',
+    operador:d.usuario||null,   // operador já conhecido (faz commit foi feito por ele)
     timestamp:Date.now()
   };
   // Fechar NCI sem confirmação (commit já feito)
@@ -5723,6 +5749,8 @@ function ativarDesignacaoHosp(gs){
     model:h.model, color:h.color,
     plate:h.plate, guest:h.guest, obs:h.obs,
     vistoria_numero:(h.vistorias&&h.vistorias[0])||null,
+    origem:'painel',
+    operador:null,   // Bug E: vai perguntar ao confirmar (origem painel)
     timestamp:Date.now()
   };
   if(typeof navTo==='function') navTo('mapa');
@@ -5796,6 +5824,19 @@ function _showModalDesignacao(vagaId){
 
 function _aplicarDesignacaoDireta(vagaId){
   const m=MODO_DESIGNACAO; if(!m) return;
+  // Bug E: se operador NÃO pré-preenchido (origem painel ou vaga_direta), perguntar
+  if(!m.operador && typeof confirmarUsuario==='function'){
+    confirmarUsuario('designando vaga '+vagaId,function(usuario){
+      m.operador=usuario||null;
+      _aplicarDesignacaoExec(vagaId);
+    });
+    return;
+  }
+  _aplicarDesignacaoExec(vagaId);
+}
+
+function _aplicarDesignacaoExec(vagaId){
+  const m=MODO_DESIGNACAO; if(!m) return;
   const hosp=HOSPEDAGENS[m.gs]; if(!hosp){ showToast('Hospedagem não encontrada',2500); return; }
   const v=S[vagaId];
   if(!v||v.status!=='free'){ showToast('Vaga não disponível',2500); return; }
@@ -5805,8 +5846,10 @@ function _aplicarDesignacaoDireta(vagaId){
   v.size=v.size||'small';
   hosp.vaga_inicial=vagaId;
   hosp.status='ativa';
-  // Histórico
-  addHistorico(m.apt,'checkin',vagaId,'Check-in via NCI (designação contextual)',m.usuario||_vtFuncNome({usuario:m.usuario}),m.gs);
+  // Histórico — usar o operador correto conforme origem
+  const opNome=(m.operador&&m.operador.nome)?m.operador.nome+(m.operador.cargo?' · '+m.operador.cargo:''):(m.operador||hosp.usuario_checkin||'');
+  const origemLbl=m.origem==='pos_checkin'?'pós-checkin':(m.origem==='painel'?'painel':'contextual');
+  addHistorico(m.apt,'checkin',vagaId,'Check-in via NCI (designação '+origemLbl+')',opNome,m.gs);
   saveData(); saveHospedagens();
   if(typeof ref==='function') ref(vagaId);
   if(typeof refVistoria==='function') refVistoria(vagaId);
@@ -5830,7 +5873,7 @@ function _aplicarDesignacaoDireta(vagaId){
     if(td){ td.classList.add('pulse-novo'); setTimeout(function(){ td.classList.remove('pulse-novo'); },2200); }
   },50);
   if(typeof renderPainelDia==='function') renderPainelDia();
-  if(typeof addLogSistema==='function') addLogSistema('Designação contextual: '+m.gs+' → vaga '+vagaId);
+  if(typeof addLogSistema==='function') addLogSistema('Designação '+origemLbl+': '+m.gs+' → vaga '+vagaId);
 }
 
 // ════════════════════════════════════════════════════════════════════════

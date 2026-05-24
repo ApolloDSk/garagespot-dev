@@ -28,11 +28,12 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 
 ## Versão atual
 - Em produção (hotel): versão estável anterior à v1.8
-- Em dev: v1.9.4.1.1
-- Próxima etapa: validação do Douglas no celular (Bug 1 com 1 dedo, Bug 3 calibragem ao girar, etapa de fotos)
+- Em dev: v1.9.4.1.2
+- Vistoria de entrada: ROBUSTA E COMPLETA. Próxima etapa: v1.9.4.2 (coletar assinatura depois + Painel + Gestão + bugs gerais)
 
 ## Roadmap
-1. ✅ v1.9.4.1.1 — Correções vistoria (1 dedo, assinatura, landscape, desativar, revisão) + etapa de fotos + designação automática via vaga + Hospedados corrigido
+1. ✅ v1.9.4.1.2 — Correções finais vistoria (assinatura z-index, sem duplicação, sem modal vire celular, câmera funcional, operador pré-preenchido pos_checkin)
+2. ✅ v1.9.4.1.1 — Correções vistoria (1 dedo, assinatura, landscape, desativar, revisão) + etapa de fotos + designação automática via vaga + Hospedados corrigido
 2. ⏳ v1.9.4.2 — Coletar assinatura depois + Painel + Gestão + bugs gerais
 3. ⏳ v1.9.4.3 — Recarga visual (bateria animada)
 4. ⏳ v1.9.4.4 — Recarga fluxo
@@ -70,4 +71,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - APK build SOMENTE quando necessário
 
 ## Última atualização deste handoff
-v1.9.4.1.1 — 2026-05-23
+v1.9.4.1.2 — 2026-05-23
