@@ -604,7 +604,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.3 -->
+<!-- GarageSpot v1.9.4.1.4 -->
 <body>
 <div class="page">
 
@@ -4299,6 +4299,88 @@ function _vstConfirmar(assinatura){
 }
 
 // ── Ver / Assinar / Deletar ────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.1.4: Menu de Vistorias da Hospedagem (lista + Nova Vistoria)
+// ════════════════════════════════════════════════════════════════════════
+function _listarVistoriasDaHosp(gs,apt){
+  // Coleta vistorias da hospedagem (preferindo GS; fallback por apt) e ordena
+  // por timestamp de criação DESCENDENTE (mais recente → mais antiga).
+  const vis=[];
+  if(gs){
+    Object.values(VISTORIAS||{}).forEach(function(v){
+      if(v && (v.hospedagem===gs||v.hospedagem_gs===gs)) vis.push(v);
+    });
+  }
+  if(vis.length===0 && apt){
+    Object.values(VISTORIAS||{}).forEach(function(v){
+      if(v && v.apt===apt) vis.push(v);
+    });
+  }
+  vis.sort(function(a,b){
+    const ta=a.ts_criada||a.ts_criacao||0;
+    const tb=b.ts_criada||b.ts_criacao||0;
+    return tb-ta;
+  });
+  return vis;
+}
+
+window.abrirMenuVistorias = function(apt, gs, fp){
+  const fromPasseio=fp===1||fp===true;
+  const vis=_listarVistoriasDaHosp(gs,apt);
+  function fmtData(ts){
+    if(!ts) return '—';
+    const d=new Date(ts);
+    return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  }
+  let html='<div class="mt" style="font-size:14px">📋 Vistorias';
+  html+=apt?(' · Apt '+_vtEsc(apt)):'';
+  html+=gs?(' · '+_vtEsc(gs)):'';
+  html+='</div>';
+  if(vis.length===0){
+    html+='<div style="font-size:12px;color:#888;padding:10px 4px 14px;text-align:center">Nenhuma vistoria registrada ainda</div>';
+  } else {
+    html+='<div style="font-size:11px;color:#888;margin-bottom:6px">Mais recentes primeiro</div>';
+    vis.forEach(function(v){
+      const assinada=!!v.ts_assinada;
+      const pend=v.assinatura_pendente && !assinada;
+      const numero=v.numero||v.id||'—';
+      const status=pend?'<span style="color:#A32D2D;font-weight:700">⚠ Pendente</span>':(assinada?'<span style="color:#0F6E56">✅ Assinada</span>':'<span style="color:#888">○</span>');
+      html+='<div style="border:1px solid #e8e8e8;border-radius:8px;padding:9px 10px;margin-bottom:6px;background:#fff">'+
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-weight:700;font-size:13px;color:#185FA5">'+_vtEsc(numero)+'</span>'+
+        '<span style="font-size:11px;color:#888;flex:1">'+fmtData(v.ts_criada||v.ts_criacao)+'</span>'+status+'</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button class="bsv" style="font-size:11px;padding:6px 10px" onclick="closeOv();verVistoria(\''+_vtEsc(v.id||numero)+'\')">Visualizar</button>'+
+        '<button class="bsv" style="font-size:11px;padding:6px 10px;background:#555" onclick="closeOv();gerarPDFVistoria(\''+_vtEsc(v.id||numero)+'\')">📤 PDF</button>'+
+        (pend?'<button class="bsv" style="font-size:11px;padding:6px 10px;background:#A32D2D" onclick="closeOv();assinarVistoria(\''+_vtEsc(v.id||numero)+'\')">✍ Coletar assinatura</button>':'')+
+        '</div></div>';
+    });
+  }
+  html+='<div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px">'+
+    '<button class="bsv" style="width:100%;padding:12px;font-size:13px;font-weight:700;background:#185FA5;color:#fff;border:none;border-radius:10px;cursor:pointer;font-family:inherit" onclick="closeOv();_iniciarNovaVistoriaAdicional(\''+_vtEsc(apt)+'\',\''+_vtEsc(gs)+'\')">+ Nova Vistoria</button>'+
+    '<button class="bcx" style="width:100%;margin-top:6px" onclick="closeOv()">Fechar</button>'+
+    '</div>';
+  showM(html);
+};
+
+// v1.9.4.1.4: Inicia o fluxo de Nova Vistoria adicional para hospedagem existente.
+// Reaproveita o fluxo legacy novaVistoria(preApt, preHosp) que já cria VISTORIAS
+// vinculadas à hospedagem (campo .hospedagem) — entra no PDF de checkout normalmente.
+window._iniciarNovaVistoriaAdicional = function(apt, gs){
+  const hosp=gs?HOSPEDAGENS[gs]:null;
+  const hospInfo=hosp?(hosp.model||'—')+(hosp.color?' · '+hosp.color:'')+' (Apt '+(hosp.apt||apt||'—')+')':'Apt '+(apt||'—');
+  showModalAux({
+    titulo:'Criar nova vistoria?',
+    texto:'Será criada uma vistoria adicional para '+hospInfo+'.',
+    botoes:[
+      {label:'Cancelar',action:'close'},
+      {label:'Continuar',cls:'primary',action:function(){
+        // Reaproveita o fluxo existente — preApt + preHosp travam a vinculação
+        if(typeof novaVistoria==='function') novaVistoria(apt||(hosp&&hosp.apt)||'', gs||'');
+      }}
+    ]
+  });
+};
+
 function verVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
   const nd=(v.danos||[]).length;
@@ -4344,6 +4426,11 @@ function assinarVistoria(id){
   document.getElementById('ov').classList.add('on');
   const canvas=_vstSetupCanvas('vst-sig2-canvas');
   document.getElementById('vst-sig-ok2').onclick=function(){
+    // Bug H v1.9.4.1.4: validar canvas vazio antes de confirmar
+    if(_vstCanvasVazio(canvas)){
+      showToast('Nenhuma assinatura registrada. Assine antes de confirmar.',2800);
+      return;
+    }
     confirmarUsuario('assinando a vistoria',function(usuario){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
       VISTORIAS[id].assinatura=canvas.toDataURL('image/png');
@@ -4358,9 +4445,23 @@ function assinarVistoria(id){
         if(vagaId2) refVistoria(vagaId2);
       }
       closeOv();
+      // Bug H v1.9.4.1.4: atualizar badge de Pendências no Painel
+      if(typeof renderAgrupadoresPainel==='function') renderAgrupadoresPainel();
       showToast('Vistoria '+id+' assinada');
     });
   };
+}
+
+// Bug H v1.9.4.1.4: helper para verificar se o canvas está vazio (alpha=0)
+function _vstCanvasVazio(canvas){
+  if(!canvas) return true;
+  try{
+    const ctx=canvas.getContext('2d');
+    const w=canvas.width||1, h=canvas.height||1;
+    const data=ctx.getImageData(0,0,w,h).data;
+    for(let i=3;i<data.length;i+=4){ if(data[i]>0) return false; }
+    return true;
+  }catch(e){ console.warn('[VST] _vstCanvasVazio falhou:',e); return false; }
 }
 
 function deletarVistoria(id){
@@ -4853,7 +4954,7 @@ function _nciSecaoVistoria(d){
             </div>
             <div class="vst-assinatura-box" id="area-assinatura">
               <canvas id="canvas-assinatura"></canvas>
-              <img class="assinatura-img" id="assinatura-preview" style="display:none">
+              <img class="assinatura-img" id="assinatura-preview" alt="">
               <div class="assinatura-toque" id="assinatura-toque">Toque aqui para coletar assinatura</div>
               <div class="assinatura-linha"></div>
               <div class="assinatura-label">Assinatura do Proprietário</div>
@@ -5287,14 +5388,34 @@ function _vtFinalizarAssinatura(salvar){
 function _vtAtualizarSigUI(){
   const box=document.getElementById('area-assinatura');
   const img=document.getElementById('assinatura-preview');
+  const toq=document.getElementById('assinatura-toque');
+  const cv=document.getElementById('canvas-assinatura');
   if(!box||!img) return;
-  // Bug F v1.9.4.1.3: classe tem-assinatura controla visibilidade via CSS
-  if(_nciD&&_nciD.assinatura){
-    img.src=_nciD.assinatura;
-    box.classList.add('tem-assinatura');
-  } else {
-    img.removeAttribute('src');
+  const modoAtivo=(MODO_VISTORIA_ATIVO==='assinatura');
+  const temAssin=!!(_nciD&&_nciD.assinatura);
+  // Bug G v1.9.4.1.4: usar inline style + classe simultaneamente para garantir
+  // visibilidade mesmo se CSS class-based falhar por ordem de cascata
+  if(modoAtivo){
+    box.classList.add('ativa');
     box.classList.remove('tem-assinatura');
+    if(cv) cv.style.display='block';
+    img.style.display='none';
+    if(toq) toq.style.display='none';
+  } else if(temAssin){
+    box.classList.remove('ativa');
+    box.classList.add('tem-assinatura');
+    img.src=_nciD.assinatura;
+    img.style.display='block';
+    if(cv) cv.style.display='none';
+    if(toq) toq.style.display='none';
+    console.log('[VST] Preview assinatura exibido. box.classes=',box.className);
+  } else {
+    box.classList.remove('ativa');
+    box.classList.remove('tem-assinatura');
+    img.removeAttribute('src');
+    img.style.display='none';
+    if(cv) cv.style.display='none';
+    if(toq) toq.style.display='';
   }
 }
 
@@ -5976,6 +6097,13 @@ function _nciShowStep5(){
 function _nciStep5DesignarAgora(ev){
   if(ev){ try{ ev.stopPropagation(); ev.preventDefault(); }catch(_){} }
   const d=_nciD; if(!d) return;
+  // Bug I v1.9.4.1.4: operador com fallback robusto — tentar d.usuario primeiro,
+  // depois usuario_checkin da HOSPEDAGENS criada no commit, depois nome derivado
+  let operadorPreFilled=d.usuario||null;
+  if(!operadorPreFilled && d.gs && HOSPEDAGENS[d.gs] && HOSPEDAGENS[d.gs].usuario_checkin){
+    operadorPreFilled=HOSPEDAGENS[d.gs].usuario_checkin;
+    console.log('[DESIG] _nciStep5DesignarAgora: operador via HOSPEDAGENS:',operadorPreFilled);
+  }
   // Ativar MODO_DESIGNACAO — Bug E: origem='pos_checkin' + operador do NCI
   MODO_DESIGNACAO={
     gs:d.gs, apt:d.apt,
@@ -5983,7 +6111,7 @@ function _nciStep5DesignarAgora(ev){
     plate:d.plate, guest:d.guest, obs:d.obs,
     vistoria_numero:d.numero,
     origem:'pos_checkin',
-    operador:d.usuario||null,   // operador já conhecido (faz commit foi feito por ele)
+    operador:operadorPreFilled,
     timestamp:Date.now()
   };
   // Fechar NCI sem confirmação (commit já feito)
@@ -6148,9 +6276,18 @@ function _showModalDesignacao(vagaId){
 
 function _aplicarDesignacaoDireta(vagaId){
   const m=MODO_DESIGNACAO; if(!m) return;
+  // Bug I v1.9.4.1.4: fallback — se origem='pos_checkin' e operador ausente,
+  // recuperar de HOSPEDAGENS[gs].usuario_checkin (operador já é conhecido)
+  if(!m.operador && m.origem==='pos_checkin' && m.gs && HOSPEDAGENS[m.gs] && HOSPEDAGENS[m.gs].usuario_checkin){
+    m.operador=HOSPEDAGENS[m.gs].usuario_checkin;
+    console.log('[DESIG] Operador recuperado de HOSPEDAGENS:',m.operador);
+  }
   // Bug E: se operador NÃO pré-preenchido (origem painel ou vaga_direta), perguntar
   if(!m.operador && typeof confirmarUsuario==='function'){
     confirmarUsuario('designando vaga '+vagaId,function(usuario){
+      // Bug I v1.9.4.1.4: closeOv() antes de aplicar — evita clique fantasma
+      // propagado para vaga livre abrindo "Iniciar check-in?"
+      if(typeof closeOv==='function') closeOv();
       m.operador=usuario||null;
       _aplicarDesignacaoExec(vagaId);
     });
@@ -8291,7 +8428,16 @@ function renderAnexosArea(id, fromPasseio, containerId){
       <div class="attach-header">
         <span class="attach-label">📎 Fotos ${lista.length>0?'('+lista.length+'/'+MAX_ANEXOS+')':''}</span>
         <div class="attach-actions">
-          ${(()=>{const _ap=fromPasseio?id:(S[id]?.apt||'');const _hosp=fromPasseio?(PASSEIO[id]?.hospedagem||''):(S[id]?.hospedagem||'');const _vp=_ap?getVistoriaByApt(_ap):null;const _hasPend=_vp&&!_vp.ts_assinada;const _onclick=_vp?`verVistoria('${_vp.id}')`:`novaVistoria('${_ap}','${_hosp}')`;return `<button class="attach-act" title="${_hasPend?'Vistoria pendente de assinatura':(_vp?'Ver vistoria':'Nova vistoria')}" onclick="${_onclick}" style="cursor:pointer;border:none;background:none;font-size:12px;padding:2px 4px;${_hasPend?'color:#A32D2D;font-weight:700':''}">📋${_hasPend?' ❗':''}</button>`;})()}
+          ${(()=>{
+            // v1.9.4.1.4: 📋 abre menu de vistorias da hospedagem (lista + Nova Vistoria)
+            const _ap=fromPasseio?id:(S[id]?.apt||'');
+            const _hosp=fromPasseio?(PASSEIO[id]?.hospedagem||''):(S[id]?.hospedagem||'');
+            const _vist=_listarVistoriasDaHosp(_hosp,_ap);
+            const _hasPend=_vist.some(function(v){return v.assinatura_pendente&&!v.ts_assinada;});
+            const _cnt=_vist.length;
+            const _tit=_cnt===0?'Nova vistoria':('Vistorias ('+_cnt+')'+(_hasPend?' · pendência':''));
+            return `<button class="attach-act" title="${_tit}" onclick="abrirMenuVistorias('${_vtEsc(_ap)}','${_vtEsc(_hosp)}',${fromPasseio?1:0})" style="cursor:pointer;border:none;background:none;font-size:12px;padding:2px 4px;${_hasPend?'color:#A32D2D;font-weight:700':''}">📋${_cnt>0?' '+_cnt:''}${_hasPend?' ❗':''}</button>`;
+          })()}
           <div ${restante<=0?'style="display:flex;gap:4px;opacity:.4;pointer-events:none"':'style="display:flex;gap:4px"'}>
             <label class="attach-act" title="Tirar foto" style="cursor:pointer">
               📷 Câmera
