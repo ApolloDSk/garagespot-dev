@@ -28,13 +28,13 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 
 ## Versão atual
 - Em produção (hotel): versão estável anterior à v1.8
-- Em dev: v1.9.4.1.2
-- Vistoria de entrada: ROBUSTA E COMPLETA. Próxima etapa: v1.9.4.2 (coletar assinatura depois + Painel + Gestão + bugs gerais)
+- Em dev: v1.9.4.1.3
+- Vistoria de entrada: ROBUSTA E COMPLETA. Painel reformulado para estilo dashboard moderno (agrupadores em 2 colunas + telas de expansão). Próxima etapa: v1.9.4.3.1 (Recarga visual — bateria animada)
 
 ## Roadmap
-1. ✅ v1.9.4.1.2 — Correções finais vistoria (assinatura z-index, sem duplicação, sem modal vire celular, câmera funcional, operador pré-preenchido pos_checkin)
-2. ✅ v1.9.4.1.1 — Correções vistoria (1 dedo, assinatura, landscape, desativar, revisão) + etapa de fotos + designação automática via vaga + Hospedados corrigido
-2. ⏳ v1.9.4.2 — Coletar assinatura depois + Painel + Gestão + bugs gerais
+1. ✅ v1.9.4.1.3 — Bug F (duplicação assinatura ao Concluir no NCI) + Reforma do Painel com agrupadores em 2 colunas e overlays de expansão
+2. ✅ v1.9.4.1.2 — Correções finais vistoria (assinatura z-index, sem duplicação, sem modal vire celular, câmera funcional, operador pré-preenchido pos_checkin)
+3. ✅ v1.9.4.1.1 — Correções vistoria (1 dedo, assinatura, landscape, desativar, revisão) + etapa de fotos + designação automática via vaga + Hospedados corrigido
 3. ⏳ v1.9.4.3 — Recarga visual (bateria animada)
 4. ⏳ v1.9.4.4 — Recarga fluxo
 5. ⏳ v1.9.4.5 — Recarga finalização (PDF + config + painel)
@@ -71,4 +71,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - APK build SOMENTE quando necessário
 
 ## Última atualização deste handoff
-v1.9.4.1.2 — 2026-05-23
+v1.9.4.1.3 — 2026-05-25

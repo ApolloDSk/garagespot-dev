@@ -389,11 +389,13 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 .vst-assinatura-box.ativa{border:3px solid #185FA5;background:#fff;cursor:default}
 .vst-assinatura-box.bloqueada{opacity:.5;pointer-events:none}
 /* Bug A: canvas cobre TUDO com z-index:10 — traços sempre por cima da linha decorativa */
-.vst-assinatura-box canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important;background:transparent;touch-action:none;cursor:crosshair;z-index:10;pointer-events:none;display:block}
-.vst-assinatura-box.ativa canvas{pointer-events:auto}
-.vst-assinatura-box .assinatura-img{position:absolute;top:10px;left:10%;right:10%;bottom:30px;width:auto;height:auto;max-width:80%;max-height:calc(100% - 40px);margin:auto;object-fit:contain;pointer-events:none;z-index:5}
+.vst-assinatura-box canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important;background:transparent;touch-action:none;cursor:crosshair;z-index:10;pointer-events:none;display:none}
+.vst-assinatura-box.ativa canvas{display:block;pointer-events:auto}
+.vst-assinatura-box .assinatura-img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:8;display:none}
+.vst-assinatura-box.tem-assinatura:not(.ativa) .assinatura-img{display:block}
 .vst-assinatura-box .assinatura-toque{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;color:#999;font-style:italic;pointer-events:none;z-index:2}
-.vst-assinatura-box.ativa .assinatura-toque{display:none}
+.vst-assinatura-box.ativa .assinatura-toque,
+.vst-assinatura-box.tem-assinatura .assinatura-toque{display:none}
 .vst-assinatura-box .assinatura-linha{position:absolute;left:10%;right:10%;bottom:28px;height:1px;background:#ccc;pointer-events:none;z-index:1}
 .vst-assinatura-box.ativa .assinatura-linha{background:#185FA5}
 .vst-assinatura-box .assinatura-label{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:9px;color:#888;font-weight:700;letter-spacing:1px;text-transform:uppercase;pointer-events:none;z-index:1}
@@ -542,10 +544,67 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .cav-btn-detalhes{background:#fff;border-color:#ccc;color:#555}
 .cav-btn-designar{background:#185FA5;border-color:#185FA5;color:#fff}
 .tag-aguardando{display:inline-block;background:#FFE5B4;color:#BA7517;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:8px}
+
+/* v1.9.4.1.3: Agrupadores do Painel + overlay de expansão */
+.grupos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.grupo-card{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);cursor:pointer;transition:transform 0.1s;position:relative;border:1.5px solid #f0f0f0}
+.grupo-card:active{transform:scale(0.98)}
+.grupo-card.tem-pendencia{border:2px solid #F5B400}
+.grupo-titulo{display:flex;align-items:center;gap:6px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f0f0f0}
+.grupo-icon{font-size:14px}
+.grupo-titulo-texto{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#185FA5}
+.grupo-titulo-texto.laranja{color:#BA7517}
+.grupo-titulo-texto.amarelo{color:#B8860B}
+.grupo-titulo-texto.verde{color:#2C7A4B}
+.grupo-chevron{position:absolute;top:12px;right:12px;color:#ccc;font-size:16px}
+.grupo-badge{position:absolute;top:-6px;right:-6px;background:#F5B400;color:#fff;font-size:10px;font-weight:800;min-width:22px;height:22px;padding:0 6px;border-radius:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.2);z-index:5}
+.grupo-tiles-2col{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grupo-tile{background:#fff;border:1.5px solid;border-radius:8px;padding:10px 6px;text-align:center}
+.grupo-tile-num{font-size:20px;font-weight:800;line-height:1;margin-bottom:3px}
+.grupo-tile-label{font-size:9px;color:#888;font-weight:500;line-height:1.2}
+.grupo-tile.azul{background:#EBF2FA;border-color:#B5D2EB}
+.grupo-tile.azul .grupo-tile-num{color:#185FA5}
+.grupo-tile.laranja{background:#FFF4E0;border-color:#F5D8A4}
+.grupo-tile.laranja .grupo-tile-num{color:#BA7517}
+.grupo-tile.verde{background:#E8F4EC;border-color:#B5DCC1}
+.grupo-tile.verde .grupo-tile-num{color:#2C7A4B}
+.grupo-tile.amarelo{background:#FFF8DC;border-color:#F5E0A4}
+.grupo-tile.amarelo .grupo-tile-num{color:#B8860B}
+.grupo-tile.vermelho{background:#FBECEC;border-color:#E5B5B5}
+.grupo-tile.vermelho .grupo-tile-num{color:#C53030}
+.grupo-tile.cinza{background:#F0F0F0;border-color:#DDDDDD}
+.grupo-tile.cinza .grupo-tile-num{color:#555}
+.grupo-tile-full{grid-column:1 / -1}
+
+/* Overlay de expansão */
+.expansao-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:#F5F6F8;z-index:500;display:none;flex-direction:column}
+.expansao-overlay.on{display:flex}
+.exp-header{background:#fff;padding:14px 16px;border-bottom:1px solid #e8e8e8;display:flex;align-items:center;gap:12px}
+.exp-voltar{background:none;border:none;font-size:20px;color:#555;cursor:pointer;padding:4px;font-family:inherit}
+.exp-titulo{flex:1;min-width:0}
+.exp-titulo-texto{font-size:16px;font-weight:700;color:#111}
+.exp-titulo-sub{font-size:11px;color:#888;margin-top:1px}
+.exp-corpo{flex:1;overflow-y:auto;padding:12px}
+.exp-secao-titulo{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;padding:0 4px}
+.exp-secao-titulo:not(:first-child){margin-top:16px}
+.exp-item{background:#fff;border-radius:8px;padding:12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,0.04)}
+.exp-item.clicavel{cursor:pointer}
+.exp-item-titulo{font-size:14px;font-weight:700;color:#111}
+.exp-item-sub{font-size:11px;color:#888;margin-top:4px}
+.exp-empty{text-align:center;color:#888;padding:30px 16px;font-size:13px}
+.exp-empty-success{color:#2C7A4B;font-weight:700}
+.card-pend-assin{background:#fff;border:1.5px solid #E5B5B5;border-left:4px solid #C53030;border-radius:10px;padding:12px;margin-bottom:8px}
+.btn-coletar-assin{width:100%;padding:10px;background:#C53030;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;min-height:44px;margin-top:10px;font-family:inherit}
+.card-pend-atraso{background:#fff;border:1.5px solid #F5D8A4;border-left:4px solid #BA7517;border-radius:10px;padding:12px;margin-bottom:8px;position:relative}
+.tag-atraso{display:inline-block;background:#FFE5E5;color:#C53030;font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;margin-top:8px}
+.exp-em-breve{text-align:center;padding:80px 20px}
+.exp-em-breve-icon{font-size:64px;margin-bottom:20px;opacity:0.4}
+.exp-em-breve-titulo{font-size:24px;font-weight:700;color:#555;margin-bottom:8px}
+.exp-em-breve-sub{font-size:13px;color:#888;line-height:1.6}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.2 -->
+<!-- GarageSpot v1.9.4.1.3 -->
 <body>
 <div class="page">
 
@@ -638,6 +697,19 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
     <div class="painel-wrap" id="painel-wrap" style="display:none"></div>
     <div class="painel-wrap" id="recarga-wrap" style="display:none;padding:10px"></div>
 </div>
+
+<!-- v1.9.4.1.3: overlay reusável para expansão dos agrupadores do Painel -->
+<div class="expansao-overlay" id="expansao-overlay">
+  <div class="exp-header">
+    <button class="exp-voltar" id="exp-voltar" onclick="fecharExpansao()">←</button>
+    <div class="exp-titulo">
+      <div class="exp-titulo-texto" id="exp-titulo-texto">Título</div>
+      <div class="exp-titulo-sub" id="exp-titulo-sub">Subtítulo</div>
+    </div>
+  </div>
+  <div class="exp-corpo" id="exp-corpo"></div>
+</div>
+
 <div id="nci-overlay">
   <div class="nci-hdr">
     <button id="nci-bk" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--cp);padding:0 8px 0 0;line-height:1">←</button>
@@ -3146,6 +3218,8 @@ function buscaNav(dir){
 
 // ── NAVBAR / PAINEL DO DIA ────────────────────────────────────────────────
 function navTo(v){
+  // v1.9.4.1.3: fechar overlay de expansão ao trocar de tab
+  if(typeof fecharExpansao==='function') fecharExpansao();
   if(v==='gestao'){ showGestaoMenu(); return; }
   ['mapa','painel','recarga'].forEach(n=>{
     const btn=document.getElementById('nav-'+n); if(btn) btn.classList.toggle('nav-active',n===v);
@@ -3168,15 +3242,9 @@ function navTo(v){
 function renderPainelDia(){
   const pw=document.getElementById('painel-wrap'); if(!pw) return;
   const now=new Date();
-  const startDay=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
 
-  // ── dados ──────────────────────────────────────────────────────────────
-  const allEvts=[];
-  Object.entries(HISTORICO).forEach(([apt,evts])=>evts.forEach(ev=>allEvts.push({apt,...ev})));
-  allEvts.sort((a,b)=>b.ts-a.ts);
-  const hoje=allEvts.filter(e=>e.ts>=startDay);
-  const movHoje=hoje.filter(e=>['checkin','checkout','saida_passeio','retorno_passeio'].includes(e.tipo));
-
+  // v1.9.4.1.3: estatísticas básicas (Garagem Agora). Movimentações/Hospedados/Pendências
+  // são calculadas em renderAgrupadoresPainel() abaixo.
   let occ=0,free=0,tot=0,obOcc=0;
   Object.entries(S).forEach(([,d])=>{
     if(d.mergedSlave) return;
@@ -3187,52 +3255,17 @@ function renderPainelDia(){
   const out=Object.keys(PASSEIO).length;
   const pct=tot>0?Math.round((occ+out)/tot*100):0;
 
-  // v1.9.4.1: aguardando vaga = CHECKINS_PENDENTES (legacy) + HOSPEDAGENS com status='aguardando_designacao'
-  const _hospAguard=Object.values(HOSPEDAGENS||{}).filter(h=>h&&h.status==='aguardando_designacao'&&!h.vaga_inicial).map(h=>({
-    id:'hosp_'+h.numero, gs:h.numero, apt:h.apt, model:h.model, color:h.color, plate:h.plate,
-    guest:h.guest, usuario:h.usuario_checkin, ts_inicio:h.checkin_ts, _fonte:'hosp'
-  }));
-  const pendentesNCI=Object.values(CHECKINS_PENDENTES||{}).map(p=>Object.assign({_fonte:'pend'},p)).concat(_hospAguard);
   const noExp=USUARIOS.filter(u=>estaNoExpediente(u));
   const turnoAtual=getTurnoAtual();
 
-  // hospedagens ativas (sem checkout)
-  // v1.9.4.1.1: hospedagens ATIVAS = sem checkout E (status ativa OU aguardando_designacao)
-  const hospsAtivas=Object.values(HOSPEDAGENS).filter(function(h){
-    if(!h) return false;
-    if(h.checkout_ts) return false;
-    if(h.status==='ativa') return true;
-    if(h.status==='aguardando_designacao') return true;
-    // Compatibilidade com hospedagens antigas sem status definido: considerar ativa
-    if(!h.status) return true;
-    return false;
-  }).sort(function(a,b){ return (b.checkin_ts||0)-(a.checkin_ts||0); });
-
-  // recargas ativas
-  const recAtivas=MODULOS.recarga?Object.values(RECARGAS||{}).filter(r=>r&&r.ativo):[];
-  const filaRec=MODULOS.recarga?(FILA_RECARGA||[]):[];
-
-  // vistorias pendentes
   // backup status
   const lastBkp=DRIVE_STATUS?.ultimo_backup;
 
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Muda Vaga',tornar_grande:'Grande',tornar_pequeno:'Pequeno',merge_lateral:'Merge',desfaz_merge_lateral:'Desfaz Merge'};
-  const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
-
   function fmtHr(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
-  function fmtDataCurta(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}); }
-
-  // ── seção 5 — últimas 3 movimentações do dia ───────────────────────────
-  const mov3=movHoje.slice(0,3);
-  const movMais=movHoje.length>3;
-
-  // ── seção 4 — hospedados (sem data prevista; listar ativos) ─────────────
-  const hospsVer=hospsAtivas.slice(0,3);
-  const hospsMais=hospsAtivas.length>3;
 
   pw.innerHTML=`
 
-  <!-- SEÇ1: OCUPAÇÃO ATUAL -->
+  <!-- SEÇ1: OCUPAÇÃO ATUAL (GARAGEM AGORA — PRESERVADO) -->
   <div class="painel-sec" style="margin-bottom:10px">
     <div class="painel-sec-title">🏢 Garagem agora — ${now.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})}</div>
     <div class="painel-stat-row" style="gap:6px">
@@ -3255,116 +3288,70 @@ function renderPainelDia(){
     </div>
   </div>
 
-  <!-- SEÇ2: NOVO CHECK-IN -->
+  <!-- SEÇ2: NOVO CHECK-IN (PRESERVADO) -->
   <div style="margin-bottom:12px">
     <button onclick="novoCheckin()" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--cp);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;gap:8px">
       <span style="font-size:20px">＋</span> Novo Check-in
     </button>
   </div>
 
-  <!-- SEÇ3: AGUARDANDO VAGA -->
-  ${pendentesNCI.length>0?`
-  <div class="painel-sec">
-    <div class="painel-sec-title">🚗 Aguardando vaga (${pendentesNCI.length})</div>
-    ${pendentesNCI.map(p=>{
-      const hrChk=fmtHr(p.ts_inicio);
-      const info=[p.model,p.color].filter(Boolean).join(' · ')||'—';
-      const designarFn=p._fonte==='hosp'
-        ? `ativarDesignacaoHosp('${p.gs}')`
-        : `navTo('mapa');_nciHighlightLivres();showToast('Toque em vaga livre — Apt. ${p.apt}',3500)`;
-      const detalhesFn=p._fonte==='hosp'
-        ? `abrirDetalhesAguardando('${p.gs}')`
-        : `showToast('Detalhes só disponíveis após designação',2500)`;
-      return `<div class="card-aguardando-vaga">
-        <div class="cav-info">
-          <div class="cav-titulo">🚗 Apt ${p.apt} · ${_vtEsc((p.model||'')+(p.color?' '+p.color:''))||'—'}</div>
-          <div class="cav-subtitulo">${p.gs} · check-in ${hrChk}${p.guest?' · '+_vtEsc(p.guest):''}</div>
-        </div>
-        <div class="cav-botoes">
-          <button class="cav-btn-detalhes" onclick="event.stopPropagation();${detalhesFn}">Detalhes</button>
-          <button class="cav-btn-designar" onclick="event.stopPropagation();${designarFn}">${p._fonte==='hosp'?'Designar vaga':'🗺 Vagas'}</button>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`:''}
-
-  <!-- SEÇ4: HOSPEDADOS HOJE (CARROS ATIVOS) -->
-  <div class="painel-sec" id="pd-sec-hospedados">
-    <div class="painel-sec-title" style="display:flex;align-items:center;gap:4px">
-      <span style="flex:1">🏨 Hospedados (${hospsAtivas.length})</span>
-      ${hospsMais?`<button onclick="_painelToggleHosps()" style="font-size:10px;color:var(--cp);background:none;border:none;cursor:pointer;font-family:inherit" id="pd-hosps-btn">ver mais ▾</button>`:''}
-    </div>
-    ${hospsAtivas.length===0?'<span style="font-size:12px;color:#bbb">Nenhuma hospedagem ativa</span>':''}
-    ${hospsVer.map(h=>{
-      const vagaAtual=Object.entries(S).find(([,d])=>d.hospedagem===h.numero&&d.status==='occupied')?.[0]||'—';
-      const aguard=h.status==='aguardando_designacao';
-      const tagAg=aguard?'<span class="tag-aguardando">⏳ Aguardando vaga</span>':'';
-      const clickFn=aguard?`abrirDetalhesAguardando('${h.numero}')`:`navTo('mapa');executarBusca('${h.numero}')`;
-      return `<div class="painel-event-row" style="cursor:pointer" onclick="${clickFn}">
-        <span class="painel-badge" style="background:var(--cp)">${h.numero}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700">Apt. ${h.apt}${h.guest?' · '+h.guest:''}${tagAg}</div>
-          <div style="color:#888;font-size:10px">${[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'—'} · Vaga ${aguard?'—':vagaAtual} · CI ${fmtDataCurta(h.checkin_ts)}</div>
-        </div>
-      </div>`;
-    }).join('')}
-    <div id="pd-hosps-extra" style="display:none">
-      ${hospsAtivas.slice(3).map(h=>{
-        const vagaAtual=Object.entries(S).find(([,d])=>d.hospedagem===h.numero&&d.status==='occupied')?.[0]||'—';
-        const aguard=h.status==='aguardando_designacao';
-        const tagAg=aguard?'<span class="tag-aguardando">⏳ Aguardando vaga</span>':'';
-        const clickFn=aguard?`abrirDetalhesAguardando('${h.numero}')`:`navTo('mapa');executarBusca('${h.numero}')`;
-        return `<div class="painel-event-row" style="cursor:pointer" onclick="${clickFn}">
-          <span class="painel-badge" style="background:var(--cp)">${h.numero}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700">Apt. ${h.apt}${h.guest?' · '+h.guest:''}${tagAg}</div>
-            <div style="color:#888;font-size:10px">${[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'—'} · Vaga ${aguard?'—':vagaAtual}</div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>
-
-  <!-- SEÇ5: MOVIMENTAÇÕES RECENTES -->
-  <div class="painel-sec">
-    <div class="painel-sec-title" style="display:flex;align-items:center;gap:4px">
-      <span style="flex:1">⏱ Movimentações hoje</span>
-      ${movMais?`<button onclick="_painelToggleMov()" style="font-size:10px;color:var(--cp);background:none;border:none;cursor:pointer;font-family:inherit" id="pd-mov-btn">ver mais ▾</button>`:''}
-    </div>
-    ${mov3.length===0?'<span style="font-size:12px;color:#bbb">Nenhuma movimentação hoje</span>':''}
-    ${mov3.map(ev=>`<div class="painel-event-row">
-      <span class="painel-badge" style="background:${tColor[ev.tipo]||'#888'}">${tLabel[ev.tipo]||ev.tipo}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}</div>
-        <div style="color:#888;font-size:10px">${fmtHr(ev.ts)}${ev.usuario?' · '+ev.usuario:''}</div>
+  <!-- v1.9.4.1.3: AGRUPADORES EM 2 COLUNAS — LINHA 1 -->
+  <div class="grupos-grid">
+    <div class="grupo-card" id="grupo-hoje" data-grupo="hoje" onclick="abrirExpansao('hoje')">
+      <div class="grupo-chevron">›</div>
+      <div class="grupo-titulo">
+        <div class="grupo-icon">📊</div>
+        <div class="grupo-titulo-texto">Hoje</div>
       </div>
-    </div>`).join('')}
-    <div id="pd-mov-extra" style="display:none">
-      ${movHoje.slice(3).map(ev=>`<div class="painel-event-row">
-        <span class="painel-badge" style="background:${tColor[ev.tipo]||'#888'}">${tLabel[ev.tipo]||ev.tipo}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}</div>
-          <div style="color:#888;font-size:10px">${fmtHr(ev.ts)}${ev.usuario?' · '+ev.usuario:''}</div>
-        </div>
-      </div>`).join('')}
+      <div class="grupo-tiles-2col">
+        <div class="grupo-tile azul"><div class="grupo-tile-num" id="hoje-checkins">0</div><div class="grupo-tile-label">Check-ins</div></div>
+        <div class="grupo-tile laranja"><div class="grupo-tile-num" id="hoje-checkouts">0</div><div class="grupo-tile-label">Check-outs</div></div>
+        <div class="grupo-tile verde grupo-tile-full"><div class="grupo-tile-num" id="hoje-movtotais">0</div><div class="grupo-tile-label">Movimentações totais</div></div>
+      </div>
+    </div>
+    <div class="grupo-card" id="grupo-pendencias" data-grupo="pendencias" onclick="abrirExpansao('pendencias')">
+      <div class="grupo-badge" id="pendencias-badge" style="display:none">0</div>
+      <div class="grupo-chevron">›</div>
+      <div class="grupo-titulo">
+        <div class="grupo-icon">⏳</div>
+        <div class="grupo-titulo-texto amarelo">Pendências</div>
+      </div>
+      <div class="grupo-tiles-2col">
+        <div class="grupo-tile amarelo"><div class="grupo-tile-num" id="pend-semvaga">0</div><div class="grupo-tile-label">Sem vaga</div></div>
+        <div class="grupo-tile vermelho"><div class="grupo-tile-num" id="pend-semassin">0</div><div class="grupo-tile-label">Sem assin.</div></div>
+        <div class="grupo-tile laranja grupo-tile-full"><div class="grupo-tile-num" id="pend-atrasados">0</div><div class="grupo-tile-label">Check-out atrasado</div></div>
+      </div>
     </div>
   </div>
 
-  <!-- SEÇ6: RECARGA (só se módulo ativo) -->
-  ${MODULOS.recarga&&(recAtivas.length>0||filaRec.length>0)?`
-  <div class="painel-sec" style="cursor:pointer" onclick="navTo('recarga')">
-    <div class="painel-sec-title">⚡ Recarga — ${recAtivas.length} carregando${filaRec.length>0?' · '+filaRec.length+' na fila':''}</div>
-    ${recAtivas.slice(0,2).map(r=>{
-      const elapsed=r.inicio_ts?Math.floor((Date.now()-r.inicio_ts)/60000):0;
-      return `<div style="font-size:12px;display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f0f0ec">
-        <span style="color:#27AE60;font-size:14px">⚡</span>
-        <div><div style="font-weight:700">Apt. ${r.apt||'—'}</div><div style="font-size:10px;color:#888">${elapsed}min · ${r.usuario||'—'}</div></div>
-      </div>`;
-    }).join('')}
-    ${filaRec.length>0?`<div style="font-size:11px;color:#854F0B;margin-top:4px">Fila: ${filaRec.map(f=>'Apt.'+f.apt).join(', ')}</div>`:''}
-  </div>`:''}
+  <!-- v1.9.4.1.3: AGRUPADORES EM 2 COLUNAS — LINHA 2 -->
+  <div class="grupos-grid">
+    <div class="grupo-card" id="grupo-hospedados" data-grupo="hospedados" onclick="abrirExpansao('hospedados')">
+      <div class="grupo-chevron">›</div>
+      <div class="grupo-titulo">
+        <div class="grupo-icon">🏨</div>
+        <div class="grupo-titulo-texto verde">Hospedados</div>
+      </div>
+      <div class="grupo-tiles-2col">
+        <div class="grupo-tile verde"><div class="grupo-tile-num" id="hosp-total">0</div><div class="grupo-tile-label">Total</div></div>
+        <div class="grupo-tile azul"><div class="grupo-tile-num" id="hosp-garagem">0</div><div class="grupo-tile-label">Na garagem</div></div>
+        <div class="grupo-tile laranja grupo-tile-full"><div class="grupo-tile-num" id="hosp-passeio">0</div><div class="grupo-tile-label">A passeio</div></div>
+      </div>
+    </div>
+    <div class="grupo-card" id="grupo-recarga" data-grupo="recarga" onclick="abrirExpansao('recarga')">
+      <div class="grupo-chevron">›</div>
+      <div class="grupo-titulo">
+        <div class="grupo-icon">⚡</div>
+        <div class="grupo-titulo-texto">Recarga</div>
+      </div>
+      <div class="grupo-tiles-2col">
+        <div class="grupo-tile amarelo"><div class="grupo-tile-num" id="rec-carregando">0</div><div class="grupo-tile-label">Carregando</div></div>
+        <div class="grupo-tile cinza"><div class="grupo-tile-num" id="rec-fila">0</div><div class="grupo-tile-label">Na fila</div></div>
+      </div>
+    </div>
+  </div>
 
-  <!-- SEÇ7: PLANTÃO + BACKUP (rodapé) -->
+  <!-- SEÇ7: PLANTÃO + BACKUP (PRESERVADO INTACTO) -->
   <div class="painel-sec" style="border-top:1px solid #eee;padding-top:10px;margin-top:4px">
     <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
       <div style="flex:1;min-width:120px">
@@ -3380,23 +3367,338 @@ function renderPainelDia(){
       </div>
     </div>
   </div>`;
+
+  // v1.9.4.1.3: recalcular contadores dos agrupadores após renderizar
+  renderAgrupadoresPainel();
 }
 
-function _painelToggleHosps(){
-  const ex=document.getElementById('pd-hosps-extra');
-  const btn=document.getElementById('pd-hosps-btn');
-  if(!ex||!btn) return;
-  const open=ex.style.display!=='none';
-  ex.style.display=open?'none':'';
-  btn.textContent=open?'ver mais ▾':'ocultar ▴';
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.1.3: AGRUPADORES DO PAINEL + OVERLAYS DE EXPANSÃO
+// ════════════════════════════════════════════════════════════════════════
+
+function renderAgrupadoresPainel(){
+  const startDay=(function(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
+  const hojeISO=new Date().toISOString().slice(0,10);
+
+  let checkinsHoje=0, checkoutsHoje=0, movtotaisHoje=0;
+  let semVaga=0, semAssin=0, atrasados=0;
+  let hospTotal=0, hospNaGaragem=0, hospPasseio=0;
+
+  for(const gs in HOSPEDAGENS){
+    const h=HOSPEDAGENS[gs]; if(!h) continue;
+    // Check-ins do dia (independente de ainda estar ativo)
+    if(h.checkin_ts && h.checkin_ts >= startDay) checkinsHoje++;
+    const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
+    if(!ativa) continue;
+    hospTotal++;
+    if(h.status==='aguardando_designacao'){
+      semVaga++;
+    } else {
+      // Localizar vaga atual via S
+      const vagaKey=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; });
+      if(vagaKey){
+        hospNaGaragem++;
+      } else if(h.apt && PASSEIO[h.apt] && PASSEIO[h.apt].hospedagem===gs){
+        hospPasseio++;
+      } else if(h.apt && PASSEIO[h.apt]){
+        // fallback: apt aparece em passeio mesmo sem campo hospedagem
+        hospPasseio++;
+      } else {
+        // fallback: contabilizar como na garagem
+        hospNaGaragem++;
+      }
+    }
+    // Check-out previsto hoje (não atrasado)
+    if(h.saida_prevista===hojeISO) checkoutsHoje++;
+    // Check-out atrasado (data passada)
+    if(h.saida_prevista && h.saida_prevista < hojeISO) atrasados++;
+  }
+
+  // Assinaturas pendentes (em hospedagens ainda ativas)
+  for(const id in VISTORIAS){
+    const v=VISTORIAS[id]; if(!v||!v.assinatura_pendente) continue;
+    const gs=v.hospedagem||v.hospedagem_gs;
+    const h=gs?HOSPEDAGENS[gs]:null;
+    if(h && (h.checkout_ts==null||h.checkout_ts===undefined)) semAssin++;
+  }
+
+  // Movimentações totais hoje (a partir do HISTORICO completo)
+  for(const apt in HISTORICO){
+    const evts=HISTORICO[apt]||[];
+    for(const e of evts){ if(e&&e.ts>=startDay) movtotaisHoje++; }
+  }
+
+  // Recarga: contadores
+  let recCarregando=0, recFila=0;
+  if(typeof MODULOS!=='undefined' && MODULOS.recarga){
+    if(typeof RECARGAS!=='undefined' && RECARGAS) recCarregando=Object.values(RECARGAS).filter(function(r){return r&&r.ativo;}).length;
+    if(typeof FILA_RECARGA!=='undefined' && Array.isArray(FILA_RECARGA)) recFila=FILA_RECARGA.length;
+  }
+
+  const set=function(id,n){ const el=document.getElementById(id); if(el) el.textContent=n; };
+  set('hoje-checkins', checkinsHoje);
+  set('hoje-checkouts', checkoutsHoje);
+  set('hoje-movtotais', movtotaisHoje);
+  set('pend-semvaga', semVaga);
+  set('pend-semassin', semAssin);
+  set('pend-atrasados', atrasados);
+  set('hosp-total', hospTotal);
+  set('hosp-garagem', hospNaGaragem);
+  set('hosp-passeio', hospPasseio);
+  set('rec-carregando', recCarregando);
+  set('rec-fila', recFila);
+
+  // Badge no agrupador Pendências
+  const totalPend=semVaga+semAssin+atrasados;
+  const grupoPend=document.getElementById('grupo-pendencias');
+  const badgePend=document.getElementById('pendencias-badge');
+  if(grupoPend && badgePend){
+    if(totalPend>0){
+      grupoPend.classList.add('tem-pendencia');
+      badgePend.textContent=totalPend;
+      badgePend.style.display='flex';
+    } else {
+      grupoPend.classList.remove('tem-pendencia');
+      badgePend.style.display='none';
+    }
+  }
 }
-function _painelToggleMov(){
-  const ex=document.getElementById('pd-mov-extra');
-  const btn=document.getElementById('pd-mov-btn');
-  if(!ex||!btn) return;
-  const open=ex.style.display!=='none';
-  ex.style.display=open?'none':'';
-  btn.textContent=open?'ver mais ▾':'ocultar ▴';
+
+// ── Overlay de expansão (reusável) ─────────────────────────────────────
+function abrirExpansao(grupo){
+  const overlay=document.getElementById('expansao-overlay');
+  const titulo=document.getElementById('exp-titulo-texto');
+  const sub=document.getElementById('exp-titulo-sub');
+  const corpo=document.getElementById('exp-corpo');
+  if(!overlay||!titulo||!sub||!corpo) return;
+  switch(grupo){
+    case 'hoje':
+      titulo.textContent='📊 Hoje';
+      sub.textContent='Movimentações do dia';
+      corpo.innerHTML=renderExpansaoHoje();
+      break;
+    case 'pendencias':
+      titulo.textContent='⏳ Pendências';
+      sub.textContent='Itens que precisam de ação';
+      corpo.innerHTML=renderExpansaoPendencias();
+      bindHandlersPendencias();
+      break;
+    case 'hospedados':
+      titulo.textContent='🏨 Hospedados';
+      sub.textContent='Carros no momento';
+      corpo.innerHTML=renderExpansaoHospedados();
+      break;
+    case 'recarga':
+      titulo.textContent='⚡ Recarga';
+      sub.textContent='Em desenvolvimento';
+      corpo.innerHTML=renderExpansaoRecarga();
+      break;
+    default: return;
+  }
+  overlay.classList.add('on');
+}
+
+function fecharExpansao(){
+  const overlay=document.getElementById('expansao-overlay');
+  if(overlay) overlay.classList.remove('on');
+}
+
+function _expansaoEstaAberta(){
+  const overlay=document.getElementById('expansao-overlay');
+  return !!(overlay && overlay.classList.contains('on'));
+}
+
+// Intercepta botão Voltar do Android
+document.addEventListener('backbutton', function(e){
+  if(_expansaoEstaAberta()){
+    if(e&&e.preventDefault) e.preventDefault();
+    fecharExpansao();
+  }
+}, false);
+
+function _fmtHrPainel(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function _fmtDataHoraPainel(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function _fmtTempoEspera(tsInicio){
+  if(!tsInicio) return '';
+  const min=Math.floor((Date.now()-tsInicio)/60000);
+  if(min<60) return min+' min';
+  const h=Math.floor(min/60), m=min%60;
+  return h+'h'+(m>0?(' '+m+'min'):'');
+}
+
+function renderExpansaoHoje(){
+  const startDay=(function(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
+  const hojeISO=new Date().toISOString().slice(0,10);
+  const checkinsHoje=[], checkoutsHoje=[];
+  for(const gs in HOSPEDAGENS){
+    const h=HOSPEDAGENS[gs]; if(!h) continue;
+    if(h.checkin_ts && h.checkin_ts >= startDay) checkinsHoje.push(Object.assign({_gs:gs},h));
+    const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
+    if(ativa && h.saida_prevista===hojeISO) checkoutsHoje.push(Object.assign({_gs:gs},h));
+  }
+  checkinsHoje.sort(function(a,b){ return (b.checkin_ts||0)-(a.checkin_ts||0); });
+
+  let html='';
+  html+='<div class="exp-secao-titulo">CHECK-INS DO DIA ('+checkinsHoje.length+')</div>';
+  if(checkinsHoje.length===0){
+    html+='<div class="exp-empty">Nenhum check-in registrado hoje</div>';
+  } else {
+    for(const h of checkinsHoje){
+      const hora=_fmtHrPainel(h.checkin_ts);
+      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):(h.status==='aguardando_designacao'?'Aguardando vaga':'—');
+      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+      html+='<div class="exp-item"><div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div><div class="exp-item-sub">'+_vtEsc(vaga)+' · '+_vtEsc(h.usuario_checkin||'')+' · '+hora+'</div></div>';
+    }
+  }
+  html+='<div class="exp-secao-titulo">CHECK-OUTS PREVISTOS HOJE ('+checkoutsHoje.length+')</div>';
+  if(checkoutsHoje.length===0){
+    html+='<div class="exp-empty">Nenhum check-out previsto hoje</div>';
+  } else {
+    for(const h of checkoutsHoje){
+      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):'—';
+      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+      html+='<div class="exp-item"><div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div><div class="exp-item-sub">'+_vtEsc(vaga)+' · '+_vtEsc(h._gs||'')+'</div></div>';
+    }
+  }
+  return html;
+}
+
+function renderExpansaoPendencias(){
+  const hojeISO=new Date().toISOString().slice(0,10);
+  const semVaga=[], semAssin=[], atrasados=[];
+  for(const gs in HOSPEDAGENS){
+    const h=HOSPEDAGENS[gs]; if(!h) continue;
+    const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
+    if(!ativa) continue;
+    if(h.status==='aguardando_designacao') semVaga.push(Object.assign({_gs:gs},h));
+    if(h.saida_prevista && h.saida_prevista < hojeISO){
+      const diasAtraso=Math.floor((new Date(hojeISO)-new Date(h.saida_prevista))/(1000*60*60*24));
+      atrasados.push(Object.assign({_gs:gs,_diasAtraso:diasAtraso},h));
+    }
+  }
+  for(const id in VISTORIAS){
+    const v=VISTORIAS[id]; if(!v||!v.assinatura_pendente) continue;
+    const gs=v.hospedagem||v.hospedagem_gs;
+    const h=gs?HOSPEDAGENS[gs]:null;
+    if(h && (h.checkout_ts==null||h.checkout_ts===undefined)) semAssin.push({vistoria:v, hospedagem:Object.assign({_gs:gs},h)});
+  }
+
+  if(semVaga.length===0 && semAssin.length===0 && atrasados.length===0){
+    return '<div class="exp-empty exp-empty-success">✓ Nenhuma pendência no momento</div>';
+  }
+
+  let html='';
+  if(semVaga.length>0){
+    html+='<div class="exp-secao-titulo">AGUARDANDO VAGA ('+semVaga.length+')</div>';
+    for(const h of semVaga){
+      const hora=_fmtHrPainel(h.checkin_ts);
+      const tempo=_fmtTempoEspera(h.checkin_ts);
+      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+      html+='<div class="card-aguardando-vaga">'+
+        '<div class="cav-info">'+
+        '<div class="cav-titulo">🚗 Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
+        '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · aguardando desde '+hora+(tempo?' ('+tempo+')':'')+'</div>'+
+        '</div>'+
+        '<div class="cav-botoes">'+
+        '<button class="cav-btn-detalhes" data-gs="'+_vtEsc(h._gs||'')+'">Detalhes</button>'+
+        '<button class="cav-btn-designar" data-gs="'+_vtEsc(h._gs||'')+'">Designar vaga</button>'+
+        '</div></div>';
+    }
+  }
+  if(semAssin.length>0){
+    html+='<div class="exp-secao-titulo">ASSINATURA PENDENTE ('+semAssin.length+')</div>';
+    for(const item of semAssin){
+      const h=item.hospedagem, v=item.vistoria;
+      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):'Aguardando vaga';
+      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+      html+='<div class="card-pend-assin">'+
+        '<div class="cav-titulo">🚗 Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
+        '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · '+_vtEsc(vaga)+' · Vistoria '+_vtEsc(v.numero||v.id||'')+'</div>'+
+        '<button class="btn-coletar-assin" data-vist="'+_vtEsc(v.id||'')+'">Coletar assinatura</button>'+
+        '</div>';
+    }
+  }
+  if(atrasados.length>0){
+    html+='<div class="exp-secao-titulo">CHECK-OUTS ATRASADOS ('+atrasados.length+')</div>';
+    for(const h of atrasados){
+      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):'—';
+      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+      html+='<div class="card-pend-atraso">'+
+        '<div class="cav-titulo">🚗 Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
+        '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · '+_vtEsc(vaga)+' · saída prevista '+_vtEsc(h.saida_prevista||'')+'</div>'+
+        '<div class="tag-atraso">'+h._diasAtraso+' dia(s) atrasado</div>'+
+        '</div>';
+    }
+  }
+  return html;
+}
+
+function bindHandlersPendencias(){
+  const corpo=document.getElementById('exp-corpo'); if(!corpo) return;
+  corpo.querySelectorAll('.cav-btn-detalhes').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      const gs=btn.getAttribute('data-gs');
+      if(gs && typeof abrirDetalhesAguardando==='function') abrirDetalhesAguardando(gs);
+    });
+  });
+  corpo.querySelectorAll('.cav-btn-designar').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      const gs=btn.getAttribute('data-gs');
+      if(!gs) return;
+      fecharExpansao();
+      if(typeof ativarDesignacaoHosp==='function') ativarDesignacaoHosp(gs);
+    });
+  });
+  corpo.querySelectorAll('.btn-coletar-assin').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      const vistId=btn.getAttribute('data-vist');
+      if(!vistId) return;
+      fecharExpansao();
+      if(typeof assinarVistoria==='function') assinarVistoria(vistId);
+    });
+  });
+}
+
+function renderExpansaoHospedados(){
+  const ativas=Object.values(HOSPEDAGENS||{}).filter(function(h){
+    if(!h) return false;
+    if(h.checkout_ts) return false;
+    if(h.status==='ativa') return true;
+    if(h.status==='aguardando_designacao') return true;
+    if(!h.status) return true;
+    return false;
+  }).sort(function(a,b){ return (b.checkin_ts||0)-(a.checkin_ts||0); });
+
+  if(ativas.length===0) return '<div class="exp-empty">Nenhum carro hospedado no momento</div>';
+
+  let html='';
+  for(const h of ativas){
+    const checkinFmt=_fmtDataHoraPainel(h.checkin_ts);
+    let vaga='—', tagAg='';
+    if(h.status==='aguardando_designacao'){
+      tagAg='<span class="tag-aguardando">⏳ Aguardando vaga</span>';
+    } else {
+      const vagaKey=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===h.numero&&S[k].status==='occupied'; });
+      if(vagaKey) vaga='Vaga '+vagaKey;
+      else if(h.apt && PASSEIO[h.apt]) vaga='A passeio';
+      else if(h.vaga_inicial) vaga='Vaga '+h.vaga_inicial;
+    }
+    const veic=[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'—';
+    html+='<div class="exp-item"><div class="exp-item-titulo">'+_vtEsc(h.numero||'')+' · Apt '+_vtEsc(h.apt||'')+(h.guest?' · '+_vtEsc(h.guest):'')+tagAg+'</div>'+
+      '<div class="exp-item-sub">'+_vtEsc(veic)+' · '+_vtEsc(vaga)+' · CI '+checkinFmt+'</div></div>';
+  }
+  return html;
+}
+
+function renderExpansaoRecarga(){
+  return '<div class="exp-em-breve">'+
+    '<div class="exp-em-breve-icon">⚡</div>'+
+    '<div class="exp-em-breve-titulo">Em breve</div>'+
+    '<div class="exp-em-breve-sub">Funcionalidade em desenvolvimento.<br>Disponível na próxima atualização.</div>'+
+    '</div>';
 }
 
 // ── GESTÃO COM PIN ────────────────────────────────────────────────────────
@@ -4917,12 +5219,16 @@ function _vtAssinaturaModalReativar(){
 function _vtAssinaturaLimparCompleto(){
   if(!_nciD) return;
   _nciD.assinatura=null;
+  _nciD.assinatura_pendente=true;
   _nciSigBackup=null;
   _nciSigDirty=false;
   const cv=document.getElementById('canvas-assinatura');
   if(cv && _nciSigCtx){
     try{ _nciSigCtx.clearRect(0,0,cv.width/(_nciSigDpr||1),cv.height/(_nciSigDpr||1)); }catch(_){}
   }
+  // Bug F v1.9.4.1.3: remover classe tem-assinatura para esconder preview img
+  const box=document.getElementById('area-assinatura');
+  if(box) box.classList.remove('tem-assinatura');
   _vtAtualizarSigUI();
   _nciAtualizarProgresso();
   console.log('[VST] Assinatura limpa completamente');
@@ -4942,14 +5248,24 @@ function _vtAtivarAssinatura(){
 
 function _vtDesativarAssinatura(salvar){
   if(MODO_VISTORIA_ATIVO!=='assinatura') return;
+  const cv=document.getElementById('canvas-assinatura');
   if(salvar){
-    const cv=document.getElementById('canvas-assinatura');
     if(cv&&_nciSigDirty){
+      // Bug F v1.9.4.1.3: salvar base64 ANTES de limpar
       _nciD.assinatura=cv.toDataURL('image/png');
+      _nciD.assinatura_pendente=false;
       _nciSigBackup=null;
       _nciRascAgendar();
     }
   }
+  // Bug F v1.9.4.1.3: limpar canvas SEMPRE ao desativar (evita duplicação ao reativar/orientar)
+  if(cv && _nciSigCtx){
+    try{
+      const r=cv.getBoundingClientRect();
+      _nciSigCtx.clearRect(0,0,r.width||cv.width,r.height||cv.height);
+    }catch(_){}
+  }
+  _nciSigDirty=false;
   MODO_VISTORIA_ATIVO=null;
   const a=document.getElementById('area-assinatura');
   if(a) a.classList.remove('ativa');
@@ -4969,21 +5285,27 @@ function _vtFinalizarAssinatura(salvar){
 }
 
 function _vtAtualizarSigUI(){
+  const box=document.getElementById('area-assinatura');
   const img=document.getElementById('assinatura-preview');
-  const toq=document.getElementById('assinatura-toque');
-  if(!img||!toq) return;
+  if(!box||!img) return;
+  // Bug F v1.9.4.1.3: classe tem-assinatura controla visibilidade via CSS
   if(_nciD&&_nciD.assinatura){
     img.src=_nciD.assinatura;
-    img.style.display='block';
-    toq.style.display='none';
+    box.classList.add('tem-assinatura');
   } else {
-    img.style.display='none';
-    toq.style.display='block';
+    img.removeAttribute('src');
+    box.classList.remove('tem-assinatura');
   }
 }
 
 // CAMADA 6: canvas com DPR aplicado corretamente
 function _vtSigSetup(){
+  // Bug F v1.9.4.1.3: só age se área de assinatura está ATIVA (evita duplicação
+  // após [Concluir] quando resize/orientationchange dispara este handler)
+  if(MODO_VISTORIA_ATIVO!=='assinatura'){
+    console.log('[VST] _vtSigSetup: ignorado (modo não-ativo)');
+    return;
+  }
   const cv=document.getElementById('canvas-assinatura'); if(!cv) return;
   const r=cv.getBoundingClientRect();
   if(!r.width||!r.height){ setTimeout(_vtSigSetup,120); return; }
@@ -5036,8 +5358,10 @@ function _vtOnResize(){
       _vtRenderAvariasLayer();         // já recria marks + debug dots
     }
     // 2. Reconfigurar canvas assinatura preservando desenho
+    // Bug F v1.9.4.1.3: só reconfigura se área está ATIVA (caso contrário canvas
+    // está oculto e o preview <img> trata da exibição)
     const cv=document.getElementById('canvas-assinatura');
-    if(cv){
+    if(cv && MODO_VISTORIA_ATIVO==='assinatura'){
       const prevB64=(_nciSigDirty?cv.toDataURL('image/png'):null)||_nciSigBackup||(_nciD&&_nciD.assinatura)||null;
       _vtSigSetup();
       if(prevB64){
