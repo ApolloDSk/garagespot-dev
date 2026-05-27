@@ -339,6 +339,7 @@ html.font-large{zoom:1.13}
 .campo-label .req{color:#E24B4A;font-weight:700}
 .campo-input{width:100%;border:1.5px solid #ccc;border-radius:7px;padding:9px 11px;font-size:14px;font-family:inherit;background:#fff;outline:none;box-sizing:border-box;min-height:44px}
 .campo-input.preenchido{background:#f8f8f8;color:#444;font-weight:600}
+.campo-input.campo-readonly{background:#f0f4f9;color:#666;cursor:not-allowed;border-color:#cdd6e1}
 .campo-input:focus{border-color:var(--cp)}
 .campo-input.err{border-color:#E24B4A;background:#fff5f5}
 textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
@@ -601,10 +602,18 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .exp-em-breve-icon{font-size:64px;margin-bottom:20px;opacity:0.4}
 .exp-em-breve-titulo{font-size:24px;font-weight:700;color:#555;margin-bottom:8px}
 .exp-em-breve-sub{font-size:13px;color:#888;line-height:1.6}
+
+/* v1.9.4.1.5 Toggle de filtros no topo das expansões */
+.toggle-filtros{display:flex;background:#f0f0f0;border-radius:8px;padding:4px;margin:8px 0 12px;gap:4px;overflow-x:auto}
+.toggle-item{flex:1;min-width:fit-content;padding:8px 12px;text-align:center;font-size:12px;font-weight:600;color:#666;border-radius:6px;cursor:pointer;transition:all .2s;min-height:36px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
+.toggle-item.ativo{background:#185FA5;color:#fff;font-weight:700;box-shadow:0 1px 3px rgba(24,95,165,.3)}
+.exp-item.clicavel{cursor:pointer}
+.exp-item.clicavel:active{transform:scale(0.98)}
+.ic-tag-atrasado{display:inline-block;background:#FFE5E5;color:#C53030;font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;margin-top:6px}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.4 -->
+<!-- GarageSpot v1.9.4.1.5 -->
 <body>
 <div class="page">
 
@@ -3297,16 +3306,16 @@ function renderPainelDia(){
 
   <!-- v1.9.4.1.3: AGRUPADORES EM 2 COLUNAS — LINHA 1 -->
   <div class="grupos-grid">
-    <div class="grupo-card" id="grupo-hoje" data-grupo="hoje" onclick="abrirExpansao('hoje')">
+    <div class="grupo-card" id="grupo-hoje" data-grupo="hoje" onclick="abrirExpansao('hoje','tudo')">
       <div class="grupo-chevron">›</div>
       <div class="grupo-titulo">
         <div class="grupo-icon">📊</div>
         <div class="grupo-titulo-texto">Hoje</div>
       </div>
       <div class="grupo-tiles-2col">
-        <div class="grupo-tile azul"><div class="grupo-tile-num" id="hoje-checkins">0</div><div class="grupo-tile-label">Check-ins</div></div>
-        <div class="grupo-tile laranja"><div class="grupo-tile-num" id="hoje-checkouts">0</div><div class="grupo-tile-label">Check-outs</div></div>
-        <div class="grupo-tile verde grupo-tile-full"><div class="grupo-tile-num" id="hoje-movtotais">0</div><div class="grupo-tile-label">Movimentações totais</div></div>
+        <div class="grupo-tile azul" onclick="event.stopPropagation();abrirExpansao('hoje','checkin')"><div class="grupo-tile-num" id="hoje-checkins">0</div><div class="grupo-tile-label">Check-ins</div></div>
+        <div class="grupo-tile laranja" onclick="event.stopPropagation();abrirExpansao('hoje','checkout')"><div class="grupo-tile-num" id="hoje-checkouts">0</div><div class="grupo-tile-label">Check-outs</div></div>
+        <div class="grupo-tile verde grupo-tile-full" onclick="event.stopPropagation();abrirExpansao('hoje','tudo')"><div class="grupo-tile-num" id="hoje-movtotais">0</div><div class="grupo-tile-label">Movimentações</div></div>
       </div>
     </div>
     <div class="grupo-card" id="grupo-pendencias" data-grupo="pendencias" onclick="abrirExpansao('pendencias')">
@@ -3319,23 +3328,22 @@ function renderPainelDia(){
       <div class="grupo-tiles-2col">
         <div class="grupo-tile amarelo"><div class="grupo-tile-num" id="pend-semvaga">0</div><div class="grupo-tile-label">Sem vaga</div></div>
         <div class="grupo-tile vermelho"><div class="grupo-tile-num" id="pend-semassin">0</div><div class="grupo-tile-label">Sem assin.</div></div>
-        <div class="grupo-tile laranja grupo-tile-full"><div class="grupo-tile-num" id="pend-atrasados">0</div><div class="grupo-tile-label">Check-out atrasado</div></div>
       </div>
     </div>
   </div>
 
   <!-- v1.9.4.1.3: AGRUPADORES EM 2 COLUNAS — LINHA 2 -->
   <div class="grupos-grid">
-    <div class="grupo-card" id="grupo-hospedados" data-grupo="hospedados" onclick="abrirExpansao('hospedados')">
+    <div class="grupo-card" id="grupo-hospedados" data-grupo="hospedados" onclick="abrirExpansao('hospedados','tudo')">
       <div class="grupo-chevron">›</div>
       <div class="grupo-titulo">
         <div class="grupo-icon">🏨</div>
         <div class="grupo-titulo-texto verde">Hospedados</div>
       </div>
       <div class="grupo-tiles-2col">
-        <div class="grupo-tile verde"><div class="grupo-tile-num" id="hosp-total">0</div><div class="grupo-tile-label">Total</div></div>
-        <div class="grupo-tile azul"><div class="grupo-tile-num" id="hosp-garagem">0</div><div class="grupo-tile-label">Na garagem</div></div>
-        <div class="grupo-tile laranja grupo-tile-full"><div class="grupo-tile-num" id="hosp-passeio">0</div><div class="grupo-tile-label">A passeio</div></div>
+        <div class="grupo-tile verde" onclick="event.stopPropagation();abrirExpansao('hospedados','tudo')"><div class="grupo-tile-num" id="hosp-total">0</div><div class="grupo-tile-label">Total</div></div>
+        <div class="grupo-tile azul" onclick="event.stopPropagation();abrirExpansao('hospedados','garagem')"><div class="grupo-tile-num" id="hosp-garagem">0</div><div class="grupo-tile-label">Na garagem</div></div>
+        <div class="grupo-tile laranja grupo-tile-full" onclick="event.stopPropagation();abrirExpansao('hospedados','passeio')"><div class="grupo-tile-num" id="hosp-passeio">0</div><div class="grupo-tile-label">A passeio</div></div>
       </div>
     </div>
     <div class="grupo-card" id="grupo-recarga" data-grupo="recarga" onclick="abrirExpansao('recarga')">
@@ -3435,21 +3443,24 @@ function renderAgrupadoresPainel(){
     if(typeof FILA_RECARGA!=='undefined' && Array.isArray(FILA_RECARGA)) recFila=FILA_RECARGA.length;
   }
 
+  // Melhoria 3 v1.9.4.1.5: tile Check-outs do agrupador Hoje soma previstos hoje + atrasados
+  const checkoutsTotalHoje = checkoutsHoje + atrasados;
+
   const set=function(id,n){ const el=document.getElementById(id); if(el) el.textContent=n; };
   set('hoje-checkins', checkinsHoje);
-  set('hoje-checkouts', checkoutsHoje);
+  set('hoje-checkouts', checkoutsTotalHoje);
   set('hoje-movtotais', movtotaisHoje);
   set('pend-semvaga', semVaga);
   set('pend-semassin', semAssin);
-  set('pend-atrasados', atrasados);
+  set('pend-atrasados', atrasados); // mantém id por compatibilidade (tile removido do HTML)
   set('hosp-total', hospTotal);
   set('hosp-garagem', hospNaGaragem);
   set('hosp-passeio', hospPasseio);
   set('rec-carregando', recCarregando);
   set('rec-fila', recFila);
 
-  // Badge no agrupador Pendências
-  const totalPend=semVaga+semAssin+atrasados;
+  // Badge no agrupador Pendências — Melhoria 3: NÃO inclui atrasados (movidos para Hoje)
+  const totalPend=semVaga+semAssin;
   const grupoPend=document.getElementById('grupo-pendencias');
   const badgePend=document.getElementById('pendencias-badge');
   if(grupoPend && badgePend){
@@ -3465,17 +3476,22 @@ function renderAgrupadoresPainel(){
 }
 
 // ── Overlay de expansão (reusável) ─────────────────────────────────────
-function abrirExpansao(grupo){
+let _expansaoGrupoAtual = null;
+let _expansaoFiltroAtual = null;
+function abrirExpansao(grupo, filtroInicial){
   const overlay=document.getElementById('expansao-overlay');
   const titulo=document.getElementById('exp-titulo-texto');
   const sub=document.getElementById('exp-titulo-sub');
   const corpo=document.getElementById('exp-corpo');
   if(!overlay||!titulo||!sub||!corpo) return;
+  _expansaoGrupoAtual=grupo;
+  _expansaoFiltroAtual=filtroInicial||'tudo';
   switch(grupo){
     case 'hoje':
       titulo.textContent='📊 Hoje';
       sub.textContent='Movimentações do dia';
-      corpo.innerHTML=renderExpansaoHoje();
+      corpo.innerHTML=renderExpansaoHoje(_expansaoFiltroAtual);
+      bindHandlersHoje();
       break;
     case 'pendencias':
       titulo.textContent='⏳ Pendências';
@@ -3486,7 +3502,8 @@ function abrirExpansao(grupo){
     case 'hospedados':
       titulo.textContent='🏨 Hospedados';
       sub.textContent='Carros no momento';
-      corpo.innerHTML=renderExpansaoHospedados();
+      corpo.innerHTML=renderExpansaoHospedados(_expansaoFiltroAtual);
+      bindHandlersHospedados();
       break;
     case 'recarga':
       titulo.textContent='⚡ Recarga';
@@ -3526,55 +3543,221 @@ function _fmtTempoEspera(tsInicio){
   return h+'h'+(m>0?(' '+m+'min'):'');
 }
 
-function renderExpansaoHoje(){
+function _fmtDataExibicao(iso){
+  if(!iso) return '—';
+  try{
+    const [y,m,d]=iso.split('-');
+    return d+'/'+m+'/'+y;
+  }catch(e){ return iso; }
+}
+
+function _vagaIdDoGs(gs){
+  return Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; });
+}
+
+function renderExpansaoHoje(filtro){
+  filtro=filtro||'tudo';
   const startDay=(function(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
   const hojeISO=new Date().toISOString().slice(0,10);
-  const checkinsHoje=[], checkoutsHoje=[];
+  const checkins=[], checkoutsHoje=[], checkoutsAtrasados=[];
   for(const gs in HOSPEDAGENS){
     const h=HOSPEDAGENS[gs]; if(!h) continue;
-    if(h.checkin_ts && h.checkin_ts >= startDay) checkinsHoje.push(Object.assign({_gs:gs},h));
+    if(h.checkin_ts && h.checkin_ts >= startDay) checkins.push(Object.assign({_gs:gs},h));
     const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
-    if(ativa && h.saida_prevista===hojeISO) checkoutsHoje.push(Object.assign({_gs:gs},h));
-  }
-  checkinsHoje.sort(function(a,b){ return (b.checkin_ts||0)-(a.checkin_ts||0); });
-
-  let html='';
-  html+='<div class="exp-secao-titulo">CHECK-INS DO DIA ('+checkinsHoje.length+')</div>';
-  if(checkinsHoje.length===0){
-    html+='<div class="exp-empty">Nenhum check-in registrado hoje</div>';
-  } else {
-    for(const h of checkinsHoje){
-      const hora=_fmtHrPainel(h.checkin_ts);
-      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):(h.status==='aguardando_designacao'?'Aguardando vaga':'—');
-      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
-      html+='<div class="exp-item"><div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div><div class="exp-item-sub">'+_vtEsc(vaga)+' · '+_vtEsc(h.usuario_checkin||'')+' · '+hora+'</div></div>';
+    if(ativa){
+      if(h.saida_prevista===hojeISO) checkoutsHoje.push(Object.assign({_gs:gs},h));
+      else if(h.saida_prevista && h.saida_prevista < hojeISO) checkoutsAtrasados.push(Object.assign({_gs:gs},h));
     }
   }
-  html+='<div class="exp-secao-titulo">CHECK-OUTS PREVISTOS HOJE ('+checkoutsHoje.length+')</div>';
-  if(checkoutsHoje.length===0){
-    html+='<div class="exp-empty">Nenhum check-out previsto hoje</div>';
-  } else {
-    for(const h of checkoutsHoje){
-      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):'—';
-      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
-      html+='<div class="exp-item"><div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div><div class="exp-item-sub">'+_vtEsc(vaga)+' · '+_vtEsc(h._gs||'')+'</div></div>';
+  checkins.sort(function(a,b){ return (b.checkin_ts||0)-(a.checkin_ts||0); });
+  // Outras movimentações de hoje (não checkin/checkout): saidas/retornos/etc
+  const outras=[];
+  for(const apt in HISTORICO){
+    const evts=HISTORICO[apt]||[];
+    for(const e of evts){
+      if(!e||e.ts<startDay) continue;
+      const tipo=e.tipo;
+      if(tipo==='checkin'||tipo==='checkout') continue;
+      outras.push(Object.assign({_apt:apt},e));
+    }
+  }
+  outras.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+
+  // Toggle
+  const tg=function(f,label){return '<div class="toggle-item'+(filtro===f?' ativo':'')+'" onclick="abrirExpansao(\'hoje\',\''+f+'\')">'+label+'</div>';};
+  let html='<div class="toggle-filtros" data-grupo="hoje">'+
+    tg('tudo','Tudo')+tg('checkin','Check-ins')+tg('checkout','Check-outs')+tg('outras','Outras')+
+    '</div>';
+
+  // Check-ins
+  if(filtro==='tudo'||filtro==='checkin'){
+    html+='<div class="exp-secao-titulo">CHECK-INS DO DIA ('+checkins.length+')</div>';
+    if(checkins.length===0){
+      html+='<div class="exp-empty">Nenhum check-in registrado hoje</div>';
+    } else {
+      for(const h of checkins){
+        const hora=_fmtHrPainel(h.checkin_ts);
+        const vagaId=_vagaIdDoGs(h._gs);
+        const vagaLbl=vagaId?('Vaga '+vagaId):(h.status==='aguardando_designacao'?'Aguardando vaga':(h.vaga_inicial?'Vaga '+h.vaga_inicial:'—'));
+        const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+        const clickAttr=vagaId
+          ?(' onclick="closeOv&&closeOv();fecharExpansao();showDet(\''+_vtEsc(vagaId)+'\',0)"')
+          :(' onclick="fecharExpansao();abrirDetalhesAguardando(\''+_vtEsc(h._gs||'')+'\')"');
+        html+='<div class="exp-item clicavel"'+clickAttr+'>'+
+          '<div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
+          '<div class="exp-item-sub">'+_vtEsc(vagaLbl)+' · '+_vtEsc(h.usuario_checkin||'')+' · '+hora+'</div>'+
+          '</div>';
+      }
+    }
+  }
+
+  // Check-outs (hoje + atrasados agrupados por data)
+  if(filtro==='tudo'||filtro==='checkout'){
+    const totalCO=checkoutsHoje.length+checkoutsAtrasados.length;
+    html+='<div class="exp-secao-titulo">CHECK-OUTS ('+totalCO+')</div>';
+    if(totalCO===0){
+      html+='<div class="exp-empty">Nenhum check-out previsto</div>';
+    } else {
+      if(checkoutsHoje.length>0){
+        html+='<div class="exp-secao-titulo" style="margin-top:8px;font-weight:700;color:#185FA5">HOJE</div>';
+        for(const h of checkoutsHoje){
+          const vagaId=_vagaIdDoGs(h._gs);
+          const vagaLbl=vagaId?('Vaga '+vagaId):(h.vaga_inicial?'Vaga '+h.vaga_inicial:'—');
+          const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+          const click=vagaId
+            ?('onclick="fecharExpansao();_iniciarCheckout(\''+_vtEsc(vagaId)+'\')"')
+            :('onclick="fecharExpansao();abrirDetalhesAguardando(\''+_vtEsc(h._gs||'')+'\')"');
+          html+='<div class="exp-item clicavel" '+click+'>'+
+            '<div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
+            '<div class="exp-item-sub">'+_vtEsc(vagaLbl)+' · '+_vtEsc(h._gs||'')+' · saída prevista hoje</div>'+
+            '</div>';
+        }
+      }
+      // Agrupar atrasados por data (descendente — mais recente primeiro)
+      if(checkoutsAtrasados.length>0){
+        const porData={};
+        for(const h of checkoutsAtrasados){
+          const d=h.saida_prevista||'sem_data';
+          if(!porData[d]) porData[d]=[];
+          porData[d].push(h);
+        }
+        const datas=Object.keys(porData).sort().reverse();
+        for(const data of datas){
+          const label=data==='sem_data'?'SEM DATA':_fmtDataExibicao(data);
+          html+='<div class="exp-secao-titulo" style="margin-top:8px;color:#BA7517">'+label+'</div>';
+          for(const h of porData[data]){
+            const vagaId=_vagaIdDoGs(h._gs);
+            const vagaLbl=vagaId?('Vaga '+vagaId):(h.vaga_inicial?'Vaga '+h.vaga_inicial:'—');
+            const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
+            html+='<div class="exp-item clicavel" onclick="_modalCheckoutAtrasado(\''+_vtEsc(h._gs||'')+'\')">'+
+              '<div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
+              '<div class="exp-item-sub">'+_vtEsc(vagaLbl)+' · '+_vtEsc(h._gs||'')+' · saída prevista '+_fmtDataExibicao(data)+'</div>'+
+              '<span class="ic-tag-atrasado">Atrasado</span>'+
+              '</div>';
+          }
+        }
+      }
+    }
+  }
+
+  // Outras movimentações
+  if(filtro==='tudo'||filtro==='outras'){
+    html+='<div class="exp-secao-titulo">OUTRAS MOVIMENTAÇÕES ('+outras.length+')</div>';
+    if(outras.length===0){
+      html+='<div class="exp-empty">Nenhuma outra movimentação hoje</div>';
+    } else {
+      const tLabel={saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria Criada',vistoria_assinada:'Vistoria Assinada',vistoria_adicional_criada:'Vistoria Adicional'};
+      for(const e of outras){
+        const hora=_fmtHrPainel(e.ts);
+        const isDesignacao=e.tipo==='movimentacao_vaga'||(e.tipo==='checkin' && e.vaga);
+        const click=(isDesignacao&&e.vaga)?(' onclick="fecharExpansao();navTo(\'mapa\');executarBusca(\''+_vtEsc(e._apt)+'\')"'):'';
+        const cls=click?' clicavel':'';
+        html+='<div class="exp-item'+cls+'"'+click+'>'+
+          '<div class="exp-item-titulo">'+_vtEsc(tLabel[e.tipo]||e.tipo)+' · Apt '+_vtEsc(e._apt||'')+'</div>'+
+          '<div class="exp-item-sub">'+(e.vaga?'Vaga '+_vtEsc(e.vaga)+' · ':'')+_vtEsc(e.usuario||'')+' · '+hora+'</div>'+
+          '</div>';
+      }
     }
   }
   return html;
 }
 
+function bindHandlersHoje(){
+  // Handlers já são inline via onclick — nada a fazer
+}
+
+// v1.9.4.1.5: Iniciar checkout de uma vaga via expansão Hoje
+window._iniciarCheckout = function(vagaId){
+  if(typeof showMenu==='function'){ showMenu(vagaId); }
+  else if(typeof showDet==='function'){ showDet(vagaId,0); }
+};
+
+// v1.9.4.1.5: Modal de 3 opções para check-out atrasado
+window._modalCheckoutAtrasado = function(gs){
+  const hosp=HOSPEDAGENS[gs];
+  if(!hosp){ showToast('Hospedagem não encontrada',2500); return; }
+  showModalAux({
+    titulo:'Check-out atrasado',
+    texto:'Apt '+(hosp.apt||'—')+' · '+(hosp.model||'')+' '+(hosp.color||'')+'. Saída prevista '+_fmtDataExibicao(hosp.saida_prevista)+'.',
+    botoes:[
+      {label:'Dar check-out agora',cls:'primary',action:function(){
+        fecharExpansao();
+        const vagaId=_vagaIdDoGs(gs);
+        if(vagaId) _iniciarCheckout(vagaId);
+        else abrirDetalhesAguardando(gs);
+      }},
+      {label:'Alterar data de check-out',action:function(){
+        _abrirDatePickerNovaData(gs);
+      }},
+      {label:'Cancelar',action:'close'}
+    ]
+  });
+};
+
+// v1.9.4.1.5: Date picker para alterar saida_prevista (só datas futuras)
+window._abrirDatePickerNovaData = function(gs){
+  const amanha=new Date();
+  amanha.setDate(amanha.getDate()+1);
+  const minStr=amanha.toISOString().slice(0,10);
+  const input=document.createElement('input');
+  input.type='date';
+  input.min=minStr;
+  input.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;padding:12px;font-size:16px;border:2px solid #185FA5;border-radius:8px;background:#fff';
+  document.body.appendChild(input);
+  setTimeout(function(){ try{ input.focus(); input.click&&input.click(); }catch(e){} },50);
+  input.addEventListener('change',function(){
+    const v=input.value;
+    if(v){
+      const hosp=HOSPEDAGENS[gs];
+      if(hosp){
+        const ant=hosp.saida_prevista;
+        hosp.saida_prevista=v;
+        if(typeof saveHospedagens==='function') saveHospedagens();
+        if(typeof addHistorico==='function'){
+          addHistorico(hosp.apt,'edicao',null,'Saída prevista: '+(ant||'—')+' → '+v,'sistema',gs);
+        }
+        showToast('Data de check-out alterada para '+_fmtDataExibicao(v),3000);
+        if(typeof renderPainelDia==='function') renderPainelDia();
+        // Re-renderizar expansão se aberta
+        if(_expansaoGrupoAtual==='hoje'){
+          const corpo=document.getElementById('exp-corpo');
+          if(corpo) corpo.innerHTML=renderExpansaoHoje(_expansaoFiltroAtual);
+        }
+      }
+    }
+    input.remove();
+  });
+  input.addEventListener('blur',function(){ setTimeout(function(){ if(input.parentNode) input.remove(); },200); });
+};
+
 function renderExpansaoPendencias(){
-  const hojeISO=new Date().toISOString().slice(0,10);
-  const semVaga=[], semAssin=[], atrasados=[];
+  // v1.9.4.1.5 Melhoria 3: atrasados removidos daqui (movidos para agrupador Hoje)
+  const semVaga=[], semAssin=[];
   for(const gs in HOSPEDAGENS){
     const h=HOSPEDAGENS[gs]; if(!h) continue;
     const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
     if(!ativa) continue;
     if(h.status==='aguardando_designacao') semVaga.push(Object.assign({_gs:gs},h));
-    if(h.saida_prevista && h.saida_prevista < hojeISO){
-      const diasAtraso=Math.floor((new Date(hojeISO)-new Date(h.saida_prevista))/(1000*60*60*24));
-      atrasados.push(Object.assign({_gs:gs,_diasAtraso:diasAtraso},h));
-    }
   }
   for(const id in VISTORIAS){
     const v=VISTORIAS[id]; if(!v||!v.assinatura_pendente) continue;
@@ -3583,7 +3766,7 @@ function renderExpansaoPendencias(){
     if(h && (h.checkout_ts==null||h.checkout_ts===undefined)) semAssin.push({vistoria:v, hospedagem:Object.assign({_gs:gs},h)});
   }
 
-  if(semVaga.length===0 && semAssin.length===0 && atrasados.length===0){
+  if(semVaga.length===0 && semAssin.length===0){
     return '<div class="exp-empty exp-empty-success">✓ Nenhuma pendência no momento</div>';
   }
 
@@ -3594,7 +3777,7 @@ function renderExpansaoPendencias(){
       const hora=_fmtHrPainel(h.checkin_ts);
       const tempo=_fmtTempoEspera(h.checkin_ts);
       const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
-      html+='<div class="card-aguardando-vaga">'+
+      html+='<div class="card-aguardando-vaga" style="cursor:pointer" data-gs="'+_vtEsc(h._gs||'')+'" data-action="card">'+
         '<div class="cav-info">'+
         '<div class="cav-titulo">🚗 Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
         '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · aguardando desde '+hora+(tempo?' ('+tempo+')':'')+'</div>'+
@@ -3611,22 +3794,11 @@ function renderExpansaoPendencias(){
       const h=item.hospedagem, v=item.vistoria;
       const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):'Aguardando vaga';
       const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
-      html+='<div class="card-pend-assin">'+
+      const vagaId=_vagaIdDoGs(h._gs);
+      html+='<div class="card-pend-assin" style="cursor:pointer" data-gs="'+_vtEsc(h._gs||'')+'" data-vaga="'+_vtEsc(vagaId||'')+'" data-action="card-assin">'+
         '<div class="cav-titulo">🚗 Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
         '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · '+_vtEsc(vaga)+' · Vistoria '+_vtEsc(v.numero||v.id||'')+'</div>'+
         '<button class="btn-coletar-assin" data-vist="'+_vtEsc(v.id||'')+'">Coletar assinatura</button>'+
-        '</div>';
-    }
-  }
-  if(atrasados.length>0){
-    html+='<div class="exp-secao-titulo">CHECK-OUTS ATRASADOS ('+atrasados.length+')</div>';
-    for(const h of atrasados){
-      const vaga=h.vaga_inicial?('Vaga '+h.vaga_inicial):'—';
-      const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
-      html+='<div class="card-pend-atraso">'+
-        '<div class="cav-titulo">🚗 Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
-        '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · '+_vtEsc(vaga)+' · saída prevista '+_vtEsc(h.saida_prevista||'')+'</div>'+
-        '<div class="tag-atraso">'+h._diasAtraso+' dia(s) atrasado</div>'+
         '</div>';
     }
   }
@@ -3635,6 +3807,26 @@ function renderExpansaoPendencias(){
 
 function bindHandlersPendencias(){
   const corpo=document.getElementById('exp-corpo'); if(!corpo) return;
+  // v1.9.4.1.5: toque no card "aguardando vaga" → Detalhes
+  corpo.querySelectorAll('.card-aguardando-vaga[data-action="card"]').forEach(function(card){
+    card.addEventListener('click',function(e){
+      // Não interceptar cliques dentro dos botões internos
+      if(e.target.closest('button')) return;
+      const gs=card.getAttribute('data-gs');
+      if(gs && typeof abrirDetalhesAguardando==='function') abrirDetalhesAguardando(gs);
+    });
+  });
+  // v1.9.4.1.5: toque no card "assinatura pendente" → Detalhes da vaga
+  corpo.querySelectorAll('.card-pend-assin[data-action="card-assin"]').forEach(function(card){
+    card.addEventListener('click',function(e){
+      if(e.target.closest('button')) return;
+      const vagaId=card.getAttribute('data-vaga');
+      const gs=card.getAttribute('data-gs');
+      fecharExpansao();
+      if(vagaId && typeof showDet==='function') showDet(vagaId,0);
+      else if(gs && typeof abrirDetalhesAguardando==='function') abrirDetalhesAguardando(gs);
+    });
+  });
   corpo.querySelectorAll('.cav-btn-detalhes').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.stopPropagation();
@@ -3662,7 +3854,8 @@ function bindHandlersPendencias(){
   });
 }
 
-function renderExpansaoHospedados(){
+function renderExpansaoHospedados(filtro){
+  filtro=filtro||'tudo';
   const ativas=Object.values(HOSPEDAGENS||{}).filter(function(h){
     if(!h) return false;
     if(h.checkout_ts) return false;
@@ -3672,25 +3865,52 @@ function renderExpansaoHospedados(){
     return false;
   }).sort(function(a,b){ return (b.checkin_ts||0)-(a.checkin_ts||0); });
 
-  if(ativas.length===0) return '<div class="exp-empty">Nenhum carro hospedado no momento</div>';
+  // Toggle
+  const tg=function(f,label){return '<div class="toggle-item'+(filtro===f?' ativo':'')+'" onclick="abrirExpansao(\'hospedados\',\''+f+'\')">'+label+'</div>';};
+  let html='<div class="toggle-filtros" data-grupo="hospedados">'+
+    tg('tudo','Tudo')+tg('garagem','Na garagem')+tg('passeio','A passeio')+
+    '</div>';
 
-  let html='';
-  for(const h of ativas){
+  // Filtrar
+  const lista=ativas.filter(function(h){
+    if(filtro==='tudo') return true;
+    const naPasseio=h.apt && PASSEIO[h.apt];
+    if(filtro==='passeio') return !!naPasseio && h.status!=='aguardando_designacao';
+    if(filtro==='garagem') return !naPasseio && h.status!=='aguardando_designacao';
+    return true;
+  });
+
+  if(lista.length===0){
+    html+='<div class="exp-empty">Nenhum carro nessa categoria</div>';
+    return html;
+  }
+
+  for(const h of lista){
     const checkinFmt=_fmtDataHoraPainel(h.checkin_ts);
-    let vaga='—', tagAg='';
+    let vaga='—', tagAg='', vagaIdEl='';
     if(h.status==='aguardando_designacao'){
       tagAg='<span class="tag-aguardando">⏳ Aguardando vaga</span>';
     } else {
-      const vagaKey=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===h.numero&&S[k].status==='occupied'; });
-      if(vagaKey) vaga='Vaga '+vagaKey;
+      const vagaKey=_vagaIdDoGs(h.numero);
+      if(vagaKey){ vaga='Vaga '+vagaKey; vagaIdEl=vagaKey; }
       else if(h.apt && PASSEIO[h.apt]) vaga='A passeio';
       else if(h.vaga_inicial) vaga='Vaga '+h.vaga_inicial;
     }
     const veic=[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'—';
-    html+='<div class="exp-item"><div class="exp-item-titulo">'+_vtEsc(h.numero||'')+' · Apt '+_vtEsc(h.apt||'')+(h.guest?' · '+_vtEsc(h.guest):'')+tagAg+'</div>'+
+    const click=vagaIdEl
+      ?(' onclick="fecharExpansao();showDet(\''+_vtEsc(vagaIdEl)+'\',0)"')
+      :(h.status==='aguardando_designacao'?(' onclick="fecharExpansao();abrirDetalhesAguardando(\''+_vtEsc(h.numero||'')+'\')"'):
+        (h.apt && PASSEIO[h.apt]?(' onclick="fecharExpansao();showPasseioDetail(\''+_vtEsc(h.apt)+'\')"'):''));
+    const cls=click?' clicavel':'';
+    html+='<div class="exp-item'+cls+'"'+click+'>'+
+      '<div class="exp-item-titulo">'+_vtEsc(h.numero||'')+' · Apt '+_vtEsc(h.apt||'')+(h.guest?' · '+_vtEsc(h.guest):'')+tagAg+'</div>'+
       '<div class="exp-item-sub">'+_vtEsc(veic)+' · '+_vtEsc(vaga)+' · CI '+checkinFmt+'</div></div>';
   }
   return html;
+}
+
+function bindHandlersHospedados(){
+  // onclick inline já lida com cliques — nada a fazer aqui
 }
 
 function renderExpansaoRecarga(){
@@ -4362,24 +4582,87 @@ window.abrirMenuVistorias = function(apt, gs, fp){
   showM(html);
 };
 
-// v1.9.4.1.4: Inicia o fluxo de Nova Vistoria adicional para hospedagem existente.
-// Reaproveita o fluxo legacy novaVistoria(preApt, preHosp) que já cria VISTORIAS
-// vinculadas à hospedagem (campo .hospedagem) — entra no PDF de checkout normalmente.
+// v1.9.4.1.5: Bug O — Inicia Nova Vistoria adicional usando o NCI página única
+// (v1.9.4.1.x), pré-preenchido com dados da hospedagem em READ-ONLY.
+// NÃO chama mais o legacy novaVistoria/_vstStep* (modais "Nova Vistoria · Dados
+// do veículo" / "Avarias · Sem avaria/Com avaria" / "Marcar Avarias 5 áreas").
 window._iniciarNovaVistoriaAdicional = function(apt, gs){
   const hosp=gs?HOSPEDAGENS[gs]:null;
-  const hospInfo=hosp?(hosp.model||'—')+(hosp.color?' · '+hosp.color:'')+' (Apt '+(hosp.apt||apt||'—')+')':'Apt '+(apt||'—');
+  if(!hosp){
+    if(typeof showToast==='function') showToast('Hospedagem não encontrada',2500);
+    return;
+  }
+  const hospInfo=(hosp.model||'—')+(hosp.color?' · '+hosp.color:'')+' (Apt '+(hosp.apt||apt||'—')+')';
   showModalAux({
     titulo:'Criar nova vistoria?',
     texto:'Será criada uma vistoria adicional para '+hospInfo+'.',
     botoes:[
       {label:'Cancelar',action:'close'},
       {label:'Continuar',cls:'primary',action:function(){
-        // Reaproveita o fluxo existente — preApt + preHosp travam a vinculação
-        if(typeof novaVistoria==='function') novaVistoria(apt||(hosp&&hosp.apt)||'', gs||'');
+        confirmarUsuario('registrando nova vistoria',function(usuario){
+          _abrirNCIParaNovaVistoria(gs,usuario);
+        });
       }}
     ]
   });
 };
+
+// v1.9.4.1.5: Abre o NCI página única pré-preenchido para Nova Vistoria adicional.
+function _abrirNCIParaNovaVistoria(gs,usuario){
+  const hosp=HOSPEDAGENS[gs];
+  if(!hosp){ if(typeof showToast==='function') showToast('Hospedagem não encontrada',2500); return; }
+  // Construir _nciD pré-preenchido com flag de modo + GS existente
+  _nciD={
+    usuario:usuario,
+    uuid:_vtUUID(),
+    apt:hosp.apt||'',
+    model:hosp.model||'',
+    color:hosp.color||'',
+    plate:hosp.plate||'',
+    guest:hosp.guest||'',
+    obs:hosp.obs||'',
+    saida_prevista:hosp.saida_prevista||'',
+    gs:gs,                           // usa o GS EXISTENTE (não cria novo)
+    numero:nextNumVistoriaPreview(), // preview do número (incrementado só no commit)
+    avarias:[], danos:[],
+    com_avaria:false,
+    assinatura:null,
+    assinatura_pendente:false,
+    documento_final_b64:null,
+    ts_inicio:Date.now(),
+    _modoNovaVistoria:true,
+    _gsExistente:gs,
+    _vaga_origem:null,
+    fotos:[]
+  };
+  vagaInicialNCI=null;
+  if(typeof _nciAbrir==='function') _nciAbrir();
+  // Após renderizar, marcar campos como readonly e ajustar UI
+  setTimeout(function(){ _aplicarUINovaVistoria(); },120);
+}
+
+function _aplicarUINovaVistoria(){
+  if(!_nciD || !_nciD._modoNovaVistoria) return;
+  // Marcar campos de dados como readonly
+  ['campo-apt','campo-modelo','campo-cor','campo-placa','campo-hospede','campo-saida','campo-obs'].forEach(function(id){
+    const el=document.getElementById(id);
+    if(el){ el.setAttribute('readonly','true'); el.classList.add('campo-readonly'); }
+  });
+  // Atualizar título do NCI
+  const tit=document.querySelector('.nci2-titulo'); if(tit) tit.textContent='Nova Vistoria';
+  const sub=document.querySelector('.nci2-subtitulo'); if(sub) sub.textContent='Hospedagem '+_vtEsc(_nciD._gsExistente||'')+' · Apt '+_vtEsc(_nciD.apt||'');
+  // Marcar progresso Dados como OK
+  const progDados=document.getElementById('prog-dados');
+  if(progDados){ progDados.classList.remove('ativo'); progDados.classList.add('ok'); progDados.innerHTML='<span>✓</span> Dados'; }
+  // Trocar texto do botão Registrar
+  const btn=document.getElementById('btn-registrar');
+  if(btn){ btn.textContent='Registrar Nova Vistoria'; }
+  // Scroll para seção vistoria
+  setTimeout(function(){
+    const vst=document.getElementById('secao-vistoria');
+    if(vst) try{ vst.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+  },220);
+}
 
 function verVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
@@ -4534,45 +4817,71 @@ function _vstSvgComDanos(vmId, danos){
 function gerarPDFVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
   const nd=(v.danos||[]).length;
-  let danosHtml='';
-  if(v.documento_final_b64){
-    danosHtml=`<div style="max-width:640px;margin-top:8px;border:1px solid #ddd;border-radius:6px;overflow:hidden"><img src="${v.documento_final_b64}" style="width:100%;height:auto;display:block"></div>`;
-  } else if(nd>0){
-    danosHtml=`<div style="max-width:540px;margin-top:8px;border:1px solid #ddd;border-radius:6px;overflow:hidden;background:#fafafa;padding:8px"><div style="position:relative;display:inline-block;width:100%"><img src="${CARRO_5VISTAS_B64}" style="width:100%;height:auto;display:block">${(v.avarias||v.danos||[]).map(d=>`<div style="position:absolute;left:${d.x}%;top:${d.y}%;transform:translate(-50%,-50%);color:#d32f2f;font-size:22px;font-weight:700;text-shadow:0 0 3px #fff,0 0 6px #fff;line-height:1">✕</div>`).join('')}</div></div>`;
+  // Bug N v1.9.4.1.5: gerar PDF de verdade (jsPDF), com fotos da hospedagem juntas
+  if(window.jspdf && window.jspdf.jsPDF){
+    try{
+      const {jsPDF}=window.jspdf;
+      const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
+      // Página 1 — Documento da vistoria (PNG composto) ou fallback texto
+      let y=_pdfHeader(doc,'Vistoria de Veiculo',
+        (v.numero||v.id||'')+' · '+fmtDt(v.ts_criada||v.ts_finalizacao||Date.now())+
+        (v.ts_assinada?' · Assinada':' · Pendente assinatura'));
+      if(v.documento_final_b64){
+        doc.addImage(v.documento_final_b64,'PNG',10,y,190,240);
+      } else {
+        doc.setFontSize(10);
+        const linhas=[
+          'Apartamento: '+(v.apt||'—'),
+          'Hospedagem: '+(v.hospedagem||v.hospedagem_gs||'—'),
+          'Modelo / Cor: '+((v.modelo||v.model||'')+' '+(v.cor||v.color||'')).trim(),
+          'Placa: '+(v.placa||v.plate||'—'),
+          'Hospede: '+(v.hospede||v.guest||'—'),
+          'Funcionario: '+(v.funcionario||v.usuario_criou||'—'),
+          (nd>0?(nd+' avaria(s) marcada(s)'):'Sem avarias registradas')
+        ];
+        linhas.forEach(function(l){ doc.text(l,12,y); y+=6; });
+      }
+      _pdfFooter(doc);
+      // Páginas seguintes — fotos da hospedagem
+      try{
+        const gs=v.hospedagem||v.hospedagem_gs||'';
+        const vagaIdAtual=gs?Object.keys(S).find(function(k){return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied';}):null;
+        const keyV=vagaIdAtual?'v_'+vagaIdAtual:null;
+        const keyH=gs?'h_'+gs:null;
+        const arr=[];
+        if(keyV && Array.isArray(ANEXOS[keyV])) arr.push.apply(arr,ANEXOS[keyV]);
+        if(keyH && Array.isArray(ANEXOS[keyH])) arr.push.apply(arr,ANEXOS[keyH]);
+        const fotos=arr.filter(function(a){return a&&a.tipo==='foto'&&(a.data||a.base64Original);});
+        for(const foto of fotos){
+          try{
+            doc.addPage();
+            const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
+            let yF=_pdfHeader(doc,'Foto do Veiculo',dataFmt+(foto.name?' · '+foto.name:''));
+            const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
+            doc.addImage(foto.data||foto.base64Original,fmt,10,yF,190,240);
+            _pdfFooter(doc);
+          }catch(e){ console.error('[Vistoria PDF] erro foto:',e); }
+        }
+      }catch(e){ console.error('[Vistoria PDF] erro páginas extras:',e); }
+      // Compartilhar
+      const d=new Date();
+      const ds=String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getFullYear()).slice(-2);
+      const MESES_PT=['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+      const subpasta='Vistorias/'+MESES_PT[d.getMonth()]+' '+d.getFullYear()+'/';
+      const nomeArq=subpasta+(v.apt||'000')+'_'+(v.numero||v.id||'sn')+'_'+ds+'_Vistoria_GarageSpot';
+      if(typeof gerarECompartilharPDF==='function') gerarECompartilharPDF('Vistoria '+(v.numero||v.id||''),doc,nomeArq);
+      return;
+    }catch(e){ console.error('[Vistoria PDF] erro jsPDF, fallback HTML:',e); }
   }
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:Arial,sans-serif;font-size:12px;color:#222;margin:20px}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #185FA5;padding-bottom:10px;margin-bottom:16px}
-    .hdr-l{font-size:16px;font-weight:700;color:#185FA5}
-    .row{display:flex;gap:8px;margin:4px 0}.lbl{font-weight:700;min-width:120px;color:#555}
-    .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
-    .signed{background:#d4f0e0;color:#0F6E56}.pending{background:#fff0c0;color:#8B6200}
-    .sec{font-size:13px;font-weight:700;color:#185FA5;border-bottom:1px solid #ddd;margin:14px 0 6px;padding-bottom:4px}
-    img.sig{max-width:200px;border:1px solid #ccc;border-radius:4px;margin-top:8px}
-  </style></head><body>
-  <div class="hdr">
-    <div><div class="hdr-l">🅿 GarageSpot</div><div style="font-size:10px;color:#888">Hotel Gumz — Controle de Garagem</div></div>
-    <div style="text-align:right">
-      <div style="font-size:14px;font-weight:700">Vistoria de Veículo</div>
-      <div style="font-size:11px;color:#888">${v.numero} · ${new Date(v.ts_criada).toLocaleDateString('pt-BR')}</div>
-      <span class="badge ${v.ts_assinada?'signed':'pending'}">${v.ts_assinada?'Assinada':'Pendente assinatura'}</span>
-    </div>
-  </div>
-  <div class="sec">Dados do Veículo</div>
-  ${[['Apartamento',v.apt||'—'],['Hospedagem',v.hospedagem||'—'],['Modelo',v.modelo||'—'],['Cor',v.cor||'—'],['Placa',v.placa||'—'],['Hóspede',v.hospede||'—']].map(([l,val])=>`<div class="row"><span class="lbl">${l}:</span><span>${val}</span></div>`).join('')}
-  <div class="sec">${v.documento_final_b64?'Documento da Vistoria':'Avarias'}</div>
-  <div style="color:${nd>0?'#A32D2D':'#0F6E56'};font-weight:600">${nd>0?`❗ ${nd} avaria${nd>1?'s':''} marcada${nd>1?'s':''}`:'✅ Sem avarias registradas'}</div>${danosHtml}
-  <div class="sec">Registro</div>
-  ${[['Criada em',fmtTs(v.ts_criada)],['Criada por',v.usuario_criou||'—'],['Assinada em',v.ts_assinada?fmtTs(v.ts_assinada):'—'],['Assinada por',v.usuario_assinou||'—']].map(([l,val])=>`<div class="row"><span class="lbl">${l}:</span><span>${val}</span></div>`).join('')}
-  ${(!v.documento_final_b64&&v.assinatura)?`<div class="sec">Assinatura</div><img class="sig" src="${v.assinatura}"/>`:''}
-  <div style="margin-top:24px;font-size:10px;color:#aaa;text-align:center;border-top:1px solid #eee;padding-top:8px">GarageSpot · Hotel Gumz · ${new Date().toLocaleDateString('pt-BR')}</div>
-  </body></html>`;
+  // Fallback HTML caso jsPDF não esteja disponível
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'+
+    '<h2>Vistoria '+(v.numero||v.id||'')+'</h2>'+
+    (v.documento_final_b64?'<img src="'+v.documento_final_b64+'" style="width:100%">':'<p>Sem documento</p>')+
+    '</body></html>';
   const d=new Date();
   const ds=String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getFullYear()).slice(-2);
-  const MESES_PT=['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  const subpasta='Vistorias/'+MESES_PT[d.getMonth()]+' '+d.getFullYear()+'/';
-  const nomeArq=subpasta+`${v.apt||'000'}_${v.numero}_${ds}_Vistoria_GarageSpot`;
-  gerarECompartilharPDF(`Vistoria ${v.numero}`,html,nomeArq);
+  const nomeArq=(v.apt||'000')+'_'+(v.numero||v.id||'sn')+'_'+ds+'_Vistoria';
+  if(typeof gerarECompartilharPDF==='function') gerarECompartilharPDF('Vistoria '+(v.numero||v.id||''),html,nomeArq);
 }
 
 // ── Ícone ❗ no mapa ────────────────────────────────────────────────────────
@@ -5658,7 +5967,36 @@ function _nciFinalizar(){
 
 // v1.9.4.1.1: chamado depois da etapa de fotos. Decide entre auto-designação ou STEP5.
 function _nciPosFotos(){
-  const gs=_nciD&&_nciD.gs;
+  const d=_nciD;
+  // v1.9.4.1.5 Bug O: Nova Vistoria adicional — fecha NCI sem STEP5
+  if(d && d._modoNovaVistoria){
+    const gs=d._gsExistente||d.gs;
+    const numero=d.numero;
+    // Limpar estados
+    _nciD=null; MODO_VISTORIA_ATIVO=null; vagaInicialNCI=null;
+    _nciSigCtx=null; _nciSigBackup=null; _nciSigDirty=false;
+    _nciFotos=[];
+    _nciLimparRascunhoCompleto && _nciLimparRascunhoCompleto();
+    // Fechar overlay
+    const ov=document.getElementById('nci-overlay');
+    if(ov){
+      ov.classList.remove('on');
+      ov.innerHTML='<div class="nci-hdr"><button id="nci-bk" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--cp);padding:0 8px 0 0;line-height:1">←</button><div class="nci-hdr-title" id="nci-hdr-txt">Novo Check-in</div><div class="nci-steps"><div class="nci-dot" id="nci-d1"></div><div class="nci-dot" id="nci-d2"></div><div class="nci-dot" id="nci-d3"></div><div class="nci-dot" id="nci-d4"></div></div></div><div class="nci-body" id="nci-body"></div><div class="nci-ftr" id="nci-ftr"></div>';
+    }
+    // Toast + re-render painel + reabrir Detalhes da vaga se houver
+    if(typeof showToast==='function') showToast('Nova vistoria '+(numero||'')+' registrada · '+gs, 3500);
+    if(typeof renderPainelDia==='function'){
+      try{
+        if(document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
+      }catch(e){}
+    }
+    setTimeout(function(){
+      const vagaId=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; });
+      if(vagaId && typeof showDet==='function') showDet(vagaId);
+    },350);
+    return;
+  }
+  const gs=d&&d.gs;
   if(vagaInicialNCI && gs){
     // Bug 6: designação automática para a vaga de origem
     _aplicarDesignacaoAutomatica(vagaInicialNCI,gs);
@@ -5990,6 +6328,11 @@ function _aplicarDesignacaoAutomatica(vagaId,gs){
 
 function _nciCommitCheckin(){
   const d=_nciD;
+  // v1.9.4.1.5 Bug O: Nova Vistoria adicional — NÃO cria HOSPEDAGEM nova
+  if(d._modoNovaVistoria && d._gsExistente){
+    _nciCommitNovaVistoriaAdicional();
+    return;
+  }
   // Consumir o número de vistoria (incrementar agora)
   const numero=nextNumVistoria();
   d.numero=numero;
@@ -6024,6 +6367,50 @@ function _nciCommitCheckin(){
     const limpa=function(s){return (s||'').replace(/[^a-zA-Z0-9À-ú]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');};
     const nome=`${d.apt||'000'}_${ds}_${limpa(d.model)}-${limpa(d.color)}_${numero}.png`;
     ANEXOS[keyH].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
+    saveAnexos();
+  }
+}
+
+// v1.9.4.1.5 Bug O: commit de Nova Vistoria adicional — vincula à hospedagem
+// existente, NÃO cria nova HOSPEDAGEM, registra evento 'vistoria_adicional_criada'.
+function _nciCommitNovaVistoriaAdicional(){
+  const d=_nciD; if(!d) return;
+  const gs=d._gsExistente||d.gs;
+  const hosp=HOSPEDAGENS[gs];
+  if(!hosp){
+    console.error('[NV] Hospedagem não encontrada para Nova Vistoria:',gs);
+    return;
+  }
+  const numero=nextNumVistoria();
+  d.numero=numero;
+  d.gs=gs;
+  const nomeUsr=_vtFuncNome(d);
+  // Criar VISTORIA via helper (idêntico ao fluxo normal), depois ajustar tipo
+  _nciCriarVistoriaV2(d,numero);
+  if(VISTORIAS[numero]){
+    VISTORIAS[numero].tipo='adicional';
+    saveVistorias();
+  }
+  // Adicionar ao array vistorias da hospedagem
+  if(!Array.isArray(hosp.vistorias)) hosp.vistorias=[];
+  if(hosp.vistorias.indexOf(numero)<0) hosp.vistorias.push(numero);
+  saveHospedagens();
+  // Histórico
+  if(typeof addHistorico==='function'){
+    addHistorico(hosp.apt||d.apt,'vistoria_adicional_criada',null,
+      numero+' — '+(d.model||'')+' '+(d.color||'')+((d.avarias||d.danos||[]).length?' · '+(d.avarias||d.danos||[]).length+' avaria(s)':''),
+      nomeUsr,gs);
+  }
+  // Anexar PNG composto à chave apropriada (v_<vagaId> se já há vaga, senão h_<gs>)
+  if(d.documento_final_b64){
+    const vagaKey=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; });
+    const anexoKey = vagaKey ? 'v_'+vagaKey : 'h_'+gs;
+    if(!ANEXOS[anexoKey]) ANEXOS[anexoKey]=[];
+    const dd=new Date(d.ts_inicio||Date.now());
+    const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
+    const limpa=function(s){return (s||'').replace(/[^a-zA-Z0-9À-ú]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');};
+    const nome=`${d.apt||hosp.apt||'000'}_${ds}_${limpa(d.model||hosp.model)}-${limpa(d.color||hosp.color)}_${numero}.png`;
+    ANEXOS[anexoKey].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
     saveAnexos();
   }
 }
@@ -6276,17 +6663,20 @@ function _showModalDesignacao(vagaId){
 
 function _aplicarDesignacaoDireta(vagaId){
   const m=MODO_DESIGNACAO; if(!m) return;
-  // Bug I v1.9.4.1.4: fallback — se origem='pos_checkin' e operador ausente,
-  // recuperar de HOSPEDAGENS[gs].usuario_checkin (operador já é conhecido)
-  if(!m.operador && m.origem==='pos_checkin' && m.gs && HOSPEDAGENS[m.gs] && HOSPEDAGENS[m.gs].usuario_checkin){
-    m.operador=HOSPEDAGENS[m.gs].usuario_checkin;
-    console.log('[DESIG] Operador recuperado de HOSPEDAGENS:',m.operador);
+  // Bug P v1.9.4.1.5: pos_checkin NUNCA pergunta operador — usar HOSPEDAGENS.usuario_checkin
+  // como fonte autoritativa (operador é o mesmo que fez o check-in).
+  if(m.origem==='pos_checkin'){
+    if(!m.operador && m.gs && HOSPEDAGENS[m.gs] && HOSPEDAGENS[m.gs].usuario_checkin){
+      m.operador=HOSPEDAGENS[m.gs].usuario_checkin;
+      console.log('[DESIG] pos_checkin: operador via HOSPEDAGENS:',m.operador);
+    }
+    if(!m.operador) m.operador='—';
+    _aplicarDesignacaoExec(vagaId);
+    return;
   }
-  // Bug E: se operador NÃO pré-preenchido (origem painel ou vaga_direta), perguntar
+  // Origem painel/vaga_direta: pode perguntar se ausente
   if(!m.operador && typeof confirmarUsuario==='function'){
     confirmarUsuario('designando vaga '+vagaId,function(usuario){
-      // Bug I v1.9.4.1.4: closeOv() antes de aplicar — evita clique fantasma
-      // propagado para vaga livre abrindo "Iniciar check-in?"
       if(typeof closeOv==='function') closeOv();
       m.operador=usuario||null;
       _aplicarDesignacaoExec(vagaId);
@@ -6301,12 +6691,21 @@ function _aplicarDesignacaoExec(vagaId){
   const hosp=HOSPEDAGENS[m.gs]; if(!hosp){ showToast('Hospedagem não encontrada',2500); return; }
   const v=S[vagaId];
   if(!v||v.status!=='free'){ showToast('Vaga não disponível',2500); return; }
+  // Bug L v1.9.4.1.5: snapshot defensivo para validação pós-operação
+  const vistoriasAntes=Array.isArray(hosp.vistorias)?hosp.vistorias.slice():[];
+  const anexosHospAntes=(ANEXOS['h_'+m.gs]||[]).slice();
+  console.log('[BUG L] Antes designar: vistorias=',vistoriasAntes,'anexos h_'+m.gs+'=',anexosHospAntes.length);
   // Aplicar
   v.status='occupied'; v.apt=m.apt; v.model=m.model; v.color=m.color;
   v.plate=m.plate; v.guest=m.guest; v.obs=m.obs; v.hospedagem=m.gs;
   v.size=v.size||'small';
   hosp.vaga_inicial=vagaId;
   hosp.status='ativa';
+  // Bug L: garantir que vistorias[] foi preservado
+  if(vistoriasAntes.length>0 && (!Array.isArray(hosp.vistorias)||hosp.vistorias.length<vistoriasAntes.length)){
+    console.warn('[BUG L] vistorias[] alterado durante designar! Restaurando.',hosp.vistorias,'→',vistoriasAntes);
+    hosp.vistorias=vistoriasAntes;
+  }
   // Histórico — usar o operador correto conforme origem
   const opNome=(m.operador&&m.operador.nome)?m.operador.nome+(m.operador.cargo?' · '+m.operador.cargo:''):(m.operador||hosp.usuario_checkin||'');
   const origemLbl=m.origem==='pos_checkin'?'pós-checkin':(m.origem==='painel'?'painel':'contextual');
@@ -6321,9 +6720,18 @@ function _aplicarDesignacaoExec(vagaId){
   MODO_DESIGNACAO=null;
   _atualizarBannerDesignacao();
   // Mover anexo h_<gs> para v_<vagaId> (junta vistoria com a vaga)
+  // Bug L v1.9.4.1.5: validar migração com logs
   const keyH='h_'+m.gs, keyV='v_'+vagaId;
   if(ANEXOS[keyH]&&ANEXOS[keyH].length){
+    const totalH=ANEXOS[keyH].length;
+    const totalVAntes=(ANEXOS[keyV]||[]).length;
     ANEXOS[keyV]=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]);
+    const totalVDepois=ANEXOS[keyV].length;
+    if(totalVDepois!==(totalVAntes+totalH)){
+      console.error('[BUG L] Migração anexos falhou! antes=',totalVAntes,'h=',totalH,'depois=',totalVDepois);
+    } else {
+      console.log('[BUG L] Anexos migrados',keyH,'→',keyV,':',totalH,'itens (total',totalVDepois,')');
+    }
     delete ANEXOS[keyH];
     saveAnexos();
   }
@@ -8200,6 +8608,40 @@ function buildRegistroDoc(apt, dv, hist){
       }
     }
   });
+
+  // Bug J v1.9.4.1.5: páginas adicionais com vistorias + fotos da hospedagem
+  try{
+    const vistorias = (hospNum && HOSPEDAGENS[hospNum] && Array.isArray(HOSPEDAGENS[hospNum].vistorias))
+      ? HOSPEDAGENS[hospNum].vistorias.map(function(n){return VISTORIAS[n];}).filter(Boolean)
+      : Object.values(VISTORIAS).filter(function(v){return v&&(v.hospedagem===hospNum||v.hospedagem_gs===hospNum);});
+    vistorias.sort(function(a,b){ return (b.ts_finalizacao||b.ts_criada||0)-(a.ts_finalizacao||a.ts_criada||0); });
+    for(const vist of vistorias){
+      try{
+        if(!vist.documento_final_b64) continue;
+        doc.addPage();
+        const tit='Vistoria '+(vist.tipo||'entrada')+' · '+(vist.numero||vist.id||'—')+' · '+fmtDt(vist.ts_finalizacao||vist.ts_criada||Date.now());
+        let yV=_pdfHeader(doc,'Vistoria',tit);
+        doc.addImage(vist.documento_final_b64,'PNG',10,yV,190,240);
+        _pdfFooter(doc);
+      }catch(e){ console.error('[PDF checkout] erro vistoria',vist&&vist.numero,e); }
+    }
+    // Fotos da hospedagem (em v_<vagaId> ou h_<gs>)
+    const vagaIdAtual=Object.keys(S).find(function(k){return S[k]&&S[k].hospedagem===hospNum&&S[k].status==='occupied';});
+    const keyAnex = vagaIdAtual ? 'v_'+vagaIdAtual : 'h_'+hospNum;
+    const todosAnex = (ANEXOS[keyAnex]||[]).concat(vagaIdAtual?(ANEXOS['h_'+hospNum]||[]):[]);
+    const fotos = todosAnex.filter(function(a){return a&&a.tipo==='foto'&&(a.data||a.base64Original);});
+    for(const foto of fotos){
+      try{
+        doc.addPage();
+        const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
+        let yF=_pdfHeader(doc,'Foto do Veiculo',dataFmt+(foto.name?' · '+foto.name:''));
+        const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
+        doc.addImage(foto.data||foto.base64Original,fmt,10,yF,190,240);
+        _pdfFooter(doc);
+      }catch(e){ console.error('[PDF checkout] erro foto',foto&&foto.name,e); }
+    }
+  }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
+
   _pdfFooter(doc);
   return doc;
 }
