@@ -28,11 +28,12 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 
 ## Versão atual
 - Em produção (hotel): versão estável anterior à v1.8
-- Em dev: v1.9.4.1.5
-- Vistoria de entrada: completa. NCI antigo do v1.9.4 ELIMINADO dos entry points (Nova Vistoria + Designar agora). Painel reestruturado com toggles e interatividade completa. PDFs do checkout e da vistoria agora incluem todas vistorias + fotos como páginas separadas. Próxima etapa: v1.9.4.3.1 (Recarga visual — bateria animada)
+- Em dev: v1.9.4.1.6
+- Storage com backup rotativo de 3 slots + bloqueio anti-perda; saves forçados em visibilitychange/pagehide; canvas assinatura inicializa via IntersectionObserver+retry; preview modal de foto NCI; ordenação vistorias com fallback múltiplo; PDF checkout aceita fotos legadas; race condition fotos resolvida com bloqueio de botão. **30 testes Playwright automatizados em tests/specs/**. Próxima etapa: v1.9.4.3.1 (Recarga visual)
 
 ## Roadmap
-1. ✅ v1.9.4.1.5 — Bugs O+P (eliminação CRÍTICA do NCI antigo em Nova Vistoria + Designar agora pós-checkin) + Bug J (PDF checkout com vistorias+fotos) + Bug L (vistoria preservada após designar) + Bug N (PDF compartilhar real) + Melhoria 3 (atrasados em Hoje) + toggles em expansões + interatividade completa
+1. ✅ v1.9.4.1.6 — Bugs Q (PDF fotos), R (assinatura touch), S (preview fotos), T (designar pós-checkin reforçado), U (ordenação vistorias), W (storage refactor c/ 3 backups + bloqueio anti-perda), X (race fotos) + infraestrutura Playwright (8 specs, 30 testes)
+2. ✅ v1.9.4.1.5 — Bugs O+P (eliminação CRÍTICA do NCI antigo em Nova Vistoria + Designar agora pós-checkin) + Bug J (PDF checkout com vistorias+fotos) + Bug L (vistoria preservada após designar) + Bug N (PDF compartilhar real) + Melhoria 3 (atrasados em Hoje) + toggles em expansões + interatividade completa
 2. ✅ v1.9.4.1.4 — Bug G (preview assinatura na vista interna), Bug H (validar canvas vazio em coletar depois), Bug I (designação pós-checkin sem pedir operador nem abrir NCI) + Nova Vistoria em Detalhes via menu de vistorias
 2. ✅ v1.9.4.1.3 — Bug F (duplicação assinatura ao Concluir no NCI) + Reforma do Painel com agrupadores em 2 colunas e overlays de expansão
 3. ✅ v1.9.4.1.2 — Correções finais vistoria (assinatura z-index, sem duplicação, sem modal vire celular, câmera funcional, operador pré-preenchido pos_checkin)
@@ -73,4 +74,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - APK build SOMENTE quando necessário
 
 ## Última atualização deste handoff
-v1.9.4.1.5 — 2026-05-27
+v1.9.4.1.6 — 2026-05-28

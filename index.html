@@ -613,7 +613,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.5 -->
+<!-- GarageSpot v1.9.4.1.6 -->
 <body>
 <div class="page">
 
@@ -2791,9 +2791,17 @@ function nextNumHospedagem(){
   try{ localStorage.setItem('garagespot_hospedagem_counter',String(counter)); }catch(e){}
   return 'GS'+(counter<=999?String(counter).padStart(3,'0'):String(counter));
 }
-function saveHospedagens(){ try{ localStorage.setItem('garagespot_hospedagens',JSON.stringify(HOSPEDAGENS)); }catch(e){} }
+function saveHospedagens(){
+  // Bug W v1.9.4.1.6: storage protegido com 3 slots de backup
+  _saveProtegido('garagespot_hospedagens', HOSPEDAGENS, 'hospedagens');
+}
 function loadHospedagens(){
-  try{ const r=localStorage.getItem('garagespot_hospedagens'); if(r) Object.assign(HOSPEDAGENS,JSON.parse(r)); }catch(e){}
+  const dados = _loadProtegido('hospedagens');
+  if(dados){
+    Object.keys(HOSPEDAGENS).forEach(function(k){ delete HOSPEDAGENS[k]; });
+    Object.assign(HOSPEDAGENS, dados);
+    _contadorAnterior.hospedagens = Object.keys(HOSPEDAGENS).length;
+  }
 }
 
 // ── USUÁRIOS ──────────────────────────────────────────────────────────────
@@ -4147,10 +4155,18 @@ let VISTORIAS_LIXEIRA = {};
 const VISTORIA_COUNTER_KEY = 'garagespot_vistoria_counter';
 const VISTORIAS_LS = 'garagespot_vistorias';
 const VISTORIAS_LIXEIRA_LS = 'garagespot_vistorias_lixeira';
-function saveVistorias(){try{localStorage.setItem(VISTORIAS_LS,JSON.stringify(VISTORIAS));}catch(e){}}
+function saveVistorias(){
+  // Bug W v1.9.4.1.6: storage protegido
+  _saveProtegido(VISTORIAS_LS, VISTORIAS, 'vistorias');
+}
 function saveLixeira(){try{localStorage.setItem(VISTORIAS_LIXEIRA_LS,JSON.stringify(VISTORIAS_LIXEIRA));}catch(e){}}
 function loadVistorias(){
-  try{const d=localStorage.getItem(VISTORIAS_LS);if(d)VISTORIAS=JSON.parse(d)||{};}catch(e){}
+  const dados = _loadProtegido('vistorias');
+  if(dados){
+    VISTORIAS = dados;
+    _contadorAnterior.vistorias = Object.keys(VISTORIAS).length;
+  }
+  // Lixeira continua com mecanismo antigo (menos crítico)
   try{const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS);if(d)VISTORIAS_LIXEIRA=JSON.parse(d)||{};}catch(e){}
 }
 function nextNumVistoria(){
@@ -4523,8 +4539,7 @@ function _vstConfirmar(assinatura){
 // v1.9.4.1.4: Menu de Vistorias da Hospedagem (lista + Nova Vistoria)
 // ════════════════════════════════════════════════════════════════════════
 function _listarVistoriasDaHosp(gs,apt){
-  // Coleta vistorias da hospedagem (preferindo GS; fallback por apt) e ordena
-  // por timestamp de criação DESCENDENTE (mais recente → mais antiga).
+  // Coleta vistorias da hospedagem (preferindo GS; fallback por apt)
   const vis=[];
   if(gs){
     Object.values(VISTORIAS||{}).forEach(function(v){
@@ -4536,11 +4551,16 @@ function _listarVistoriasDaHosp(gs,apt){
       if(v && v.apt===apt) vis.push(v);
     });
   }
+  // Bug U v1.9.4.1.6: ordenação com fallback múltiplo
+  // Tenta na ordem: ts_finalizacao → ts_assinada → ts_criada → ts_criacao
   vis.sort(function(a,b){
-    const ta=a.ts_criada||a.ts_criacao||0;
-    const tb=b.ts_criada||b.ts_criacao||0;
+    const ta=a.ts_finalizacao||a.ts_assinada||a.ts_criada||a.ts_criacao||0;
+    const tb=b.ts_finalizacao||b.ts_assinada||b.ts_criada||b.ts_criacao||0;
     return tb-ta;
   });
+  console.log('[BUG U] ordenação:', vis.map(function(v){
+    return {num:v.numero, ts_fin:v.ts_finalizacao, ts_ass:v.ts_assinada, ts_cri:v.ts_criada||v.ts_criacao};
+  }));
   return vis;
 }
 
@@ -5653,7 +5673,24 @@ function _vtAtivarAssinatura(){
   _vtAtualizarBarraContexto();
   _nciAtualizarProgresso();
   if(a) try{ a.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
-  setTimeout(_vtSigSetup,200);
+  // Bug R v1.9.4.1.6: reset retry + dupla tentativa via rAF para garantir
+  // que canvas tenha dimensões na primeira renderização
+  _vtSigRetryCount = 0;
+  if(_vtSigObserver){ try{ _vtSigObserver.disconnect(); }catch(_){} _vtSigObserver = null; }
+  requestAnimationFrame(function(){ setTimeout(_vtSigSetup, 50); });
+  setTimeout(_vtSigSetup, 200);
+  // Bug R: listener transitionend no container para re-setup quando animação CSS terminar
+  const cv = document.getElementById('canvas-assinatura');
+  const containerAssin = cv ? (cv.closest('.nci-iz') || cv.parentElement) : null;
+  if(containerAssin && !containerAssin.__vtSigTransitionBound){
+    containerAssin.__vtSigTransitionBound = true;
+    containerAssin.addEventListener('transitionend', function(){
+      if(MODO_VISTORIA_ATIVO === 'assinatura'){
+        console.log('[BUG R] transitionend disparou, re-setup');
+        _vtSigSetup();
+      }
+    });
+  }
 }
 
 function _vtDesativarAssinatura(salvar){
@@ -5728,6 +5765,49 @@ function _vtAtualizarSigUI(){
   }
 }
 
+// Bug R v1.9.4.1.6: IntersectionObserver + retry exponencial para garantir
+// que canvas tem dimensões antes de inicializar (resolve "renderiza só após Limpar")
+let _vtSigObserver = null;
+let _vtSigRetryCount = 0;
+function _vtSigSetupRetryComObserver(cv){
+  _vtSigRetryCount++;
+  if(_vtSigRetryCount > 20){
+    console.error('[BUG R] desistindo após 20 tentativas');
+    _vtSigRetryCount = 0;
+    return;
+  }
+  if(window.IntersectionObserver && !_vtSigObserver){
+    _vtSigObserver = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting && entry.intersectionRatio > 0){
+          const rr = entry.target.getBoundingClientRect();
+          if(rr.width > 0 && rr.height > 0){
+            console.log('[BUG R] IntersectionObserver disparou, dimensões OK');
+            try{ _vtSigObserver.disconnect(); }catch(_){}
+            _vtSigObserver = null;
+            _vtSigRetryCount = 0;
+            _vtSigSetup();
+          }
+        }
+      });
+    }, { threshold: [0, 0.1, 0.5, 1.0] });
+    try{ _vtSigObserver.observe(cv); }catch(_){}
+  }
+  const delay = Math.min(50 * Math.pow(1.5, _vtSigRetryCount), 800);
+  setTimeout(function(){
+    const rr = cv.getBoundingClientRect();
+    if(rr.width > 0 && rr.height > 0){
+      console.log('[BUG R] retry #' + _vtSigRetryCount + ' OK, dimensões:', rr.width, rr.height);
+      if(_vtSigObserver){ try{ _vtSigObserver.disconnect(); }catch(_){} _vtSigObserver = null; }
+      _vtSigRetryCount = 0;
+      _vtSigSetup();
+    } else {
+      console.log('[BUG R] retry #' + _vtSigRetryCount + ' ainda 0x0, tentando de novo');
+      _vtSigSetupRetryComObserver(cv);
+    }
+  }, delay);
+}
+
 // CAMADA 6: canvas com DPR aplicado corretamente
 function _vtSigSetup(){
   // Bug F v1.9.4.1.3: só age se área de assinatura está ATIVA (evita duplicação
@@ -5736,9 +5816,12 @@ function _vtSigSetup(){
     console.log('[VST] _vtSigSetup: ignorado (modo não-ativo)');
     return;
   }
-  const cv=document.getElementById('canvas-assinatura'); if(!cv) return;
+  const cv=document.getElementById('canvas-assinatura');
+  if(!cv){ console.warn('[BUG R] canvas-assinatura não encontrado'); return; }
   const r=cv.getBoundingClientRect();
-  if(!r.width||!r.height){ setTimeout(_vtSigSetup,120); return; }
+  console.log('[BUG R] _vtSigSetup tentativa, rect:', {w:r.width, h:r.height});
+  // Bug R v1.9.4.1.6: se dimensões ainda não estão prontas, usar observer + retry
+  if(!r.width||!r.height){ _vtSigSetupRetryComObserver(cv); return; }
   // Preservar desenho existente
   const prev=(_nciSigCtx&&_nciSigDirty)?cv.toDataURL('image/png'):null;
   const dpr=window.devicePixelRatio||1;
@@ -6009,6 +6092,26 @@ function _nciPosFotos(){
 // ETAPA DE FOTOS (v1.9.4.1.1)
 // ════════════════════════════════════════════════════════════════════════
 let _nciFotos = [];               // [{id, base64Original, base64Thumbnail, timestamp}]
+let _nciFotosProcessando = 0;     // Bug X v1.9.4.1.6: contador de fotos em processamento async
+function _nciFotosAtualizarBotaoSalvar(){
+  const btn = document.getElementById('ef-btn-concluir');
+  if(!btn) return;
+  if(_nciFotosProcessando > 0){
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.style.cursor = 'wait';
+    if(!btn.dataset.txtOriginal) btn.dataset.txtOriginal = btn.textContent;
+    btn.textContent = '⏳ Processando ' + _nciFotosProcessando + ' foto(s)...';
+  } else {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    if(btn.dataset.txtOriginal){
+      btn.textContent = btn.dataset.txtOriginal;
+      delete btn.dataset.txtOriginal;
+    }
+  }
+}
 
 function _nciAbrirEtapaFotos(){
   const ov=document.getElementById('nci-overlay');
@@ -6078,11 +6181,28 @@ function _nciFotosCapturarCamera(){
       const files=Array.from(ev.target.files||[]);
       if(files.length===0){ console.log('[FOTO] câmera cancelada'); return; }
       const f=files[0];
+      // Bug X v1.9.4.1.6: marcar como processando para bloquear "Salvar e seguir"
+      _nciFotosProcessando++;
+      _nciFotosAtualizarBotaoSalvar();
       _nciFotoFileToB64Compr(f).then(function(b64){
-        _nciFotoAdicionar(b64);
+        const novaFoto = _nciFotoAdicionarERetornar(b64);
+        if(novaFoto){
+          // Bug S v1.9.4.1.6: aguardar thumb processar antes do preview
+          const tentarMostrarPreview = function(tentativa){
+            if(novaFoto.base64Thumbnail || tentativa > 10){
+              _nciFotosPreviewModal(novaFoto);
+            } else {
+              setTimeout(function(){ tentarMostrarPreview(tentativa + 1); }, 100);
+            }
+          };
+          tentarMostrarPreview(0);
+        }
       }).catch(function(err){
         console.error('[FOTO] erro processando foto câmera:',err);
         showToast('Erro ao processar foto',2500);
+      }).finally(function(){
+        _nciFotosProcessando--;
+        _nciFotosAtualizarBotaoSalvar();
       });
       ev.target.value=''; // permite tirar nova foto em seguida
     });
@@ -6094,14 +6214,31 @@ function _nciFotosOnFileInput(ev){
   const files=Array.from(ev.target.files||[]);
   if(files.length===0) return;
   _nciSalvarRascunhoCompleto();
+  // Bug X v1.9.4.1.6: contador de processamento + bloqueio do botão
+  _nciFotosProcessando += files.length;
+  _nciFotosAtualizarBotaoSalvar();
+  console.log('[BUG X] iniciando processamento de', files.length, 'fotos. total processando:', _nciFotosProcessando);
   let adicionadas=0;
   const promises=[];
   for(const file of files){
-    if(_nciFotos.length+adicionadas>=20) break;
-    promises.push(_nciFotoFileToB64Compr(file).then(function(b64){
-      _nciFotoAdicionar(b64);
-      adicionadas++;
-    }).catch(function(err){ console.error('[FOTO] arquivo:',err); }));
+    if(_nciFotos.length+adicionadas>=20){
+      // Já no limite — drenar contador desses arquivos não consumidos
+      _nciFotosProcessando--;
+      continue;
+    }
+    promises.push(
+      _nciFotoFileToB64Compr(file)
+        .then(function(b64){
+          _nciFotoAdicionar(b64);
+          adicionadas++;
+        })
+        .catch(function(err){ console.error('[BUG X] erro processando foto:',err); })
+        .finally(function(){
+          _nciFotosProcessando--;
+          console.log('[BUG X] processando restantes:', _nciFotosProcessando);
+          _nciFotosAtualizarBotaoSalvar();
+        })
+    );
   }
   Promise.all(promises).then(function(){
     if(adicionadas>0 && adicionadas!==files.length){
@@ -6110,6 +6247,7 @@ function _nciFotosOnFileInput(ev){
       showToast(adicionadas+' foto(s) adicionada(s)',2200);
     }
     ev.target.value='';
+    console.log('[BUG X] processamento completo, fotos finais:', _nciFotos.length);
   });
 }
 
@@ -6140,7 +6278,11 @@ function _nciFotoFileToB64Compr(file){
 }
 
 function _nciFotoAdicionar(b64){
-  if(_nciFotos.length>=20){ showToast('Limite de 20 fotos atingido',2200); return; }
+  _nciFotoAdicionarERetornar(b64);
+}
+// Bug S v1.9.4.1.6: variante que retorna a foto para preview modal
+function _nciFotoAdicionarERetornar(b64){
+  if(_nciFotos.length>=20){ showToast('Limite de 20 fotos atingido',2200); return null; }
   const foto={
     id:'foto_'+Date.now()+'_'+Math.random().toString(36).slice(2,9),
     base64Original:b64, base64Thumbnail:null, timestamp:Date.now()
@@ -6154,6 +6296,38 @@ function _nciFotoAdicionar(b64){
   });
   _nciFotosRender();
   _nciFotosAtualizarContador();
+  return foto;
+}
+// Bug S v1.9.4.1.6: overlay de pré-visualização com [Tirar outra] [Confirmar e voltar]
+function _nciFotosPreviewModal(foto){
+  if(!foto) return;
+  console.log('[BUG S] abrindo preview modal para foto:', foto.id);
+  let overlay = document.getElementById('foto-preview-overlay');
+  if(overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'foto-preview-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:20px';
+  overlay.innerHTML =
+    '<div style="color:#fff;font-size:14px;font-weight:600;padding:8px 14px;background:rgba(15,110,86,0.85);border-radius:6px">✓ Foto capturada</div>' +
+    '<div style="flex:1;display:flex;align-items:center;justify-content:center;width:100%;max-height:65vh;overflow:hidden;margin:14px 0">' +
+      '<img src="' + (foto.base64Thumbnail || foto.base64Original) + '" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,0.6)" />' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;width:100%;max-width:380px">' +
+      '<button id="foto-prev-mais" style="flex:1;padding:14px;border:2px solid #fff;background:rgba(255,255,255,0.1);color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📷 Tirar outra</button>' +
+      '<button id="foto-prev-ok" style="flex:1.4;padding:14px;border:none;background:#0F6E56;color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✓ Confirmar e voltar</button>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  document.getElementById('foto-prev-mais').onclick = function(){
+    console.log('[BUG S] tirar outra');
+    overlay.remove();
+    _nciFotosCapturarCamera();
+  };
+  document.getElementById('foto-prev-ok').onclick = function(){
+    console.log('[BUG S] confirmar e voltar');
+    overlay.remove();
+    _nciFotosRender();
+    _nciFotosAtualizarContador();
+  };
 }
 
 function _nciFotoGerarThumb(b64){
@@ -6212,6 +6386,12 @@ function _nciFotosConcluir(){
 
 function _nciFotosSalvarESegue(){
   if(!_nciD) return;
+  // Bug X v1.9.4.1.6: bloqueia salvar enquanto ainda há fotos sendo processadas
+  if(_nciFotosProcessando > 0){
+    showToast('Aguarde, processando ' + _nciFotosProcessando + ' foto(s)...', 2500);
+    console.warn('[BUG X] tentativa de salvar com', _nciFotosProcessando, 'fotos ainda processando');
+    return;
+  }
   const gs=_nciD.gs;
   // Salvar como anexos da hospedagem (chave h_<gs>; movidas para v_<vagaId> ao designar)
   if(_nciFotos.length>0 && gs){
@@ -6484,14 +6664,34 @@ function _nciShowStep5(){
 function _nciStep5DesignarAgora(ev){
   if(ev){ try{ ev.stopPropagation(); ev.preventDefault(); }catch(_){} }
   const d=_nciD; if(!d) return;
-  // Bug I v1.9.4.1.4: operador com fallback robusto — tentar d.usuario primeiro,
-  // depois usuario_checkin da HOSPEDAGENS criada no commit, depois nome derivado
+  console.log('[BUG T] _nciStep5DesignarAgora chamado');
+  console.log('[BUG T] d.usuario:', d.usuario);
+  console.log('[BUG T] d.gs:', d.gs);
+  console.log('[BUG T] HOSPEDAGENS[d.gs]:', HOSPEDAGENS[d.gs]);
+  console.log('[BUG T] usuario_checkin:', HOSPEDAGENS[d.gs] && HOSPEDAGENS[d.gs].usuario_checkin);
+  // Bug T v1.9.4.1.6: operador com 3 camadas de fallback
   let operadorPreFilled=d.usuario||null;
   if(!operadorPreFilled && d.gs && HOSPEDAGENS[d.gs] && HOSPEDAGENS[d.gs].usuario_checkin){
     operadorPreFilled=HOSPEDAGENS[d.gs].usuario_checkin;
-    console.log('[DESIG] _nciStep5DesignarAgora: operador via HOSPEDAGENS:',operadorPreFilled);
+    console.log('[BUG T] operador via HOSPEDAGENS:',operadorPreFilled);
   }
-  // Ativar MODO_DESIGNACAO — Bug E: origem='pos_checkin' + operador do NCI
+  // CAMADA EXTRA: turno ativo único (apenas se ainda não tem)
+  if(!operadorPreFilled){
+    try {
+      const ativos = (typeof TURNOS !== 'undefined' ? TURNOS : []).filter(function(t){ return t && t.ativo; });
+      if(ativos.length === 1){
+        const u = ativos[0];
+        operadorPreFilled = u.nome || (u.usuario && u.usuario.nome) || null;
+        console.log('[BUG T] operador via turno ativo único:', operadorPreFilled);
+      }
+    } catch(e){ console.warn('[BUG T] fallback turno falhou:', e.message); }
+  }
+  // CAMADA FINAL: "—" para garantir que origem=pos_checkin NUNCA pergunte
+  if(!operadorPreFilled){
+    operadorPreFilled = '—';
+    console.warn('[BUG T] sem operador disponível, usando "—" para pos_checkin');
+  }
+  console.log('[BUG T] operadorPreFilled FINAL:', operadorPreFilled);
   MODO_DESIGNACAO={
     gs:d.gs, apt:d.apt,
     model:d.model, color:d.color,
@@ -6501,6 +6701,7 @@ function _nciStep5DesignarAgora(ev){
     operador:operadorPreFilled,
     timestamp:Date.now()
   };
+  console.log('[BUG T] MODO_DESIGNACAO setado:', JSON.stringify(MODO_DESIGNACAO));
   // Fechar NCI sem confirmação (commit já feito)
   const ov=document.getElementById('nci-overlay');
   ov.classList.remove('on');
@@ -6663,18 +6864,23 @@ function _showModalDesignacao(vagaId){
 
 function _aplicarDesignacaoDireta(vagaId){
   const m=MODO_DESIGNACAO; if(!m) return;
-  // Bug P v1.9.4.1.5: pos_checkin NUNCA pergunta operador — usar HOSPEDAGENS.usuario_checkin
-  // como fonte autoritativa (operador é o mesmo que fez o check-in).
+  console.log('[BUG T] _aplicarDesignacaoDireta chamado, MODO_DESIGNACAO:', JSON.stringify({
+    gs:m.gs, origem:m.origem, operador:m.operador, temOperador:!!m.operador
+  }));
+  // Bug P/T v1.9.4.1.6: pos_checkin NUNCA pergunta operador
   if(m.origem==='pos_checkin'){
+    console.log('[BUG T] pos_checkin path: operador atual:', m.operador);
     if(!m.operador && m.gs && HOSPEDAGENS[m.gs] && HOSPEDAGENS[m.gs].usuario_checkin){
       m.operador=HOSPEDAGENS[m.gs].usuario_checkin;
-      console.log('[DESIG] pos_checkin: operador via HOSPEDAGENS:',m.operador);
+      console.log('[BUG T] usando usuario_checkin:', m.operador);
     }
     if(!m.operador) m.operador='—';
+    console.log('[BUG T] EXECUTANDO direto (sem perguntar operador), final:', m.operador);
     _aplicarDesignacaoExec(vagaId);
-    return;
+    return; // CRÍTICO: garante que NÃO cai no bloco abaixo
   }
   // Origem painel/vaga_direta: pode perguntar se ausente
+  console.log('[BUG T] origem !== pos_checkin, talvez pergunta operador. origem:', m.origem);
   if(!m.operador && typeof confirmarUsuario==='function'){
     confirmarUsuario('designando vaga '+vagaId,function(usuario){
       if(typeof closeOv==='function') closeOv();
@@ -8625,20 +8831,47 @@ function buildRegistroDoc(apt, dv, hist){
         _pdfFooter(doc);
       }catch(e){ console.error('[PDF checkout] erro vistoria',vist&&vist.numero,e); }
     }
-    // Fotos da hospedagem (em v_<vagaId> ou h_<gs>)
+    // Bug Q v1.9.4.1.6: Fotos da hospedagem (em v_<vagaId> ou h_<gs>)
     const vagaIdAtual=Object.keys(S).find(function(k){return S[k]&&S[k].hospedagem===hospNum&&S[k].status==='occupied';});
     const keyAnex = vagaIdAtual ? 'v_'+vagaIdAtual : 'h_'+hospNum;
     const todosAnex = (ANEXOS[keyAnex]||[]).concat(vagaIdAtual?(ANEXOS['h_'+hospNum]||[]):[]);
-    const fotos = todosAnex.filter(function(a){return a&&a.tipo==='foto'&&(a.data||a.base64Original);});
+    console.log('[BUG Q] keyAnex:', keyAnex, 'todosAnex:', todosAnex.length);
+    console.log('[BUG Q] estrutura primeiros 3:', todosAnex.slice(0,3).map(function(a){
+      return {name:a&&a.name, tipo:a&&a.tipo, isImg:a&&a.isImg, hasData:!!(a&&(a.data||a.base64Original))};
+    }));
+    // Bug Q v1.9.4.1.6: filtro ampliado — aceita fotos legadas sem tipo:'foto' (somente isImg)
+    const fotos = todosAnex.filter(function(a){
+      if(!a) return false;
+      const ehFoto = a.tipo==='foto' || (a.isImg===true && !a.tipo);
+      const naoEhVistoria = a.tipo!=='vistoria';
+      const temData = !!(a.data || a.base64Original);
+      return ehFoto && naoEhVistoria && temData;
+    });
+    console.log('[BUG Q] fotos filtradas:', fotos.length);
     for(const foto of fotos){
       try{
+        const imgData = foto.data || foto.base64Original;
+        if(!imgData){ console.error('[BUG Q] foto sem data:', foto.name); continue; }
         doc.addPage();
         const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
-        let yF=_pdfHeader(doc,'Foto do Veiculo',dataFmt+(foto.name?' · '+foto.name:''));
+        const apt = dv && dv.apt ? dv.apt : '';
+        const modelo = dv && dv.model ? dv.model : '';
+        const cor = dv && dv.color ? dv.color : '';
+        const funcionario = foto.usuario || '';
+        const partes = [];
+        if(apt) partes.push('Apt ' + apt);
+        if(modelo || cor) partes.push((modelo + ' ' + cor).trim());
+        if(dataFmt) partes.push(dataFmt);
+        if(funcionario) partes.push(funcionario);
+        const nomeCompleto = partes.join(' · ') || (foto.name || 'Foto');
+        let yF=_pdfHeader(doc,'Foto do Veiculo', nomeCompleto);
         const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
-        doc.addImage(foto.data||foto.base64Original,fmt,10,yF,190,240);
+        doc.addImage(imgData,fmt,10,yF,190,240);
         _pdfFooter(doc);
-      }catch(e){ console.error('[PDF checkout] erro foto',foto&&foto.name,e); }
+        console.log('[BUG Q] foto adicionada OK:', foto.name);
+      }catch(e){
+        console.error('[BUG Q] ERRO addImage foto:', foto&&foto.name, e.message, e);
+      }
     }
   }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
 
@@ -8837,14 +9070,17 @@ function removeAnexo(id, fromPasseio, idx){
 }
 
 function saveAnexos(){
-  try{ localStorage.setItem('garagespot_anexos', JSON.stringify(ANEXOS)); }catch(e){}
+  // Bug W v1.9.4.1.6: storage protegido
+  _saveProtegido('garagespot_anexos', ANEXOS, 'anexos');
 }
 
 function loadAnexos(){
-  try{
-    const raw = localStorage.getItem('garagespot_anexos');
-    if(raw){ const data=JSON.parse(raw); Object.assign(ANEXOS, data); }
-  }catch(e){}
+  const dados = _loadProtegido('anexos');
+  if(dados){
+    Object.keys(ANEXOS).forEach(function(k){ delete ANEXOS[k]; });
+    Object.assign(ANEXOS, dados);
+    _contadorAnterior.anexos = Object.keys(ANEXOS).length;
+  }
 }
 
 // Abre visualizador de imagem em tela cheia
@@ -8936,6 +9172,117 @@ const STORAGE_KEY = 'garagem_spot_v1';
 const DB_NAME     = 'GaragemSpot';
 const DB_STORE    = 'estado';
 let   db          = null;
+
+// === BUG W v1.9.4.1.6: Sistema de Backup Rotativo (3 SLOTS) ===
+const BACKUP_KEYS = {
+  hospedagens: ['garagespot_hospedagens', 'garagespot_hospedagens_bk1', 'garagespot_hospedagens_bk2'],
+  vistorias:   ['garagespot_vistorias',   'garagespot_vistorias_bk1',   'garagespot_vistorias_bk2'],
+  anexos:      ['garagespot_anexos',      'garagespot_anexos_bk1',      'garagespot_anexos_bk2'],
+  state:       ['garagem_spot_v1',        'garagem_spot_v1_bk1',        'garagem_spot_v1_bk2']
+};
+let _contadorAnterior = { hospedagens:0, vistorias:0, anexos:0 };
+
+function _atualizarContadores(){
+  _contadorAnterior.hospedagens = Object.keys(HOSPEDAGENS || {}).length;
+  _contadorAnterior.vistorias   = Object.keys(VISTORIAS   || {}).length;
+  _contadorAnterior.anexos      = Object.keys(ANEXOS      || {}).length;
+  try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
+}
+function _carregarContadores(){
+  try {
+    const raw = localStorage.getItem('garagespot_contadores');
+    if(raw) _contadorAnterior = JSON.parse(raw);
+  } catch(e){}
+}
+
+// _saveProtegido: rotaciona backups e bloqueia save de dados vazios quando havia muitos antes
+function _saveProtegido(key, dados, tipo){
+  const novoCount = Object.keys(dados || {}).length;
+  const anteriorCount = _contadorAnterior[tipo] || 0;
+  if(anteriorCount > 5 && novoCount === 0){
+    console.error('[BUG W] BLOQUEIO! Save de', tipo, 'vazio (tinha', anteriorCount, '). NÃO SALVANDO.');
+    if(typeof showToast==='function') showToast('⚠️ Save de ' + tipo + ' vazio bloqueado. Veja console.', 5000);
+    return false;
+  }
+  if(anteriorCount > 10 && novoCount < anteriorCount * 0.5){
+    console.warn('[BUG W] Save com redução grande:', tipo, anteriorCount, '→', novoCount);
+  }
+  try {
+    const keys = BACKUP_KEYS[tipo];
+    if(keys){
+      const bk1 = localStorage.getItem(keys[0]);
+      if(bk1){
+        const bk2 = localStorage.getItem(keys[1]);
+        if(bk2) localStorage.setItem(keys[2], bk2);
+        localStorage.setItem(keys[1], bk1);
+      }
+    }
+  } catch(e){ console.warn('[BUG W] erro rotacionando backup:', e); }
+  try {
+    localStorage.setItem(key, JSON.stringify(dados));
+    _contadorAnterior[tipo] = novoCount;
+    try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
+    return true;
+  } catch(e){
+    console.error('[BUG W] erro salvando', tipo, ':', e);
+    return false;
+  }
+}
+
+// _loadProtegido: tenta principal, depois bk1, depois bk2; loga se usar backup
+function _loadProtegido(tipo){
+  const keys = BACKUP_KEYS[tipo];
+  if(!keys) return null;
+  for(let i = 0; i < keys.length; i++){
+    try {
+      const raw = localStorage.getItem(keys[i]);
+      if(!raw) continue;
+      const dados = JSON.parse(raw);
+      if(dados && typeof dados === 'object'){
+        if(i > 0){
+          console.warn('[BUG W] usando backup slot', i, 'para', tipo);
+          if(typeof showToast==='function') showToast('⚠️ Restaurando ' + tipo + ' de backup', 4000);
+        }
+        return dados;
+      }
+    } catch(e){
+      console.warn('[BUG W] erro parseando', keys[i], ':', e);
+    }
+  }
+  console.error('[BUG W] TODOS os backups de', tipo, 'falharam!');
+  return null;
+}
+
+// Funções globais de emergência
+window.gsRecovery = function(){
+  console.log('=== GarageSpot Recovery ===');
+  console.log('Contadores atuais:');
+  console.log('  HOSPEDAGENS:', Object.keys(HOSPEDAGENS).length);
+  console.log('  VISTORIAS:', Object.keys(VISTORIAS).length);
+  console.log('  ANEXOS:', Object.keys(ANEXOS).length);
+  console.log('Backups disponíveis:');
+  Object.keys(BACKUP_KEYS).forEach(function(tipo){
+    BACKUP_KEYS[tipo].forEach(function(k, i){
+      const raw = localStorage.getItem(k);
+      if(raw){
+        try { const d = JSON.parse(raw); console.log('  ' + k + ' (slot ' + i + '):', Object.keys(d).length, 'itens'); }
+        catch(e){ console.log('  ' + k + ' (slot ' + i + '): CORROMPIDO'); }
+      }
+    });
+  });
+  console.log('Para restaurar: gsRestoreFrom("hospedagens", 1)');
+};
+window.gsRestoreFrom = function(tipo, slot){
+  const keys = BACKUP_KEYS[tipo];
+  if(!keys || !keys[slot]){ console.error('Invalid tipo/slot'); return; }
+  const raw = localStorage.getItem(keys[slot]);
+  if(!raw){ console.error('Backup vazio em slot', slot); return; }
+  try {
+    const dados = JSON.parse(raw);
+    localStorage.setItem(keys[0], JSON.stringify(dados));
+    console.log('Restaurado', tipo, 'do slot', slot, '— RECARREGUE O APP');
+  } catch(e){ console.error('erro:', e); }
+};
 
 // Abre o banco IndexedDB
 function openDB(){
@@ -9077,6 +9424,34 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden') fazerBackupLocal('App minimizado');
 });
 
+// Bug W v1.9.4.1.6: Save IMEDIATO ao perder foco (antes do Android matar o webview)
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'hidden'){
+    console.log('[BUG W] app perdendo foco, forçando saves');
+    try {
+      if(typeof saveData==='function') saveData();
+      if(typeof saveHospedagens==='function') saveHospedagens();
+      if(typeof saveVistorias==='function') saveVistorias();
+      if(typeof saveAnexos==='function') saveAnexos();
+      if(typeof saveHistorico==='function') saveHistorico();
+      if(typeof saveUsuarios==='function') saveUsuarios();
+      if(typeof saveTurnos==='function') saveTurnos();
+      _atualizarContadores();
+      console.log('[BUG W] saves de proteção completos');
+    } catch(e){ console.error('[BUG W] erro em save de proteção:', e); }
+  }
+});
+// Bug W v1.9.4.1.6: pagehide é mais confiável em mobile/iOS para detectar fechamento
+window.addEventListener('pagehide', function(){
+  console.log('[BUG W] pagehide disparou, force-save');
+  try {
+    if(typeof saveData==='function') saveData();
+    if(typeof saveHospedagens==='function') saveHospedagens();
+    if(typeof saveVistorias==='function') saveVistorias();
+    if(typeof saveAnexos==='function') saveAnexos();
+  } catch(e){ console.error('[BUG W] pagehide save erro:', e); }
+});
+
 // ── KILL SWITCH ──────────────────────────────────────────────────────────
 const LICENSE_URL = 'https://gist.githubusercontent.com/ApolloDSk/a9b3a7937b71c3e0956f236dcfd3b6d8/raw/license.json';
 // Cache de 5 minutos — verifica com frequência mas não a cada clique
@@ -9152,6 +9527,9 @@ async function checkLicense(){
 
 // Inicialização — verifica licença antes de carregar o app
 initState();
+// Bug W v1.9.4.1.6: carregar contadores antes de qualquer save/load para detectar perdas
+_carregarContadores();
+console.log('[BUG W] contadores carregados:', _contadorAnterior);
 checkLicense().then(async (ativo)=>{
   if(!ativo){
     showLicenseBlocked(false);
