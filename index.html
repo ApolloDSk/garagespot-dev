@@ -613,7 +613,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.7 -->
+<!-- GarageSpot v1.9.4.1.8 -->
 <body>
 <div class="page">
 
@@ -734,6 +734,19 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
   <div class="nci-ftr" id="nci-ftr"></div>
 </div>
 <div class="ovbg" id="ov"><div class="modal" id="mc"></div></div>
+
+<!-- v1.9.4.1.8: Painel de debug visível na tela (5 toques na versão para abrir) -->
+<div id="debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:40vh;background:rgba(0,0,0,0.92);color:#0f0;font-family:monospace;font-size:10px;z-index:99999;overflow-y:auto;padding:0;border-top:2px solid #0f0;box-sizing:border-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#000;padding:6px 8px;border-bottom:1px solid #0f0">
+    <span style="color:#fff;font-weight:bold;font-size:11px">🐛 DEBUG LOG <span id="debug-counter" style="color:#0f0;font-weight:normal">(0)</span></span>
+    <span>
+      <button onclick="window._debugCopiar()" style="background:#0a0;color:#fff;border:none;padding:4px 8px;margin-right:4px;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit">📋 Copiar</button>
+      <button onclick="window._debugLimpar()" style="background:#a50;color:#fff;border:none;padding:4px 8px;margin-right:4px;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit">🗑 Limpar</button>
+      <button onclick="window._debugFechar()" style="background:#a00;color:#fff;border:none;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit">✕ Fechar</button>
+    </span>
+  </div>
+  <div id="debug-log-content" style="padding:6px 8px"></div>
+</div>
 
 <script>
 /** @license
@@ -1136,10 +1149,120 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.1.7: constantes de versão visíveis no rodapé do Painel
-const GS_VERSION = 'v1.9.4.1.7';
-const GS_VERSION_CODE = 20;
+// v1.9.4.1.8: constantes de versão visíveis no rodapé do Painel
+const GS_VERSION = 'v1.9.4.1.8';
+const GS_VERSION_CODE = 21;
 const GS_BUILD_TS = '2026-05-28';
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
+// Ativação: 5 toques rápidos no rodapé da versão (#gs-versao-rodape)
+// ════════════════════════════════════════════════════════════════════════
+let _debugLogs = [];
+const _origConsoleLog = console.log;
+const _origConsoleError = console.error;
+const _origConsoleWarn = console.warn;
+
+function _debugCapturar(nivel, args){
+  try {
+    const txt = Array.prototype.slice.call(args).map(function(a){
+      if(a instanceof Error) return a.message + ' ' + (a.stack||'');
+      if(typeof a === 'object'){ try { return JSON.stringify(a); } catch(e){ return String(a); } }
+      return String(a);
+    }).join(' ');
+    if(txt.indexOf('[BUG') >= 0 || txt.indexOf('[VST]') >= 0 || txt.indexOf('[DESIG') >= 0 || nivel === 'ERROR'){
+      const ts = new Date().toLocaleTimeString('pt-BR');
+      _debugLogs.push('[' + ts + '][' + nivel + '] ' + txt);
+      if(_debugLogs.length > 300) _debugLogs.shift();
+      const panel = document.getElementById('debug-panel');
+      const content = document.getElementById('debug-log-content');
+      const counter = document.getElementById('debug-counter');
+      if(counter) counter.textContent = '(' + _debugLogs.length + ')';
+      if(content && panel && panel.style.display !== 'none'){
+        const cor = nivel === 'ERROR' ? '#f55' : (nivel === 'WARN' ? '#fa0' : '#0f0');
+        const div = document.createElement('div');
+        div.style.cssText = 'color:' + cor + ';border-bottom:1px solid #222;padding:2px 0;word-break:break-word';
+        div.textContent = ts + ' [' + nivel + '] ' + txt;
+        content.appendChild(div);
+        content.parentElement.scrollTop = content.parentElement.scrollHeight;
+      }
+    }
+  } catch(e){}
+}
+
+console.log = function(){ _debugCapturar('LOG', arguments); _origConsoleLog.apply(console, arguments); };
+console.error = function(){ _debugCapturar('ERROR', arguments); _origConsoleError.apply(console, arguments); };
+console.warn = function(){ _debugCapturar('WARN', arguments); _origConsoleWarn.apply(console, arguments); };
+
+// Captura erros JS não tratados (PAGEERROR) para visibilidade Android
+window.addEventListener('error', function(ev){
+  try { _debugCapturar('ERROR', ['PAGEERROR:', (ev && ev.message) || 'erro desconhecido', (ev && ev.filename) || '', 'linha:', (ev && ev.lineno) || '?']); } catch(_){}
+});
+window.addEventListener('unhandledrejection', function(ev){
+  try { _debugCapturar('ERROR', ['UNHANDLED PROMISE:', (ev && ev.reason && ev.reason.message) || String(ev && ev.reason)]); } catch(_){}
+});
+
+window._debugFechar = function(){ const p = document.getElementById('debug-panel'); if(p) p.style.display = 'none'; };
+window._debugLimpar = function(){
+  _debugLogs = [];
+  const content = document.getElementById('debug-log-content'); if(content) content.innerHTML = '';
+  const counter = document.getElementById('debug-counter'); if(counter) counter.textContent = '(0)';
+};
+window._debugCopiar = function(){
+  const txt = _debugLogs.join('\n');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){
+      if(typeof showToast==='function') showToast('Logs copiados! (' + _debugLogs.length + ' linhas)', 2500);
+    }).catch(function(){ _debugCopiarFallback(txt); });
+  } else {
+    _debugCopiarFallback(txt);
+  }
+};
+function _debugCopiarFallback(txt){
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if(typeof showToast==='function') showToast('Logs copiados! (' + _debugLogs.length + ' linhas)', 2500);
+  } catch(e){
+    if(typeof showToast==='function') showToast('Erro ao copiar — selecione manualmente', 3000);
+  }
+}
+window._debugAbrir = function(){
+  const p = document.getElementById('debug-panel');
+  if(!p) return;
+  p.style.display = 'block';
+  const content = document.getElementById('debug-log-content');
+  const counter = document.getElementById('debug-counter');
+  if(counter) counter.textContent = '(' + _debugLogs.length + ')';
+  if(content){
+    content.innerHTML = '';
+    _debugLogs.forEach(function(l){
+      const cor = l.indexOf('[ERROR]') >= 0 ? '#f55' : (l.indexOf('[WARN]') >= 0 ? '#fa0' : '#0f0');
+      const div = document.createElement('div');
+      div.style.cssText = 'color:' + cor + ';border-bottom:1px solid #222;padding:2px 0;word-break:break-word';
+      div.textContent = l;
+      content.appendChild(div);
+    });
+    content.parentElement.scrollTop = content.parentElement.scrollHeight;
+  }
+};
+
+let _debugTapCount = 0;
+let _debugTapTimer = null;
+window._debugVersaoTap = function(){
+  _debugTapCount++;
+  if(_debugTapTimer) clearTimeout(_debugTapTimer);
+  _debugTapTimer = setTimeout(function(){ _debugTapCount = 0; }, 1500);
+  if(_debugTapCount >= 5){
+    _debugTapCount = 0;
+    window._debugAbrir();
+  }
+};
 
 const S={}, PASSEIO={}, HOSPEDAGENS={};
 let USUARIOS=[];
@@ -1852,6 +1975,19 @@ function clkV(id){
   if(!S[id]) return;
   if(dragState) return;
   cur=id;
+  // Bug T v1.9.4.1.8: se MODO_DESIGNACAO foi perdido (crash JS, garbage collection do
+  // webview Android, etc.) mas o banner ainda está visível, RESTAURAR do sessionStorage.
+  const _bannerEl=document.getElementById('banner-designar');
+  const _bannerVis=_bannerEl && _bannerEl.style.display!=='none';
+  if((typeof MODO_DESIGNACAO==='undefined' || !MODO_DESIGNACAO) && _bannerVis){
+    try {
+      const bk=sessionStorage.getItem('_modoDesignacaoBackup');
+      if(bk){
+        MODO_DESIGNACAO=JSON.parse(bk);
+        console.warn('[BUG T] MODO_DESIGNACAO restaurado do backup sessionStorage:', JSON.stringify(MODO_DESIGNACAO));
+      }
+    } catch(e){ console.error('[BUG T] erro restaurando backup:', e); }
+  }
   // Bug T v1.9.4.1.7: log para rastrear MODO_DESIGNACAO no momento do toque
   console.log('[BUG T] clkV id=', id,
     'MODO_DESIGNACAO=', MODO_DESIGNACAO ? JSON.stringify({gs:MODO_DESIGNACAO.gs, origem:MODO_DESIGNACAO.origem, operador:MODO_DESIGNACAO.operador}) : 'null',
@@ -1862,9 +1998,8 @@ function clkV(id){
     return;
   }
   // Bug T v1.9.4.1.7: se há banner-designar visível mas MODO_DESIGNACAO nulo, é estado inconsistente
-  const banner=document.getElementById('banner-designar');
-  if(banner && banner.style.display!=='none'){
-    console.warn('[BUG T] banner-designar visível mas MODO_DESIGNACAO=null — estado inconsistente');
+  if(_bannerVis){
+    console.warn('[BUG T] banner-designar visível mas MODO_DESIGNACAO=null — estado inconsistente (backup também falhou)');
   }
   if(S[id].status==='free'){
     _clkVDesignar(id);
@@ -3415,8 +3550,8 @@ function renderPainelDia(){
     </div>
   </div>
 
-  <!-- v1.9.4.1.7: versão visível no rodapé do Painel -->
-  <div id="gs-versao-rodape" style="text-align:center;font-size:10px;color:#aaa;padding:10px 0 16px;font-family:inherit">
+  <!-- v1.9.4.1.8: versão visível no rodapé do Painel + 5 toques abre painel de debug -->
+  <div id="gs-versao-rodape" onclick="_debugVersaoTap()" style="text-align:center;font-size:10px;color:#aaa;padding:10px 0 16px;font-family:inherit;cursor:pointer;user-select:none">
     GarageSpot ${GS_VERSION} · build ${GS_BUILD_TS} · versionCode ${GS_VERSION_CODE}
   </div>`;
 
@@ -5705,6 +5840,18 @@ function _vtAtivarAssinatura(){
   MODO_VISTORIA_ATIVO='assinatura';
   const a=document.getElementById('area-assinatura');
   if(a) a.classList.add('ativa');
+
+  // Bug R v1.9.4.1.8: FORÇAR canvas visível ANTES de medir.
+  // CAUSA RAIZ: CSS deixava o canvas display:none até a classe .ativa propagar.
+  // No momento de _vtSigEsperarEVisivel, getBoundingClientRect retornava 0×0 sempre
+  // (canvas estava display:none) e o esperador desistia após 30 tentativas.
+  const cv = document.getElementById('canvas-assinatura');
+  if(cv){
+    cv.style.display = 'block';
+    cv.style.pointerEvents = 'auto';
+    void cv.offsetHeight; // força reflow imediato
+  }
+
   _vtBloquearCarros(true);
   _vtAtualizarBarraContexto();
   _nciAtualizarProgresso();
@@ -5712,7 +5859,6 @@ function _vtAtivarAssinatura(){
   // Bug R v1.9.4.1.7: usar esperador que força reflow + polling rAF
   _vtSigEsperarEVisivel(0);
   // Bug R: listener transitionend no container para re-setup quando animação CSS terminar
-  const cv = document.getElementById('canvas-assinatura');
   const containerAssin = cv ? (cv.closest('.nci-iz') || cv.parentElement) : null;
   if(containerAssin && !containerAssin.__vtSigTransitionBound){
     containerAssin.__vtSigTransitionBound = true;
@@ -5803,10 +5949,14 @@ function _vtSigEsperarEVisivel(tentativa){
   tentativa = tentativa || 0;
   const cv = document.getElementById('canvas-assinatura');
   if(!cv){ console.warn('[BUG R] canvas-assinatura não encontrado em esperarEVisivel'); return; }
+  // Bug R v1.9.4.1.8: dupla proteção — se ainda está display:none, forçar block
+  if(getComputedStyle(cv).display === 'none'){
+    cv.style.display = 'block';
+  }
   // Forçar layout/reflow para aplicar mudanças pendentes de display:none→block
   void cv.offsetHeight;
   const r = cv.getBoundingClientRect();
-  console.log('[BUG R] esperarEVisivel tentativa', tentativa, 'rect:', {w:r.width, h:r.height});
+  console.log('[BUG R] esperarEVisivel tentativa', tentativa, 'rect:', {w:r.width, h:r.height}, 'display:', getComputedStyle(cv).display);
   if(r.width > 0 && r.height > 0){
     console.log('[BUG R] canvas com dimensões reais, inicializando setup');
     _vtSigSetup();
@@ -6454,7 +6604,10 @@ async function _nciFotosSalvarESegue(){
       });
     });
     saveAnexos();
-    console.log('[BUG #1] salvou', _nciFotos.length, 'fotos em', chaveAnexo, '— total agora:', ANEXOS[chaveAnexo].length);
+    // Bug #1 v1.9.4.1.8: forçar saveData (IndexedDB+localStorage do estado vagas) para
+    // garantir persistência imediata após anexar fotos (não confia só no debounce/visibilitychange)
+    try { if(typeof saveData==='function') saveData(); } catch(e){ console.error('[BUG #1] saveData falhou:', e); }
+    console.log('[BUG #1] salvou', _nciFotos.length, 'fotos em', chaveAnexo, '— total agora:', ANEXOS[chaveAnexo].length, '— anexos persistidos após nova vistoria');
   }
   _nciFotos=[];
   _nciFotosPromisesPendentes = [];
@@ -6742,7 +6895,9 @@ function _nciStep5DesignarAgora(ev){
     operador:operadorPreFilled,
     timestamp:Date.now()
   };
-  console.log('[BUG T] MODO_DESIGNACAO setado:', JSON.stringify(MODO_DESIGNACAO));
+  // Bug T v1.9.4.1.8: backup defensivo do estado de designação (caso algo zere MODO_DESIGNACAO no Android)
+  try { sessionStorage.setItem('_modoDesignacaoBackup', JSON.stringify(MODO_DESIGNACAO)); } catch(e){}
+  console.log('[BUG T] MODO_DESIGNACAO setado e backup salvo:', JSON.stringify(MODO_DESIGNACAO));
   // Fechar NCI sem confirmação (commit já feito)
   const ov=document.getElementById('nci-overlay');
   ov.classList.remove('on');
@@ -6813,6 +6968,8 @@ function _atualizarBannerDesignacao(){
 
 function cancelarDesignacao(){
   MODO_DESIGNACAO=null;
+  // Bug T v1.9.4.1.8: limpar backup
+  try { sessionStorage.removeItem('_modoDesignacaoBackup'); } catch(e){}
   _atualizarBannerDesignacao();
   if(typeof showToast==='function') showToast('Designação cancelada — disponível em "Aguardando vaga"',3000);
   if(typeof renderPainelDia==='function') renderPainelDia();
@@ -6834,6 +6991,8 @@ function ativarDesignacaoHosp(gs){
     operador:null,   // Bug E: vai perguntar ao confirmar (origem painel)
     timestamp:Date.now()
   };
+  // Bug T v1.9.4.1.8: backup defensivo
+  try { sessionStorage.setItem('_modoDesignacaoBackup', JSON.stringify(MODO_DESIGNACAO)); } catch(e){}
   if(typeof navTo==='function') navTo('mapa');
   _atualizarBannerDesignacao();
   if(typeof showToast==='function') showToast('Toque numa vaga livre para guardar o veículo',3500);
@@ -6965,6 +7124,8 @@ function _aplicarDesignacaoExec(vagaId){
   _vtHaptic();
   // Limpar MODO_DESIGNACAO
   MODO_DESIGNACAO=null;
+  // Bug T v1.9.4.1.8: limpar backup de sessionStorage
+  try { sessionStorage.removeItem('_modoDesignacaoBackup'); } catch(e){}
   _atualizarBannerDesignacao();
   // Mover anexo h_<gs> para v_<vagaId> (junta vistoria com a vaga)
   // Bug L v1.9.4.1.5: validar migração com logs
@@ -7337,12 +7498,13 @@ async function fazerBackupLocal(motivo){
     DRIVE_STATUS.ultimo_backup=Date.now();
     DRIVE_STATUS.falha_backup=false;
     saveDriveStatus();
-    logSistema('Backup: '+(motivo||'manual')+' — '+nome);
+    // Bug latente v1.9.4.1.8: era logSistema (não definido) — causava ReferenceError em cada backup/designação
+    if(typeof addLogSistema === 'function') addLogSistema('Backup: '+(motivo||'manual')+' — '+nome);
     return {ok:true,nome};
   }catch(e){
     DRIVE_STATUS.falha_backup=true;
     saveDriveStatus();
-    logSistema('Erro backup: '+e.message);
+    if(typeof addLogSistema === 'function') addLogSistema('Erro backup: '+e.message);
     return {ok:false,erro:e.message};
   }
 }
@@ -9113,8 +9275,12 @@ function removeAnexo(id, fromPasseio, idx){
 }
 
 function saveAnexos(){
-  // Bug W v1.9.4.1.6: storage protegido
-  _saveProtegido('garagespot_anexos', ANEXOS, 'anexos');
+  // Bug #1 v1.9.4.1.8: try/catch para nunca crashar — proteção contra QuotaExceededError
+  try {
+    _saveProtegido('garagespot_anexos', ANEXOS, 'anexos');
+  } catch(e){
+    console.error('[BUG #1] erro em saveAnexos:', e);
+  }
 }
 
 function loadAnexos(){
@@ -9242,6 +9408,11 @@ function _carregarContadores(){
 function _saveProtegido(key, dados, tipo){
   const novoCount = Object.keys(dados || {}).length;
   const anteriorCount = _contadorAnterior[tipo] || 0;
+  // Bug #1 v1.9.4.1.8: trava de contagem total de itens para anexos
+  if(tipo === 'anexos'){
+    const totalItensNovo = Object.values(dados||{}).reduce(function(s,arr){ return s + (Array.isArray(arr)?arr.length:0); }, 0);
+    console.log('[BUG #1] _saveProtegido anexos: chaves=', novoCount, '| total itens=', totalItensNovo);
+  }
   if(anteriorCount > 5 && novoCount === 0){
     console.error('[BUG W] BLOQUEIO! Save de', tipo, 'vazio (tinha', anteriorCount, '). NÃO SALVANDO.');
     if(typeof showToast==='function') showToast('⚠️ Save de ' + tipo + ' vazio bloqueado. Veja console.', 5000);
@@ -9356,6 +9527,7 @@ function buildSnapshot(){
 }
 
 // Restaura o estado a partir de um snapshot
+// CONFIRMADO v1.9.4.1.8: snapshot NÃO inclui ANEXOS (só vagas+passeio); applySnapshot NÃO toca ANEXOS
 function applySnapshot(data){
   if(!data || !data.vagas) return false;
   Object.entries(data.vagas).forEach(([id, saved])=>{
