@@ -613,7 +613,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.6 -->
+<!-- GarageSpot v1.9.4.1.7 -->
 <body>
 <div class="page">
 
@@ -1136,6 +1136,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
+// v1.9.4.1.7: constantes de versão visíveis no rodapé do Painel
+const GS_VERSION = 'v1.9.4.1.7';
+const GS_VERSION_CODE = 20;
+const GS_BUILD_TS = '2026-05-28';
+
 const S={}, PASSEIO={}, HOSPEDAGENS={};
 let USUARIOS=[];
 let cur=null, ssz='small';
@@ -1847,10 +1852,19 @@ function clkV(id){
   if(!S[id]) return;
   if(dragState) return;
   cur=id;
+  // Bug T v1.9.4.1.7: log para rastrear MODO_DESIGNACAO no momento do toque
+  console.log('[BUG T] clkV id=', id,
+    'MODO_DESIGNACAO=', MODO_DESIGNACAO ? JSON.stringify({gs:MODO_DESIGNACAO.gs, origem:MODO_DESIGNACAO.origem, operador:MODO_DESIGNACAO.operador}) : 'null',
+    'status=', S[id].status);
   // v1.9.4.1: prioridade MODO_DESIGNACAO ativo
   if(typeof MODO_DESIGNACAO!=='undefined' && MODO_DESIGNACAO){
     _clkVModoDesignacao(id);
     return;
+  }
+  // Bug T v1.9.4.1.7: se há banner-designar visível mas MODO_DESIGNACAO nulo, é estado inconsistente
+  const banner=document.getElementById('banner-designar');
+  if(banner && banner.style.display!=='none'){
+    console.warn('[BUG T] banner-designar visível mas MODO_DESIGNACAO=null — estado inconsistente');
   }
   if(S[id].status==='free'){
     _clkVDesignar(id);
@@ -2456,8 +2470,25 @@ function doChk(id){
       const histChk=getHistorico(aptKey);
       const dvChk={model:dadosVeiculo.model,color:dadosVeiculo.color,plate:dadosVeiculo.plate,
                    guest:dadosVeiculo.guest,obs:dadosVeiculo.obs,size:dadosVeiculo.size,
-                   vaga:id,hospedagem:hospNum};
+                   vaga:id,hospedagem:hospNum,apt:aptKey};
       const anexosChk=getAnexos(id,false);
+      // Bug Q v1.9.4.1.7: snapshot de TODAS as fotos ANTES de liberar vaga + deletar anexos.
+      // Sem isto, buildRegistroDoc rodaria depois da deleção e encontraria ANEXOS vazio.
+      const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[] };
+      (function(){
+        const keyV='v_'+id;
+        const keyH='h_'+(hospNum||'');
+        const todos=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]||[]);
+        _snapshotAnexosCheckout.fotos=todos.filter(function(a){
+          if(!a) return false;
+          const ehFoto=a.tipo==='foto' || (a.isImg===true && a.tipo!=='vistoria' && !a.tipo);
+          return ehFoto && !!(a.data||a.base64Original);
+        });
+        _snapshotAnexosCheckout.vistorias=todos.filter(function(a){
+          return a && a.tipo==='vistoria' && !!(a.data||a.base64Original);
+        });
+        console.log('[BUG Q] snapshot capturado:', _snapshotAnexosCheckout.fotos.length, 'fotos +', _snapshotAnexosCheckout.vistorias.length, 'vistorias ANTES de deletar');
+      })();
 
       if(aptKey&&PASSEIO[aptKey])delete PASSEIO[aptKey];
       if(d.hmergeWith) desfazHMerge(id);
@@ -2488,7 +2519,7 @@ function doChk(id){
           <button class="bsv" id="co-share">📤 Sim — Compartilhar</button>
           <button class="bcx" onclick="closeOv()" style="margin-top:4px">Não — Fechar</button>
         </div>`);
-      document.getElementById('co-share').onclick=async()=>{ closeOv(); await compartilharPDF(aptKey,dvChk,histChk,anexosChk); };
+      document.getElementById('co-share').onclick=async()=>{ closeOv(); await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); };
     });
   };
 }
@@ -3382,6 +3413,11 @@ function renderPainelDia(){
         <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?'Hoje às '+fmtHr(lastBkp):'Sem backup'}</div>
       </div>
     </div>
+  </div>
+
+  <!-- v1.9.4.1.7: versão visível no rodapé do Painel -->
+  <div id="gs-versao-rodape" style="text-align:center;font-size:10px;color:#aaa;padding:10px 0 16px;font-family:inherit">
+    GarageSpot ${GS_VERSION} · build ${GS_BUILD_TS} · versionCode ${GS_VERSION_CODE}
   </div>`;
 
   // v1.9.4.1.3: recalcular contadores dos agrupadores após renderizar
@@ -5673,12 +5709,8 @@ function _vtAtivarAssinatura(){
   _vtAtualizarBarraContexto();
   _nciAtualizarProgresso();
   if(a) try{ a.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
-  // Bug R v1.9.4.1.6: reset retry + dupla tentativa via rAF para garantir
-  // que canvas tenha dimensões na primeira renderização
-  _vtSigRetryCount = 0;
-  if(_vtSigObserver){ try{ _vtSigObserver.disconnect(); }catch(_){} _vtSigObserver = null; }
-  requestAnimationFrame(function(){ setTimeout(_vtSigSetup, 50); });
-  setTimeout(_vtSigSetup, 200);
+  // Bug R v1.9.4.1.7: usar esperador que força reflow + polling rAF
+  _vtSigEsperarEVisivel(0);
   // Bug R: listener transitionend no container para re-setup quando animação CSS terminar
   const cv = document.getElementById('canvas-assinatura');
   const containerAssin = cv ? (cv.closest('.nci-iz') || cv.parentElement) : null;
@@ -5765,63 +5797,46 @@ function _vtAtualizarSigUI(){
   }
 }
 
-// Bug R v1.9.4.1.6: IntersectionObserver + retry exponencial para garantir
-// que canvas tem dimensões antes de inicializar (resolve "renderiza só após Limpar")
-let _vtSigObserver = null;
-let _vtSigRetryCount = 0;
-function _vtSigSetupRetryComObserver(cv){
-  _vtSigRetryCount++;
-  if(_vtSigRetryCount > 20){
-    console.error('[BUG R] desistindo após 20 tentativas');
-    _vtSigRetryCount = 0;
+// Bug R v1.9.4.1.7: NÃO usa IntersectionObserver (não dispara em display:none).
+// Força reflow via void offsetHeight e faz polling rAF+setTimeout até dimensões reais.
+function _vtSigEsperarEVisivel(tentativa){
+  tentativa = tentativa || 0;
+  const cv = document.getElementById('canvas-assinatura');
+  if(!cv){ console.warn('[BUG R] canvas-assinatura não encontrado em esperarEVisivel'); return; }
+  // Forçar layout/reflow para aplicar mudanças pendentes de display:none→block
+  void cv.offsetHeight;
+  const r = cv.getBoundingClientRect();
+  console.log('[BUG R] esperarEVisivel tentativa', tentativa, 'rect:', {w:r.width, h:r.height});
+  if(r.width > 0 && r.height > 0){
+    console.log('[BUG R] canvas com dimensões reais, inicializando setup');
+    _vtSigSetup();
     return;
   }
-  if(window.IntersectionObserver && !_vtSigObserver){
-    _vtSigObserver = new IntersectionObserver(function(entries){
-      entries.forEach(function(entry){
-        if(entry.isIntersecting && entry.intersectionRatio > 0){
-          const rr = entry.target.getBoundingClientRect();
-          if(rr.width > 0 && rr.height > 0){
-            console.log('[BUG R] IntersectionObserver disparou, dimensões OK');
-            try{ _vtSigObserver.disconnect(); }catch(_){}
-            _vtSigObserver = null;
-            _vtSigRetryCount = 0;
-            _vtSigSetup();
-          }
-        }
-      });
-    }, { threshold: [0, 0.1, 0.5, 1.0] });
-    try{ _vtSigObserver.observe(cv); }catch(_){}
-  }
-  const delay = Math.min(50 * Math.pow(1.5, _vtSigRetryCount), 800);
-  setTimeout(function(){
-    const rr = cv.getBoundingClientRect();
-    if(rr.width > 0 && rr.height > 0){
-      console.log('[BUG R] retry #' + _vtSigRetryCount + ' OK, dimensões:', rr.width, rr.height);
-      if(_vtSigObserver){ try{ _vtSigObserver.disconnect(); }catch(_){} _vtSigObserver = null; }
-      _vtSigRetryCount = 0;
-      _vtSigSetup();
-    } else {
-      console.log('[BUG R] retry #' + _vtSigRetryCount + ' ainda 0x0, tentando de novo');
-      _vtSigSetupRetryComObserver(cv);
-    }
-  }, delay);
+  if(tentativa >= 30){ console.error('[BUG R] desistindo esperarEVisivel após 30 tentativas'); return; }
+  requestAnimationFrame(function(){
+    setTimeout(function(){ _vtSigEsperarEVisivel(tentativa + 1); }, 30);
+  });
 }
 
 // CAMADA 6: canvas com DPR aplicado corretamente
 function _vtSigSetup(){
-  // Bug F v1.9.4.1.3: só age se área de assinatura está ATIVA (evita duplicação
-  // após [Concluir] quando resize/orientationchange dispara este handler)
+  // Bug F v1.9.4.1.3: só age se área de assinatura está ATIVA
   if(MODO_VISTORIA_ATIVO!=='assinatura'){
     console.log('[VST] _vtSigSetup: ignorado (modo não-ativo)');
     return;
   }
   const cv=document.getElementById('canvas-assinatura');
   if(!cv){ console.warn('[BUG R] canvas-assinatura não encontrado'); return; }
+  // Bug R v1.9.4.1.7: forçar reflow antes de medir
+  void cv.offsetHeight;
   const r=cv.getBoundingClientRect();
   console.log('[BUG R] _vtSigSetup tentativa, rect:', {w:r.width, h:r.height});
-  // Bug R v1.9.4.1.6: se dimensões ainda não estão prontas, usar observer + retry
-  if(!r.width||!r.height){ _vtSigSetupRetryComObserver(cv); return; }
+  // Bug R v1.9.4.1.7: guarda dupla — nunca gravar dimensão 0; delegar ao esperador
+  if(!r.width||!r.height){
+    console.warn('[BUG R] _vtSigSetup com 0x0 — abortando e delegando ao esperador');
+    _vtSigEsperarEVisivel(0);
+    return;
+  }
   // Preservar desenho existente
   const prev=(_nciSigCtx&&_nciSigDirty)?cv.toDataURL('image/png'):null;
   const dpr=window.devicePixelRatio||1;
@@ -6093,6 +6108,7 @@ function _nciPosFotos(){
 // ════════════════════════════════════════════════════════════════════════
 let _nciFotos = [];               // [{id, base64Original, base64Thumbnail, timestamp}]
 let _nciFotosProcessando = 0;     // Bug X v1.9.4.1.6: contador de fotos em processamento async
+let _nciFotosPromisesPendentes = []; // Bug Crítico #1 v1.9.4.1.7: promises de processamento a aguardar antes de salvar
 function _nciFotosAtualizarBotaoSalvar(){
   const btn = document.getElementById('ef-btn-concluir');
   if(!btn) return;
@@ -6116,6 +6132,9 @@ function _nciFotosAtualizarBotaoSalvar(){
 function _nciAbrirEtapaFotos(){
   const ov=document.getElementById('nci-overlay');
   if(!ov||!_nciD) return;
+  // Bug Crítico #1 v1.9.4.1.7: resetar promises pendentes ao iniciar etapa
+  _nciFotosPromisesPendentes = [];
+  _nciFotosProcessando = 0;
   // Adicionar (não substituir) — fica como camada acima da página única
   const old=document.getElementById('etapa-fotos'); if(old) old.remove();
   const wrap=document.createElement('div');
@@ -6181,13 +6200,12 @@ function _nciFotosCapturarCamera(){
       const files=Array.from(ev.target.files||[]);
       if(files.length===0){ console.log('[FOTO] câmera cancelada'); return; }
       const f=files[0];
-      // Bug X v1.9.4.1.6: marcar como processando para bloquear "Salvar e seguir"
+      // Bug X v1.9.4.1.6 + Bug Crítico #1 v1.9.4.1.7: registrar promise pendente
       _nciFotosProcessando++;
       _nciFotosAtualizarBotaoSalvar();
-      _nciFotoFileToB64Compr(f).then(function(b64){
+      const pCam=_nciFotoFileToB64Compr(f).then(function(b64){
         const novaFoto = _nciFotoAdicionarERetornar(b64);
         if(novaFoto){
-          // Bug S v1.9.4.1.6: aguardar thumb processar antes do preview
           const tentarMostrarPreview = function(tentativa){
             if(novaFoto.base64Thumbnail || tentativa > 10){
               _nciFotosPreviewModal(novaFoto);
@@ -6204,6 +6222,7 @@ function _nciFotosCapturarCamera(){
         _nciFotosProcessando--;
         _nciFotosAtualizarBotaoSalvar();
       });
+      _nciFotosPromisesPendentes.push(pCam);
       ev.target.value=''; // permite tirar nova foto em seguida
     });
   }
@@ -6214,40 +6233,37 @@ function _nciFotosOnFileInput(ev){
   const files=Array.from(ev.target.files||[]);
   if(files.length===0) return;
   _nciSalvarRascunhoCompleto();
-  // Bug X v1.9.4.1.6: contador de processamento + bloqueio do botão
+  // Bug X v1.9.4.1.6 + Bug Crítico #1 v1.9.4.1.7: registrar promises pendentes
   _nciFotosProcessando += files.length;
   _nciFotosAtualizarBotaoSalvar();
   console.log('[BUG X] iniciando processamento de', files.length, 'fotos. total processando:', _nciFotosProcessando);
   let adicionadas=0;
-  const promises=[];
   for(const file of files){
     if(_nciFotos.length+adicionadas>=20){
-      // Já no limite — drenar contador desses arquivos não consumidos
       _nciFotosProcessando--;
       continue;
     }
-    promises.push(
-      _nciFotoFileToB64Compr(file)
-        .then(function(b64){
-          _nciFotoAdicionar(b64);
-          adicionadas++;
-        })
-        .catch(function(err){ console.error('[BUG X] erro processando foto:',err); })
-        .finally(function(){
-          _nciFotosProcessando--;
-          console.log('[BUG X] processando restantes:', _nciFotosProcessando);
-          _nciFotosAtualizarBotaoSalvar();
-        })
-    );
+    const p=_nciFotoFileToB64Compr(file)
+      .then(function(b64){
+        _nciFotoAdicionar(b64);
+        adicionadas++;
+      })
+      .catch(function(err){ console.error('[BUG X] erro processando foto:',err); })
+      .finally(function(){
+        _nciFotosProcessando--;
+        console.log('[BUG X] processando restantes:', _nciFotosProcessando);
+        _nciFotosAtualizarBotaoSalvar();
+      });
+    _nciFotosPromisesPendentes.push(p);
   }
-  Promise.all(promises).then(function(){
+  Promise.all(_nciFotosPromisesPendentes.slice()).then(function(){
     if(adicionadas>0 && adicionadas!==files.length){
       showToast(adicionadas+' de '+files.length+' foto(s) adicionada(s)',3000);
     } else if(adicionadas>0){
       showToast(adicionadas+' foto(s) adicionada(s)',2200);
     }
     ev.target.value='';
-    console.log('[BUG X] processamento completo, fotos finais:', _nciFotos.length);
+    console.log('[BUG X] processamento completo, _nciFotos:', _nciFotos.length);
   });
 }
 
@@ -6384,41 +6400,66 @@ function _nciFotosConcluir(){
   _nciFotosSalvarESegue();
 }
 
-function _nciFotosSalvarESegue(){
+async function _nciFotosSalvarESegue(){
   if(!_nciD) return;
-  // Bug X v1.9.4.1.6: bloqueia salvar enquanto ainda há fotos sendo processadas
+  // Bug Crítico #1 Causa A v1.9.4.1.7: ESPERAR todas as promises de processamento antes de salvar
+  if(_nciFotosPromisesPendentes.length > 0){
+    console.log('[BUG X] aguardando', _nciFotosPromisesPendentes.length, 'promises pendentes antes de salvar');
+    showToast('Processando fotos, aguarde...',1800);
+    try { await Promise.all(_nciFotosPromisesPendentes); } catch(e){ console.warn('[BUG X] erro aguardando:', e); }
+    _nciFotosPromisesPendentes = [];
+    console.log('[BUG X] todas processadas, _nciFotos final:', _nciFotos.length);
+  }
   if(_nciFotosProcessando > 0){
     showToast('Aguarde, processando ' + _nciFotosProcessando + ' foto(s)...', 2500);
-    console.warn('[BUG X] tentativa de salvar com', _nciFotosProcessando, 'fotos ainda processando');
+    console.warn('[BUG X] ainda há', _nciFotosProcessando, 'em processamento');
     return;
   }
   const gs=_nciD.gs;
-  // Salvar como anexos da hospedagem (chave h_<gs>; movidas para v_<vagaId> ao designar)
   if(_nciFotos.length>0 && gs){
-    const keyH='h_'+gs;
-    if(!ANEXOS[keyH]) ANEXOS[keyH]=[];
+    // Bug Crítico #1 Causa B v1.9.4.1.7: descobrir a chave CORRETA de anexo
+    // (carro JÁ hospedado → v_<vagaId>; aguardando designação → h_<gs>)
+    let chaveAnexo='h_'+gs;
+    const hosp=HOSPEDAGENS[gs];
+    if(hosp && hosp.vaga_inicial){
+      const vagaId=hosp.vaga_inicial;
+      if(S[vagaId] && S[vagaId].hospedagem===gs){
+        chaveAnexo='v_'+vagaId;
+        console.log('[BUG #1] carro já hospedado, salvando anexo em', chaveAnexo);
+      } else {
+        console.log('[BUG #1] vaga_inicial '+vagaId+' não bate com S, usando', chaveAnexo);
+      }
+    } else {
+      console.log('[BUG #1] check-in novo aguardando designação, salvando em', chaveAnexo);
+    }
+    if(!ANEXOS[chaveAnexo]) ANEXOS[chaveAnexo]=[];
     const dd=new Date();
     const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
     const apt=_nciD.apt||'000';
+    const modelo=_nciD.model||'';
+    const cor=_nciD.color||'';
+    const operador=(_nciD.usuario && _nciD.usuario.nome) ? _nciD.usuario.nome : (typeof _nciD.usuario==='string'?_nciD.usuario:'');
     _nciFotos.forEach(function(f,idx){
-      const nome=apt+'_'+ds+'_foto_'+String(idx+1).padStart(3,'0')+'.jpg';
-      ANEXOS[keyH].push({
+      const limpa=function(s){return (s||'').replace(/\s+/g,'')};
+      const nome=apt+'_'+ds+'_'+limpa(modelo)+'-'+limpa(cor)+'_foto_'+String(idx+1).padStart(3,'0')+'.jpg';
+      ANEXOS[chaveAnexo].push({
         name:nome,
         type:'image/jpeg',
         data:f.base64Original,
         isImg:true,
         tipo:'foto',
-        timestamp:f.timestamp
+        timestamp:f.timestamp,
+        usuario:operador,
+        apt:apt, modelo:modelo, cor:cor
       });
     });
     saveAnexos();
+    console.log('[BUG #1] salvou', _nciFotos.length, 'fotos em', chaveAnexo, '— total agora:', ANEXOS[chaveAnexo].length);
   }
   _nciFotos=[];
-  // Limpar etapa de fotos
+  _nciFotosPromisesPendentes = [];
   const wrap=document.getElementById('etapa-fotos'); if(wrap) wrap.remove();
-  // Limpar rascunho completo (check-in finalizado)
   _nciLimparRascunhoCompleto();
-  // Seguir: designação automática (vagaInicialNCI) ou STEP5
   _nciPosFotos();
 }
 
@@ -8762,7 +8803,7 @@ function _pdfFooter(doc){
   }
 }
 
-function buildRegistroDoc(apt, dv, hist){
+function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
   if(!window.jspdf) return null;
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
@@ -8831,44 +8872,45 @@ function buildRegistroDoc(apt, dv, hist){
         _pdfFooter(doc);
       }catch(e){ console.error('[PDF checkout] erro vistoria',vist&&vist.numero,e); }
     }
-    // Bug Q v1.9.4.1.6: Fotos da hospedagem (em v_<vagaId> ou h_<gs>)
-    const vagaIdAtual=Object.keys(S).find(function(k){return S[k]&&S[k].hospedagem===hospNum&&S[k].status==='occupied';});
-    const keyAnex = vagaIdAtual ? 'v_'+vagaIdAtual : 'h_'+hospNum;
-    const todosAnex = (ANEXOS[keyAnex]||[]).concat(vagaIdAtual?(ANEXOS['h_'+hospNum]||[]):[]);
-    console.log('[BUG Q] keyAnex:', keyAnex, 'todosAnex:', todosAnex.length);
-    console.log('[BUG Q] estrutura primeiros 3:', todosAnex.slice(0,3).map(function(a){
-      return {name:a&&a.name, tipo:a&&a.tipo, isImg:a&&a.isImg, hasData:!!(a&&(a.data||a.base64Original))};
-    }));
-    // Bug Q v1.9.4.1.6: filtro ampliado — aceita fotos legadas sem tipo:'foto' (somente isImg)
-    const fotos = todosAnex.filter(function(a){
-      if(!a) return false;
-      const ehFoto = a.tipo==='foto' || (a.isImg===true && !a.tipo);
-      const naoEhVistoria = a.tipo!=='vistoria';
-      const temData = !!(a.data || a.base64Original);
-      return ehFoto && naoEhVistoria && temData;
-    });
-    console.log('[BUG Q] fotos filtradas:', fotos.length);
+    // Bug Q v1.9.4.1.7: usar SNAPSHOT capturado antes da deleção (checkout) OU
+    // buscar normalmente em ANEXOS (compartilhamento avulso de carro ativo).
+    let fotos;
+    if(snapshotCheckout && Array.isArray(snapshotCheckout.fotos)){
+      fotos = snapshotCheckout.fotos;
+      console.log('[BUG Q] usando snapshot do checkout:', fotos.length, 'fotos');
+    } else {
+      const vagaIdAtual=Object.keys(S).find(function(k){return S[k]&&S[k].hospedagem===hospNum&&S[k].status==='occupied';});
+      const keyAnex = vagaIdAtual ? 'v_'+vagaIdAtual : 'h_'+hospNum;
+      const todosAnex = (ANEXOS[keyAnex]||[]).concat(vagaIdAtual?(ANEXOS['h_'+hospNum]||[]):[]);
+      console.log('[BUG Q] busca normal — keyAnex:', keyAnex, 'todosAnex:', todosAnex.length);
+      fotos = todosAnex.filter(function(a){
+        if(!a) return false;
+        const ehFoto = a.tipo==='foto' || (a.isImg===true && !a.tipo);
+        return ehFoto && a.tipo!=='vistoria' && !!(a.data || a.base64Original);
+      });
+      console.log('[BUG Q] fotos filtradas:', fotos.length);
+    }
     for(const foto of fotos){
       try{
         const imgData = foto.data || foto.base64Original;
         if(!imgData){ console.error('[BUG Q] foto sem data:', foto.name); continue; }
         doc.addPage();
         const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
-        const apt = dv && dv.apt ? dv.apt : '';
-        const modelo = dv && dv.model ? dv.model : '';
-        const cor = dv && dv.color ? dv.color : '';
-        const funcionario = foto.usuario || '';
+        const aptF = foto.apt || (dv && dv.apt) || apt || '';
+        const modeloF = foto.modelo || (dv && dv.model) || '';
+        const corF = foto.cor || (dv && dv.color) || '';
+        const funcF = foto.usuario || '';
         const partes = [];
-        if(apt) partes.push('Apt ' + apt);
-        if(modelo || cor) partes.push((modelo + ' ' + cor).trim());
+        if(aptF) partes.push('Apt ' + aptF);
+        if(modeloF || corF) partes.push((modeloF + ' ' + corF).trim());
         if(dataFmt) partes.push(dataFmt);
-        if(funcionario) partes.push(funcionario);
-        const nomeCompleto = partes.join(' · ') || (foto.name || 'Foto');
-        let yF=_pdfHeader(doc,'Foto do Veiculo', nomeCompleto);
+        if(funcF) partes.push(funcF);
+        const legenda = partes.join(' · ') || (foto.name || 'Foto');
+        let yF=_pdfHeader(doc,'Foto do Veiculo', legenda);
         const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
         doc.addImage(imgData,fmt,10,yF,190,240);
         _pdfFooter(doc);
-        console.log('[BUG Q] foto adicionada OK:', foto.name);
+        console.log('[BUG Q] foto OK no PDF:', foto.name);
       }catch(e){
         console.error('[BUG Q] ERRO addImage foto:', foto&&foto.name, e.message, e);
       }
@@ -8978,13 +9020,14 @@ function buildRelTurnoDoc(evts, deVal, ateVal, turnosSel){
   return doc;
 }
 
-async function compartilharPDF(apt,dv,hist,anexos){
+async function compartilharPDF(apt,dv,hist,anexos,snapshotCheckout){
   const hospNum=dv.hospedagem||((hist||[]).find(e=>e.tipo==='checkin')?.hospedagem)||'';
   const nome=fmtNomeArquivo(apt,dv.guest,
     (hist||[]).find(e=>e.tipo==='checkin')?.ts,
     (hist||[]).slice().reverse().find(e=>e.tipo==='checkout')?.ts,
     hospNum);
-  const doc=buildRegistroDoc(apt,dv,hist);
+  // Bug Q v1.9.4.1.7: passar snapshot de anexos capturado antes da deleção
+  const doc=buildRegistroDoc(apt,dv,hist,snapshotCheckout);
   if(doc) await gerarECompartilharPDF('Registro de Movimentacao',doc,nome);
   else await gerarECompartilharPDF('Registro de Movimentacao',buildRegistroHTML(apt,dv,hist,anexos),nome);
 }
