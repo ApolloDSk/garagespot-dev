@@ -474,6 +474,23 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 /* Pulse animation vaga recém designada */
 @keyframes pulse-vaga{0%,100%{box-shadow:inset 0 0 0 0 rgba(15,110,86,0)}40%{box-shadow:inset 0 0 0 4px rgba(15,110,86,.55)}}
 td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
+/* === Recarga visual no mapa (v1.9.4.3.1) === */
+/* Raio amarelo (ponto livre) — botão */
+.vaga-raio{position:absolute;top:-6px;right:-6px;width:24px;height:24px;background:#fff;border:2px solid #E6B635;border-radius:50%;box-shadow:0 2px 6px rgba(230,138,46,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:6;pointer-events:auto;font-size:13px;line-height:1;color:#E6B635}
+.vaga-raio::before{content:'⚡'}
+/* Raio cinza (ponto compartilhado em uso pelo par) */
+.vaga-raio.indisponivel{border-color:#C2C8D2;box-shadow:none;color:#9098A6;background:#F4F5F7;opacity:.7}
+/* Bateria na vaga */
+.vaga-bateria{position:absolute;top:-8px;right:-8px;width:34px;height:16px;border:2px solid #2A3445;border-radius:3px;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.15);cursor:pointer;z-index:6;pointer-events:auto}
+.vaga-bateria::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:3px;height:7px;background:#2A3445;border-radius:0 2px 2px 0}
+.vaga-bateria-nivel{position:absolute;left:1px;top:1px;bottom:1px;background:#2BB673;border-radius:1px;width:8%}
+.vaga-bateria.carregando .vaga-bateria-nivel{animation:encher-vaga 2.4s linear infinite}
+@keyframes encher-vaga{
+  0%{width:0%;opacity:1} 85%{width:calc(100% - 2px);opacity:1} 90%{width:calc(100% - 2px);opacity:1}
+  91%{width:calc(100% - 2px);opacity:0} 92%{width:0%;opacity:0} 93%{width:0%;opacity:1} 100%{width:8%;opacity:1}
+}
+.vaga-bateria.cheia .vaga-bateria-nivel{width:calc(100% - 2px);background:#1F9A5F;animation:none}
+.vaga-bateria-check{position:absolute;bottom:-7px;right:-7px;width:13px;height:13px;background:#1F9A5F;color:#fff;border-radius:50%;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;line-height:1}
 /* Badge anexos */
 .attach-badge{background:#185FA5;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;margin-left:2px;line-height:1.4;vertical-align:middle}
 /* STEP5 sucesso */
@@ -613,7 +630,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.2 -->
+<!-- GarageSpot v1.9.4.3.1 -->
 <body>
 <div class="page">
 
@@ -1149,8 +1166,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.2: constantes de versão visíveis no rodapé do Painel
-const GS_VERSION = 'v1.9.4.2';
+// v1.9.4.3.1: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.3.1';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-05-29';
 
@@ -1365,6 +1382,12 @@ function rebuildTable(){
   tbl.innerHTML='';
   buildTable();
   Object.keys(S).forEach(id=>ref(id));
+  // Bug B v1.9.4.3.1: re-injetar ícones de recarga (incluindo vagas livres) após rebuild —
+  // espelha o que applyModulos já faz no init. Antes, ref(id) só chamava refRecarga para
+  // vagas ocupadas, então o ⚡ das vagas livres sumia em orientationchange/resize.
+  if(typeof VAGAS_RECARGA !== 'undefined' && typeof refRecarga === 'function'){
+    Object.keys(VAGAS_RECARGA).forEach(refRecarga);
+  }
   // Reaplicar merges horizontais visuais
   Object.entries(S).forEach(([id,d])=>{
     if(d.hmergeWith && d.status==='occupied'){
@@ -1974,6 +1997,8 @@ function perguntarHMerge(id, apt, model, color, plate, guest, obs, usuario){
 function clkV(id){
   if(!S[id]) return;
   if(dragState) return;
+  // Bug T v1.9.4.3.1: ignora se for clique fantasma logo após fechar o NCI
+  if(_nciFechandoGuard){ console.log('[BUG T] clkV bloqueado pelo escudo'); return; }
   cur=id;
   // Bug T v1.9.4.1.8: se MODO_DESIGNACAO foi perdido (crash JS, garbage collection do
   // webview Android, etc.) mas o banner ainda está visível, RESTAURAR do sessionStorage.
@@ -2121,6 +2146,8 @@ function _clkVRotear(id, apt, usuario){
 }
 
 function showOcc(id){
+  // Bug T v1.9.4.3.1: ignora se for clique fantasma logo após fechar o NCI
+  if(_nciFechandoGuard){ console.log('[BUG T] showOcc bloqueado pelo escudo'); return; }
   const isA = id.endsWith('A');
   // Se é vaga A, verifica se a B correspondente já tem carro
   const bId = isA ? id.slice(0,-1)+'B' : null;
@@ -2316,6 +2343,8 @@ window.setSz = function(z){
 };
 
 function perguntarCheckin(vagaId, apt, model, color, plate, guest, obs){
+  // Bug T v1.9.4.3.1: ignora se for clique fantasma logo após fechar o NCI
+  if(_nciFechandoGuard){ console.log('[BUG T] perguntarCheckin bloqueado pelo escudo'); return; }
   const mc=document.getElementById('mc');
   // Verifica se apt já tem histórico ativo (sem checkout)
   const hist=HISTORICO[apt]||[];
@@ -5154,6 +5183,8 @@ let _nciDebugTimer = null;        // timer para esconder marcador verde de debug
 // Abertura do NCI
 // ════════════════════════════════════════════════════════════════════════
 function novoCheckin(){
+  // Bug T v1.9.4.3.1: ignora se for clique fantasma logo após fechar o NCI
+  if(_nciFechandoGuard){ console.log('[BUG T] novoCheckin bloqueado pelo escudo'); return; }
   try{
     const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
     if(dr&&dr._type==='nci' && (Date.now()-(dr._ts||0))<24*3600*1000){
@@ -5204,6 +5235,32 @@ function nextNumVistoriaPreview(){
   }catch(e){ return 'VIST???'; }
 }
 
+// Bug T v1.9.4.3.1: escudo anti-clique-fantasma ao fechar o NCI.
+// Quando o usuário toca um botão do Step5, o overlay sai síncronamente (display:none)
+// e o click sintético do touchend (WebView Android) "vaza" para o elemento embaixo
+// (tipicamente o botão "+ Novo Check-in" do painel), disparando confirmarUsuario →
+// mostrarConfirmacao ("Confirma · Nome · Cargo"). O escudo absorve eventos por 500ms.
+let _nciFechandoGuard = false;
+let _nciFechandoTimer = null;
+function _armarEscudoNCI(ms){
+  ms = ms || 500;
+  _nciFechandoGuard = true;
+  let shield = document.getElementById('_nci-tap-shield');
+  if(!shield){
+    shield = document.createElement('div');
+    shield.id = '_nci-tap-shield';
+    shield.style.cssText = 'position:fixed;inset:0;z-index:99999;background:transparent;touch-action:none';
+    ['click','mousedown','mouseup','touchstart','touchend','pointerdown','pointerup']
+      .forEach(function(ev){ shield.addEventListener(ev, function(e){ e.stopPropagation(); e.preventDefault(); }, true); });
+  }
+  if(!shield.parentNode) document.body.appendChild(shield);
+  clearTimeout(_nciFechandoTimer);
+  _nciFechandoTimer = setTimeout(function(){
+    _nciFechandoGuard = false;
+    if(shield.parentNode) shield.parentNode.removeChild(shield);
+  }, ms);
+}
+
 function _nciAbrir(){
   const ov=document.getElementById('nci-overlay');
   ov.classList.add('on');
@@ -5217,6 +5274,8 @@ function _nciFechar(force){
     return;
   }
   const ov=document.getElementById('nci-overlay');
+  // Bug T v1.9.4.3.1: armar escudo ao fechar NCI (cobre todos os caminhos de fechamento)
+  if(typeof _armarEscudoNCI === 'function') _armarEscudoNCI(500);
   ov.classList.remove('on');
   // Restaurar shell legado mínimo (caso navegação reabra)
   ov.innerHTML = `
@@ -6257,15 +6316,22 @@ function _nciPosFotos(){
 let _nciFotos = [];               // [{id, base64Original, base64Thumbnail, timestamp}]
 let _nciFotosProcessando = 0;     // Bug X v1.9.4.1.6: contador de fotos em processamento async
 let _nciFotosPromisesPendentes = []; // Bug Crítico #1 v1.9.4.1.7: promises de processamento a aguardar antes de salvar
+let _nciFotosAguardandoPreview = false; // Bug D v1.9.4.3.1: cobre a janela ~1s entre processou-a-foto e preview-apareceu
+let _nciFotosAguardandoPreviewTimer = null;
 function _nciFotosAtualizarBotaoSalvar(){
   const btn = document.getElementById('ef-btn-concluir');
   if(!btn) return;
-  if(_nciFotosProcessando > 0){
+  // Bug D v1.9.4.3.1: desabilitar também durante a janela "aguardando preview"
+  if(_nciFotosProcessando > 0 || _nciFotosAguardandoPreview){
     btn.disabled = true;
     btn.style.opacity = '0.5';
     btn.style.cursor = 'wait';
     if(!btn.dataset.txtOriginal) btn.dataset.txtOriginal = btn.textContent;
-    btn.textContent = '⏳ Processando ' + _nciFotosProcessando + ' foto(s)...';
+    if(_nciFotosProcessando > 0){
+      btn.textContent = '⏳ Processando ' + _nciFotosProcessando + ' foto(s)...';
+    } else {
+      btn.textContent = '⏳ Aguardando preview...';
+    }
   } else {
     btn.disabled = false;
     btn.style.opacity = '1';
@@ -6276,6 +6342,24 @@ function _nciFotosAtualizarBotaoSalvar(){
     }
   }
 }
+// Bug D v1.9.4.3.1: helpers para setar/liberar o flag de preview com timeout de segurança
+function _nciMarcarAguardandoPreview(){
+  _nciFotosAguardandoPreview = true;
+  _nciFotosAtualizarBotaoSalvar();
+  if(_nciFotosAguardandoPreviewTimer) clearTimeout(_nciFotosAguardandoPreviewTimer);
+  _nciFotosAguardandoPreviewTimer = setTimeout(function(){
+    if(_nciFotosAguardandoPreview){
+      console.warn('[BUG D] preview não apareceu em 5s — liberando botão por segurança');
+      _nciFotosAguardandoPreview = false;
+      _nciFotosAtualizarBotaoSalvar();
+    }
+  }, 5000);
+}
+function _nciLiberarAguardandoPreview(){
+  _nciFotosAguardandoPreview = false;
+  if(_nciFotosAguardandoPreviewTimer){ clearTimeout(_nciFotosAguardandoPreviewTimer); _nciFotosAguardandoPreviewTimer = null; }
+  _nciFotosAtualizarBotaoSalvar();
+}
 
 function _nciAbrirEtapaFotos(){
   const ov=document.getElementById('nci-overlay');
@@ -6283,6 +6367,9 @@ function _nciAbrirEtapaFotos(){
   // Bug Crítico #1 v1.9.4.1.7: resetar promises pendentes ao iniciar etapa
   _nciFotosPromisesPendentes = [];
   _nciFotosProcessando = 0;
+  // Bug D v1.9.4.3.1: resetar flag de preview ao iniciar etapa
+  _nciFotosAguardandoPreview = false;
+  if(_nciFotosAguardandoPreviewTimer){ clearTimeout(_nciFotosAguardandoPreviewTimer); _nciFotosAguardandoPreviewTimer = null; }
   // Adicionar (não substituir) — fica como camada acima da página única
   const old=document.getElementById('etapa-fotos'); if(old) old.remove();
   const wrap=document.createElement('div');
@@ -6354,6 +6441,8 @@ function _nciFotosCapturarCamera(){
       const pCam=_nciFotoFileToB64Compr(f).then(function(b64){
         const novaFoto = _nciFotoAdicionarERetornar(b64);
         if(novaFoto){
+          // Bug D v1.9.4.3.1: marcar que estamos aguardando o preview (mantém botão Concluir desabilitado)
+          _nciMarcarAguardandoPreview();
           const tentarMostrarPreview = function(tentativa){
             if(novaFoto.base64Thumbnail || tentativa > 10){
               _nciFotosPreviewModal(novaFoto);
@@ -6481,6 +6570,8 @@ function _nciFotosPreviewModal(foto){
       '<button id="foto-prev-ok" style="flex:1.4;padding:14px;border:none;background:#0F6E56;color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✓ Confirmar e voltar</button>' +
     '</div>';
   document.body.appendChild(overlay);
+  // Bug D v1.9.4.3.1: preview apareceu — liberar botão Concluir (será re-marcado se tirar outra)
+  if(typeof _nciLiberarAguardandoPreview === 'function') _nciLiberarAguardandoPreview();
   document.getElementById('foto-prev-mais').onclick = function(){
     console.log('[BUG S] tirar outra');
     overlay.remove();
@@ -6587,6 +6678,10 @@ async function _nciFotosSalvarESegue(){
     const modelo=_nciD.model||'';
     const cor=_nciD.color||'';
     const operador=(_nciD.usuario && _nciD.usuario.nome) ? _nciD.usuario.nome : (typeof _nciD.usuario==='string'?_nciD.usuario:'');
+    // Bug C v1.9.4.3.1: vincular foto à vistoria atual (_nciD.numero) para agrupar no PDF de checkout.
+    // Fotos legadas (pré-v1.9.4.3.1) ficam sem vistoria_numero — tratadas como AVULSAS no builder.
+    const vistNum = (_nciD && _nciD.numero) ? _nciD.numero : null;
+    const vistUuid = (_nciD && _nciD.uuid) ? _nciD.uuid : null;
     _nciFotos.forEach(function(f,idx){
       const limpa=function(s){return (s||'').replace(/\s+/g,'')};
       const nome=apt+'_'+ds+'_'+limpa(modelo)+'-'+limpa(cor)+'_foto_'+String(idx+1).padStart(3,'0')+'.jpg';
@@ -6598,7 +6693,9 @@ async function _nciFotosSalvarESegue(){
         tipo:'foto',
         timestamp:f.timestamp,
         usuario:operador,
-        apt:apt, modelo:modelo, cor:cor
+        apt:apt, modelo:modelo, cor:cor,
+        vistoria_numero: vistNum,
+        vistoria_uuid:   vistUuid
       });
     });
     saveAnexos();
@@ -6898,6 +6995,8 @@ function _nciStep5DesignarAgora(ev){
   console.log('[BUG T] MODO_DESIGNACAO setado e backup salvo:', JSON.stringify(MODO_DESIGNACAO));
   // Fechar NCI sem confirmação (commit já feito)
   const ov=document.getElementById('nci-overlay');
+  // Bug T v1.9.4.3.1: armar escudo ANTES de remover o overlay (absorve click sintético do toque)
+  _armarEscudoNCI(500);
   ov.classList.remove('on');
   _nciD=null; MODO_VISTORIA_ATIVO=null; vagaInicialNCI=null; _nciSigCtx=null; _nciSigBackup=null;
   setTimeout(function(){
@@ -6920,6 +7019,8 @@ function _nciStep5DesignarDepois(ev){
   _nciSigCtx=null;
   _nciSigBackup=null;
   _nciSigDirty=false;
+  // Bug T v1.9.4.3.1: armar escudo ANTES de remover o overlay (absorve click sintético do toque)
+  _armarEscudoNCI(500);
   // Esconder overlay
   ov.classList.remove('on');
   // Esperar evento atual terminar antes de re-renderizar o painel (evita clique
@@ -7522,8 +7623,17 @@ async function fazerBackupAgora(){
   }
 }
 
+// v1.9.4.3.1: pontos de recarga (fixo nesta versão; configurável em Gestão no .3).
+// VAGAS_RECARGA continua sendo a fonte primária (com 'par' indicando compartilhamento).
+// PONTOS_RECARGA agrega as mesmas vagas em grupos físicos: 8C+9C = 1 tomada (1 por vez); 1D = individual.
+const PONTOS_RECARGA = [
+  { vagas: ['8C', '9C'], compartilhado: true },
+  { vagas: ['1D'],       compartilhado: false }
+];
+function _pontoDaVaga(id){ return PONTOS_RECARGA.find(function(p){ return p.vagas.indexOf(id) >= 0; }); }
+
 function getRecargaState(vagaId){
-  const vaga=S[vagaId]; if(!vaga||vaga.status!=='occupied') return 'sem-carro';
+  const vaga=S[vagaId];
   const cfg=VAGAS_RECARGA[vagaId]; if(!cfg) return 'sem-carro';
   const r=RECARGAS[vagaId];
   if(r&&r.ativo){
@@ -7533,26 +7643,36 @@ function getRecargaState(vagaId){
   }
   // Verifica se ponto compartilhado está ocupado pelo par
   if(cfg.par&&RECARGAS[cfg.par]&&RECARGAS[cfg.par].ativo) return 'ponto-ocupado';
+  // Sem carro na vaga, ponto livre → 'sem-carro' (vai virar raio amarelo livre)
+  if(!vaga || vaga.status!=='occupied') return 'sem-carro';
   return 'disponivel';
 }
 
+// v1.9.4.3.1: ícone-botão. Em qualquer estado, o onclick navega para a aba Recarga
+// (NÃO chama showRecargaModal/Detalhe/Finalizar/Fila — o fluxo de iniciar/finalizar
+// recarga é responsabilidade do .2/.3). stopPropagation evita disparar clkV/showOcc.
+// OBS: estado "horario-bateu" mantém bateria ANIMADA (não "cheia ✓") porque o protótipo
+// aprovado define que bateria cheia ✓ entra junto com a finalização no .3.
 function getRecargaIcon(vagaId){
   if(!MODULOS.recarga) return '';
-  const st=getRecargaState(vagaId);
-  if(st==='sem-carro') return '<span class="rc-icon rc-gray" title="Ponto de recarga">⚡</span>';
-  if(st==='disponivel') return '<span class="rc-icon rc-dark" onclick="event.stopPropagation();showRecargaModal(\''+vagaId+'\')" title="Iniciar recarga">⚡</span>';
-  if(st==='carregando'){
-    const r=RECARGAS[vagaId];
-    const rem=Math.max(0,Math.ceil((r.fim_ts-Date.now())/60000));
-    return '<span class="rc-icon rc-orange rc-pulse" onclick="event.stopPropagation();showRecargaDetalhe(\''+vagaId+'\')" title="Carregando — '+rem+'min restantes">⚡</span>';
+  const st = getRecargaState(vagaId);
+  const click = "event.stopPropagation();event.preventDefault();(typeof navTo==='function')&&navTo('recarga');";
+  // Raio amarelo (botão) — ponto LIVRE (com ou sem carro na vaga, sem recarga ativa)
+  if(st === 'sem-carro' || st === 'disponivel'){
+    return '<span class="vaga-raio" role="button" tabindex="0" onclick="'+click+'" title="Recarga disponível"></span>';
   }
-  if(st==='horario-bateu') return '<span class="rc-icon rc-green" onclick="event.stopPropagation();showRecargaFinalizar(\''+vagaId+'\')" title="Recarga concluida!">⚡<sup style="font-size:8px;color:#E8A800">❗</sup></span>';
-  if(st==='confirmada') return '<span class="rc-icon rc-green" onclick="event.stopPropagation();showRecargaDetalhe(\''+vagaId+'\')" title="Recarga confirmada">⚡<sup style="font-size:8px;color:#27AE60">✓</sup></span>';
-  if(st==='ponto-ocupado'){
-    const par=VAGAS_RECARGA[vagaId].par;
-    return '<span class="rc-icon rc-lgray" onclick="event.stopPropagation();showRecargaFila(\''+vagaId+'\')" title="Ponto compartilhado com '+par+' em uso — clicar para fila">⚡</span>';
+  // Raio cinza (botão) — par compartilhado em uso pela outra vaga
+  if(st === 'ponto-ocupado'){
+    const par = VAGAS_RECARGA[vagaId] && VAGAS_RECARGA[vagaId].par;
+    return '<span class="vaga-raio indisponivel" role="button" tabindex="0" onclick="'+click+'" title="Ponto compartilhado com '+(par||'par')+' em uso"></span>';
   }
-  return '<span class="rc-icon rc-gray">⚡</span>';
+  // Bateria animada — recarga em andamento (carregando, horário batido ou confirmada nesta v1.9.4.3.1)
+  // "horario-bateu" mantido como animada — bateria cheia ✓ entra no .3 (finalização).
+  if(st === 'carregando' || st === 'horario-bateu' || st === 'confirmada'){
+    return '<span class="vaga-bateria carregando" role="button" tabindex="0" onclick="'+click+'" title="Recarga em andamento"><span class="vaga-bateria-nivel"></span></span>';
+  }
+  // Fallback: raio amarelo (livre)
+  return '<span class="vaga-raio" role="button" tabindex="0" onclick="'+click+'" title="Recarga"></span>';
 }
 
 function calcValorRecarga(inicio_ts, fim_ts){
@@ -8756,20 +8876,35 @@ function buildRegistroHTML(apt,dv,hist,anexos){
     ['Vaga',        ni(dv.vaga)],
   ];
 
-  // v1.9.4.1: ordenar imagens — vistorias primeiro (mais recente→antiga, por VIST{nnn}), depois fotos
-  const _imgs=(anexos||[]).filter(a=>a.isImg).slice();
-  _imgs.sort(function(a,b){
-    const av=a.tipo==='vistoria'||/VIST\d+\.png$/i.test(a.name||'');
-    const bv=b.tipo==='vistoria'||/VIST\d+\.png$/i.test(b.name||'');
-    if(av&&!bv) return -1;
-    if(!av&&bv) return 1;
-    if(av&&bv){
-      const an=parseInt((a.vistoria||a.name||'').match(/VIST(\d+)/i)?.[1]||'0',10);
-      const bn=parseInt((b.vistoria||b.name||'').match(/VIST(\d+)/i)?.[1]||'0',10);
-      return bn-an; // desc — mais recente primeiro
-    }
-    return 0;
+  // Bug C v1.9.4.3.1: agrupar imagens por vistoria — recente → fotos dela → ... → avulsas.
+  // Foto pertence à vistoria via `vistoria_numero` (novo campo da v1.9.4.3.1) ou via match no nome.
+  const _imgsTodas = (anexos||[]).filter(function(a){ return a && a.isImg; });
+  function _ehVist(a){ return a && (a.tipo==='vistoria' || /VIST\d+\.png$/i.test(a.name||'')); }
+  function _numVistDe(a){
+    const m = (a.vistoria||a.name||'').match(/VIST(\d+)/i);
+    return m ? ('VIST'+m[1].padStart(3,'0')) : (a.vistoria_numero || null);
+  }
+  const vistImgs = _imgsTodas.filter(_ehVist).slice();
+  vistImgs.sort(function(a,b){
+    const an = parseInt((a.vistoria||a.name||'').match(/VIST(\d+)/i)?.[1]||'0', 10);
+    const bn = parseInt((b.vistoria||b.name||'').match(/VIST(\d+)/i)?.[1]||'0', 10);
+    return bn - an; // desc — mais recente primeiro
   });
+  const fotosTodas = _imgsTodas.filter(function(a){ return !_ehVist(a); });
+  const _imgs = [];
+  const usados = new Set();
+  for(const va of vistImgs){
+    _imgs.push(va); usados.add(va);
+    const numVa = _numVistDe(va);
+    const fotosDessa = fotosTodas.filter(function(f){
+      if(usados.has(f)) return false;
+      if(f.vistoria_numero && numVa) return f.vistoria_numero === numVa;
+      return false;
+    });
+    for(const f of fotosDessa){ _imgs.push(f); usados.add(f); }
+  }
+  // Fotos avulsas no final
+  for(const f of fotosTodas){ if(!usados.has(f)){ _imgs.push(f); usados.add(f); } }
   const _falhadas=[];
   const imgPages=_imgs.map(function(a){
     try{
@@ -9016,24 +9151,17 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
     }
   });
 
-  // Bug J v1.9.4.1.5: páginas adicionais com vistorias + fotos da hospedagem
+  // Bug C v1.9.4.3.1: páginas adicionais com vistorias + fotos AGRUPADAS por vistoria.
+  // Ordem: vistoria mais recente → fotos dela → vistoria anterior → fotos dela → ... → fotos AVULSAS.
+  // Foto pertence à vistoria se foto.vistoria_numero === vist.numero (novo campo da v1.9.4.3.1).
+  // Fotos legadas (sem vistoria_numero) ou cujo vínculo não bate caem em "avulsas" no final.
   try{
     const vistorias = (hospNum && HOSPEDAGENS[hospNum] && Array.isArray(HOSPEDAGENS[hospNum].vistorias))
       ? HOSPEDAGENS[hospNum].vistorias.map(function(n){return VISTORIAS[n];}).filter(Boolean)
       : Object.values(VISTORIAS).filter(function(v){return v&&(v.hospedagem===hospNum||v.hospedagem_gs===hospNum);});
     vistorias.sort(function(a,b){ return (b.ts_finalizacao||b.ts_criada||0)-(a.ts_finalizacao||a.ts_criada||0); });
-    for(const vist of vistorias){
-      try{
-        if(!vist.documento_final_b64) continue;
-        doc.addPage();
-        const tit='Vistoria '+(vist.tipo||'entrada')+' · '+(vist.numero||vist.id||'—')+' · '+fmtDt(vist.ts_finalizacao||vist.ts_criada||Date.now());
-        let yV=_pdfHeader(doc,'Vistoria',tit);
-        doc.addImage(vist.documento_final_b64,'PNG',10,yV,190,240);
-        _pdfFooter(doc);
-      }catch(e){ console.error('[PDF checkout] erro vistoria',vist&&vist.numero,e); }
-    }
-    // Bug Q v1.9.4.1.7: usar SNAPSHOT capturado antes da deleção (checkout) OU
-    // buscar normalmente em ANEXOS (compartilhamento avulso de carro ativo).
+
+    // Bug Q v1.9.4.1.7: usar SNAPSHOT capturado antes da deleção (checkout) OU buscar em ANEXOS.
     let fotos;
     if(snapshotCheckout && Array.isArray(snapshotCheckout.fotos)){
       fotos = snapshotCheckout.fotos;
@@ -9050,10 +9178,15 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
       });
       console.log('[BUG Q] fotos filtradas:', fotos.length);
     }
-    for(const foto of fotos){
+
+    // Conjuntos auxiliares para intercalar
+    const numerosVist = new Set(vistorias.map(function(v){ return v && v.numero; }).filter(Boolean));
+    const fotosUsadas = new Set();
+
+    function _emitirFoto(foto){
       try{
         const imgData = foto.data || foto.base64Original;
-        if(!imgData){ console.error('[BUG Q] foto sem data:', foto.name); continue; }
+        if(!imgData){ console.error('[BUG C] foto sem data:', foto.name); return; }
         doc.addPage();
         const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
         const aptF = foto.apt || (dv && dv.apt) || apt || '';
@@ -9070,11 +9203,41 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
         const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
         doc.addImage(imgData,fmt,10,yF,190,240);
         _pdfFooter(doc);
-        console.log('[BUG Q] foto OK no PDF:', foto.name);
+        fotosUsadas.add(foto);
+        console.log('[BUG C] foto OK no PDF:', foto.name);
       }catch(e){
-        console.error('[BUG Q] ERRO addImage foto:', foto&&foto.name, e.message, e);
+        console.error('[BUG C] ERRO addImage foto:', foto&&foto.name, e.message, e);
       }
     }
+
+    for(const vist of vistorias){
+      // 1) página da vistoria (se houver documento_final_b64)
+      try{
+        if(vist.documento_final_b64){
+          doc.addPage();
+          const tit='Vistoria '+(vist.tipo||'entrada')+' · '+(vist.numero||vist.id||'—')+' · '+fmtDt(vist.ts_finalizacao||vist.ts_criada||Date.now());
+          let yV=_pdfHeader(doc,'Vistoria',tit);
+          doc.addImage(vist.documento_final_b64,'PNG',10,yV,190,240);
+          _pdfFooter(doc);
+        }
+      }catch(e){ console.error('[BUG C] erro vistoria',vist&&vist.numero,e); }
+      // 2) fotos vinculadas a esta vistoria (na ordem em que foram tiradas)
+      const fotosDessa = fotos.filter(function(f){
+        return f && f.vistoria_numero && f.vistoria_numero === vist.numero && !fotosUsadas.has(f);
+      });
+      console.log('[BUG C] vistoria', vist&&vist.numero, '→', fotosDessa.length, 'fotos vinculadas');
+      for(const f of fotosDessa){ _emitirFoto(f); }
+    }
+
+    // 3) fotos AVULSAS: sem vistoria_numero OU cujo número não bate com nenhuma vistoria listada
+    const fotosAvulsas = fotos.filter(function(f){
+      if(!f || fotosUsadas.has(f)) return false;
+      if(!f.vistoria_numero) return true;       // sem vínculo
+      if(!numerosVist.has(f.vistoria_numero)) return true; // vínculo "órfão" (vistoria não está nesta hospedagem)
+      return false;
+    });
+    console.log('[BUG C] fotos avulsas no fim:', fotosAvulsas.length);
+    for(const f of fotosAvulsas){ _emitirFoto(f); }
   }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
 
   _pdfFooter(doc);
