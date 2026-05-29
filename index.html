@@ -613,7 +613,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.1.8 -->
+<!-- GarageSpot v1.9.4.2 -->
 <body>
 <div class="page">
 
@@ -1149,10 +1149,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.1.8: constantes de versão visíveis no rodapé do Painel
-const GS_VERSION = 'v1.9.4.1.8';
-const GS_VERSION_CODE = 21;
-const GS_BUILD_TS = '2026-05-28';
+// v1.9.4.2: constantes de versão visíveis no rodapé do Painel
+const GS_VERSION = 'v1.9.4.2';
+const GS_VERSION_CODE = 22;
+const GS_BUILD_TS = '2026-05-29';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
@@ -3550,7 +3550,7 @@ function renderPainelDia(){
     </div>
   </div>
 
-  <!-- v1.9.4.1.8: versão visível no rodapé do Painel + 5 toques abre painel de debug -->
+  <!-- v1.9.4.2: versão visível no rodapé do Painel + 5 toques abre painel de debug -->
   <div id="gs-versao-rodape" onclick="_debugVersaoTap()" style="text-align:center;font-size:10px;color:#aaa;padding:10px 0 16px;font-family:inherit;cursor:pointer;user-select:none">
     GarageSpot ${GS_VERSION} · build ${GS_BUILD_TS} · versionCode ${GS_VERSION_CODE}
   </div>`;
@@ -4327,18 +4327,16 @@ const VISTORIA_COUNTER_KEY = 'garagespot_vistoria_counter';
 const VISTORIAS_LS = 'garagespot_vistorias';
 const VISTORIAS_LIXEIRA_LS = 'garagespot_vistorias_lixeira';
 function saveVistorias(){
-  // Bug W v1.9.4.1.6: storage protegido
-  _saveProtegido(VISTORIAS_LS, VISTORIAS, 'vistorias');
+  // v1.9.4.2: VISTORIAS no IndexedDB (resolve QuotaExceededError com documento_final_b64)
+  // Fire-and-forget (assinatura sync mantida para callers existentes)
+  try { saveVistoriasIDB(); } catch(e){ console.error('[BUG #1] saveVistorias falhou:', e); }
 }
 function saveLixeira(){try{localStorage.setItem(VISTORIAS_LIXEIRA_LS,JSON.stringify(VISTORIAS_LIXEIRA));}catch(e){}}
 function loadVistorias(){
-  const dados = _loadProtegido('vistorias');
-  if(dados){
-    VISTORIAS = dados;
-    _contadorAnterior.vistorias = Object.keys(VISTORIAS).length;
-  }
-  // Lixeira continua com mecanismo antigo (menos crítico)
+  // v1.9.4.2: load do IndexedDB com fallback localStorage. Retorna Promise.
+  // Lixeira continua no localStorage (pequena, sem documento_final_b64).
   try{const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS);if(d)VISTORIAS_LIXEIRA=JSON.parse(d)||{};}catch(e){}
+  return loadVistoriasIDB();
 }
 function nextNumVistoria(){
   let n=parseInt(localStorage.getItem(VISTORIA_COUNTER_KEY)||'0')+1;
@@ -9275,21 +9273,14 @@ function removeAnexo(id, fromPasseio, idx){
 }
 
 function saveAnexos(){
-  // Bug #1 v1.9.4.1.8: try/catch para nunca crashar — proteção contra QuotaExceededError
-  try {
-    _saveProtegido('garagespot_anexos', ANEXOS, 'anexos');
-  } catch(e){
-    console.error('[BUG #1] erro em saveAnexos:', e);
-  }
+  // v1.9.4.2: ANEXOS no IndexedDB (resolve QuotaExceededError com fotos base64).
+  // Fire-and-forget (assinatura sync mantida para callers existentes).
+  try { saveAnexosIDB(); } catch(e){ console.error('[BUG #1] erro em saveAnexos:', e); }
 }
 
 function loadAnexos(){
-  const dados = _loadProtegido('anexos');
-  if(dados){
-    Object.keys(ANEXOS).forEach(function(k){ delete ANEXOS[k]; });
-    Object.assign(ANEXOS, dados);
-    _contadorAnterior.anexos = Object.keys(ANEXOS).length;
-  }
+  // v1.9.4.2: load do IndexedDB com fallback localStorage. Retorna Promise.
+  return loadAnexosIDB();
 }
 
 // Abre visualizador de imagem em tela cheia
@@ -9380,13 +9371,17 @@ window.delAtt = function(id, fp, idx, containerId){
 const STORAGE_KEY = 'garagem_spot_v1';
 const DB_NAME     = 'GaragemSpot';
 const DB_STORE    = 'estado';
+// v1.9.4.2: stores dedicados para dados grandes (resolve QuotaExceededError do localStorage)
+const DB_VERSION  = 2;
+const STORE_ANEXOS    = 'anexos';
+const STORE_VISTORIAS = 'vistorias';
 let   db          = null;
 
 // === BUG W v1.9.4.1.6: Sistema de Backup Rotativo (3 SLOTS) ===
+// v1.9.4.2: 'anexos' e 'vistorias' MIGRARAM PARA INDEXEDDB e NÃO usam mais bk1/bk2 do
+// localStorage (eram a CAUSA RAIZ do QuotaExceededError em Android — triplicavam o uso).
 const BACKUP_KEYS = {
   hospedagens: ['garagespot_hospedagens', 'garagespot_hospedagens_bk1', 'garagespot_hospedagens_bk2'],
-  vistorias:   ['garagespot_vistorias',   'garagespot_vistorias_bk1',   'garagespot_vistorias_bk2'],
-  anexos:      ['garagespot_anexos',      'garagespot_anexos_bk1',      'garagespot_anexos_bk2'],
   state:       ['garagem_spot_v1',        'garagem_spot_v1_bk1',        'garagem_spot_v1_bk2']
 };
 let _contadorAnterior = { hospedagens:0, vistorias:0, anexos:0 };
@@ -9405,14 +9400,10 @@ function _carregarContadores(){
 }
 
 // _saveProtegido: rotaciona backups e bloqueia save de dados vazios quando havia muitos antes
+// v1.9.4.2: usado SÓ para 'hospedagens' e 'state' (anexos/vistorias migrados para IndexedDB)
 function _saveProtegido(key, dados, tipo){
   const novoCount = Object.keys(dados || {}).length;
   const anteriorCount = _contadorAnterior[tipo] || 0;
-  // Bug #1 v1.9.4.1.8: trava de contagem total de itens para anexos
-  if(tipo === 'anexos'){
-    const totalItensNovo = Object.values(dados||{}).reduce(function(s,arr){ return s + (Array.isArray(arr)?arr.length:0); }, 0);
-    console.log('[BUG #1] _saveProtegido anexos: chaves=', novoCount, '| total itens=', totalItensNovo);
-  }
   if(anteriorCount > 5 && novoCount === 0){
     console.error('[BUG W] BLOQUEIO! Save de', tipo, 'vazio (tinha', anteriorCount, '). NÃO SALVANDO.');
     if(typeof showToast==='function') showToast('⚠️ Save de ' + tipo + ' vazio bloqueado. Veja console.', 5000);
@@ -9472,9 +9463,10 @@ window.gsRecovery = function(){
   console.log('=== GarageSpot Recovery ===');
   console.log('Contadores atuais:');
   console.log('  HOSPEDAGENS:', Object.keys(HOSPEDAGENS).length);
-  console.log('  VISTORIAS:', Object.keys(VISTORIAS).length);
-  console.log('  ANEXOS:', Object.keys(ANEXOS).length);
-  console.log('Backups disponíveis:');
+  console.log('  VISTORIAS:', Object.keys(VISTORIAS).length, '(IndexedDB v1.9.4.2)');
+  console.log('  ANEXOS:', Object.keys(ANEXOS).length, '(IndexedDB v1.9.4.2)');
+  console.log('IndexedDB:', _idbAvailable() ? 'OK (versão ' + (db && db.version) + ')' : 'INDISPONÍVEL');
+  console.log('Backups localStorage disponíveis:');
   Object.keys(BACKUP_KEYS).forEach(function(tipo){
     BACKUP_KEYS[tipo].forEach(function(k, i){
       const raw = localStorage.getItem(k);
@@ -9484,11 +9476,25 @@ window.gsRecovery = function(){
       }
     });
   });
+  // Backups antigos de anexos/vistorias (legados, devem estar vazios na v1.9.4.2)
+  ['garagespot_anexos','garagespot_vistorias'].forEach(function(k){
+    const raw = localStorage.getItem(k);
+    if(raw){
+      try { const d = JSON.parse(raw); console.log('  ' + k + ' (legado, IDB é a fonte):', Object.keys(d).length, 'itens'); }
+      catch(e){}
+    }
+  });
   console.log('Para restaurar: gsRestoreFrom("hospedagens", 1)');
+  console.log('Para exportar tudo: gsExportarTudo()');
 };
 window.gsRestoreFrom = function(tipo, slot){
+  // v1.9.4.2: anexos e vistorias estão no IndexedDB — não há slots no localStorage
+  if(tipo === 'anexos' || tipo === 'vistorias'){
+    console.warn('[IDB] ' + tipo + ' agora ficam no IndexedDB (v1.9.4.2). Use gsExportarTudo() para backup manual ou recarregue o app.');
+    return;
+  }
   const keys = BACKUP_KEYS[tipo];
-  if(!keys || !keys[slot]){ console.error('Invalid tipo/slot'); return; }
+  if(!keys || !keys[slot]){ console.error('Invalid tipo/slot. Disponível:', Object.keys(BACKUP_KEYS)); return; }
   const raw = localStorage.getItem(keys[slot]);
   if(!raw){ console.error('Backup vazio em slot', slot); return; }
   try {
@@ -9498,18 +9504,278 @@ window.gsRestoreFrom = function(tipo, slot){
   } catch(e){ console.error('erro:', e); }
 };
 
+// v1.9.4.2: backup manual em JSON (download) — usuário pode chamar via console
+window.gsExportarTudo = function(){
+  try {
+    const dump = {
+      versao: (typeof GS_VERSION!=='undefined') ? GS_VERSION : '?',
+      timestamp: new Date().toISOString(),
+      HOSPEDAGENS: HOSPEDAGENS,
+      VISTORIAS: VISTORIAS,
+      ANEXOS: ANEXOS,
+      HISTORICO: (typeof HISTORICO !== 'undefined') ? HISTORICO : {},
+      USUARIOS: (typeof USUARIOS !== 'undefined') ? USUARIOS : [],
+      PASSEIO: (typeof PASSEIO !== 'undefined') ? PASSEIO : {},
+      S: (typeof S !== 'undefined') ? S : {},
+      localStorage_keys: Object.keys(localStorage)
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'garagespot-backup-' + Date.now() + '.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    console.log('[BACKUP] Export completo:',
+      Object.keys(HOSPEDAGENS).length, 'hospedagens,',
+      Object.keys(VISTORIAS).length, 'vistorias,',
+      Object.keys(ANEXOS).length, 'chaves de anexos');
+    if(typeof showToast==='function') showToast('Backup exportado', 2500);
+  } catch(e){
+    console.error('[BACKUP] erro exportando:', e);
+  }
+};
+
 // Abre o banco IndexedDB
+// v1.9.4.2: cria stores 'anexos' e 'vistorias' (DB_VERSION 2)
 function openDB(){
   return new Promise((resolve, reject)=>{
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if(!d.objectStoreNames.contains(DB_STORE))
         d.createObjectStore(DB_STORE);
+      // v1.9.4.2: novos stores
+      if(!d.objectStoreNames.contains(STORE_ANEXOS))
+        d.createObjectStore(STORE_ANEXOS);
+      if(!d.objectStoreNames.contains(STORE_VISTORIAS))
+        d.createObjectStore(STORE_VISTORIAS);
+      console.log('[IDB] upgrade aplicado | versão:', DB_VERSION, '| stores:', Array.from(d.objectStoreNames));
     };
-    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onsuccess = e => {
+      db = e.target.result;
+      console.log('[IDB] aberto OK | versão:', db.version, '| stores:', Array.from(db.objectStoreNames));
+      resolve(db);
+    };
     req.onerror   = () => reject(req.error);
   });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.4.2: ANEXOS e VISTORIAS no IndexedDB (resolve QuotaExceededError)
+// CAUSA RAIZ confirmada pelo painel de debug em Android: localStorage estourava
+// com fotos base64 + sistema de 3 backups que TRIPLICAVA o uso de espaço.
+// Stores dedicados no IndexedDB suportam centenas de MB. Fallback localStorage
+// se IDB falhar (mas sem rotação de bk1/bk2, que era a fonte do problema).
+// ════════════════════════════════════════════════════════════════════════════
+
+function _idbAvailable(){ return !!db && typeof db.transaction === 'function'; }
+
+// === ANEXOS no IndexedDB ===
+function saveAnexosIDB(){
+  return new Promise(function(resolve){
+    if(!_idbAvailable()){
+      console.warn('[IDB] sem db, fallback localStorage anexos');
+      _saveAnexosLocalStorageFallback(); resolve(false); return;
+    }
+    try {
+      const tx = db.transaction(STORE_ANEXOS, 'readwrite');
+      tx.objectStore(STORE_ANEXOS).put(ANEXOS, 'all');
+      tx.oncomplete = function(){
+        const total = Object.values(ANEXOS||{}).reduce(function(s,arr){ return s + (Array.isArray(arr)?arr.length:0); }, 0);
+        console.log('[IDB] anexos salvos | chaves:', Object.keys(ANEXOS).length, '| itens:', total);
+        resolve(true);
+      };
+      tx.onerror = function(e){
+        console.error('[IDB] erro salvando anexos:', tx.error || e);
+        _saveAnexosLocalStorageFallback(); resolve(false);
+      };
+    } catch(e){
+      console.error('[IDB] exceção anexos:', e);
+      _saveAnexosLocalStorageFallback(); resolve(false);
+    }
+  });
+}
+
+function loadAnexosIDB(){
+  return new Promise(function(resolve){
+    if(!_idbAvailable()){ resolve(_loadAnexosLocalStorageFallback()); return; }
+    try {
+      const tx = db.transaction(STORE_ANEXOS, 'readonly');
+      const req = tx.objectStore(STORE_ANEXOS).get('all');
+      req.onsuccess = function(){
+        if(req.result && typeof req.result === 'object'){
+          Object.keys(ANEXOS).forEach(function(k){ delete ANEXOS[k]; });
+          Object.assign(ANEXOS, req.result);
+          _contadorAnterior.anexos = Object.keys(ANEXOS).length;
+          console.log('[IDB] anexos carregados do IDB:', Object.keys(ANEXOS).length, 'chaves');
+          resolve(true);
+        } else {
+          // IndexedDB vazio — tentar migrar do localStorage
+          resolve(_loadAnexosLocalStorageFallback());
+        }
+      };
+      req.onerror = function(){ resolve(_loadAnexosLocalStorageFallback()); };
+    } catch(e){
+      console.error('[IDB] exceção load anexos:', e);
+      resolve(_loadAnexosLocalStorageFallback());
+    }
+  });
+}
+
+// Fallback: lê do localStorage antigo (compatibilidade + migração)
+function _loadAnexosLocalStorageFallback(){
+  try {
+    // Tenta a chave principal direta primeiro (não usa _loadProtegido pra evitar logs de "todos os backups falharam")
+    let raw = localStorage.getItem('garagespot_anexos');
+    let origem = 'principal';
+    if(!raw){
+      raw = localStorage.getItem('garagespot_anexos_bk1');
+      origem = raw ? 'bk1' : origem;
+    }
+    if(!raw){
+      raw = localStorage.getItem('garagespot_anexos_bk2');
+      origem = raw ? 'bk2' : origem;
+    }
+    if(raw){
+      const data = JSON.parse(raw);
+      if(data && typeof data === 'object'){
+        Object.keys(ANEXOS).forEach(function(k){ delete ANEXOS[k]; });
+        Object.assign(ANEXOS, data);
+        _contadorAnterior.anexos = Object.keys(ANEXOS).length;
+        console.log('[IDB] anexos do localStorage (' + origem + '):', Object.keys(ANEXOS).length, 'chaves — será migrado para IDB');
+        return true;
+      }
+    }
+  } catch(e){ console.error('[IDB] erro fallback anexos:', e); }
+  return false;
+}
+
+function _saveAnexosLocalStorageFallback(){
+  // Último recurso. Captura quota silenciosamente — dados ainda estão em memória.
+  try {
+    localStorage.setItem('garagespot_anexos', JSON.stringify(ANEXOS));
+  } catch(e){
+    console.error('[IDB] fallback localStorage anexos falhou (quota?):', e.message);
+  }
+}
+
+// === VISTORIAS no IndexedDB ===
+function saveVistoriasIDB(){
+  return new Promise(function(resolve){
+    if(!_idbAvailable()){
+      console.warn('[IDB] sem db, fallback localStorage vistorias');
+      _saveVistoriasLocalStorageFallback(); resolve(false); return;
+    }
+    try {
+      const tx = db.transaction(STORE_VISTORIAS, 'readwrite');
+      tx.objectStore(STORE_VISTORIAS).put(VISTORIAS, 'all');
+      tx.oncomplete = function(){
+        console.log('[IDB] vistorias salvas:', Object.keys(VISTORIAS).length);
+        resolve(true);
+      };
+      tx.onerror = function(e){
+        console.error('[IDB] erro salvando vistorias:', tx.error || e);
+        _saveVistoriasLocalStorageFallback(); resolve(false);
+      };
+    } catch(e){
+      console.error('[IDB] exceção vistorias:', e);
+      _saveVistoriasLocalStorageFallback(); resolve(false);
+    }
+  });
+}
+
+function loadVistoriasIDB(){
+  return new Promise(function(resolve){
+    if(!_idbAvailable()){ resolve(_loadVistoriasLocalStorageFallback()); return; }
+    try {
+      const tx = db.transaction(STORE_VISTORIAS, 'readonly');
+      const req = tx.objectStore(STORE_VISTORIAS).get('all');
+      req.onsuccess = function(){
+        if(req.result && typeof req.result === 'object'){
+          VISTORIAS = req.result;
+          _contadorAnterior.vistorias = Object.keys(VISTORIAS).length;
+          console.log('[IDB] vistorias carregadas do IDB:', Object.keys(VISTORIAS).length);
+          resolve(true);
+        } else {
+          resolve(_loadVistoriasLocalStorageFallback());
+        }
+      };
+      req.onerror = function(){ resolve(_loadVistoriasLocalStorageFallback()); };
+    } catch(e){
+      console.error('[IDB] exceção load vistorias:', e);
+      resolve(_loadVistoriasLocalStorageFallback());
+    }
+  });
+}
+
+function _loadVistoriasLocalStorageFallback(){
+  try {
+    let raw = localStorage.getItem(VISTORIAS_LS);
+    let origem = 'principal';
+    if(!raw){ raw = localStorage.getItem('garagespot_vistorias_bk1'); origem = raw ? 'bk1' : origem; }
+    if(!raw){ raw = localStorage.getItem('garagespot_vistorias_bk2'); origem = raw ? 'bk2' : origem; }
+    if(raw){
+      const data = JSON.parse(raw);
+      if(data && typeof data === 'object'){
+        VISTORIAS = data;
+        _contadorAnterior.vistorias = Object.keys(VISTORIAS).length;
+        console.log('[IDB] vistorias do localStorage (' + origem + '):', Object.keys(VISTORIAS).length, '— será migrado para IDB');
+        return true;
+      }
+    }
+  } catch(e){ console.error('[IDB] erro fallback vistorias:', e); }
+  return false;
+}
+
+function _saveVistoriasLocalStorageFallback(){
+  try { localStorage.setItem(VISTORIAS_LS, JSON.stringify(VISTORIAS)); }
+  catch(e){ console.error('[IDB] fallback localStorage vistorias falhou (quota?):', e.message); }
+}
+
+// === Limpeza de backups legados (rodada UMA vez após migração confirmada) ===
+function _limparBackupsLegados(){
+  const chavesLegadas = [
+    'garagespot_vistorias_bk1', 'garagespot_vistorias_bk2',
+    'garagespot_anexos_bk1', 'garagespot_anexos_bk2'
+  ];
+  let liberados = 0;
+  chavesLegadas.forEach(function(k){
+    try {
+      if(localStorage.getItem(k) !== null){
+        localStorage.removeItem(k);
+        liberados++;
+        console.log('[IDB] backup legado removido:', k);
+      }
+    } catch(e){}
+  });
+  if(liberados > 0) console.log('[IDB] liberados', liberados, 'backups legados do localStorage');
+  return liberados;
+}
+
+// === Migração para IndexedDB na inicialização (não-destrutiva) ===
+async function _migrarParaIndexedDB(){
+  console.log('[MIGRAÇÃO] iniciando verificação de migração');
+
+  // 1. Carrega do IndexedDB (fallback automático para localStorage se IDB vazio)
+  await loadAnexosIDB();
+  await loadVistoriasIDB();
+
+  // 2. Garante cópia no IDB se vier do localStorage (ou já está no IDB, no-op)
+  if(_idbAvailable() && Object.keys(ANEXOS).length > 0){
+    await saveAnexosIDB();
+  }
+  if(_idbAvailable() && Object.keys(VISTORIAS).length > 0){
+    await saveVistoriasIDB();
+  }
+
+  // 3. SÓ DEPOIS de confirmar dados no IndexedDB, limpa backups legados (libera quota)
+  if(_idbAvailable()){
+    _limparBackupsLegados();
+  }
+
+  // 4. NÃO remove garagespot_anexos / garagespot_vistorias principais — viram backup de emergência
+
+  console.log('[MIGRAÇÃO] completa. ANEXOS:', Object.keys(ANEXOS).length, 'VISTORIAS:', Object.keys(VISTORIAS).length);
 }
 
 // Monta o objeto de estado para salvar
@@ -9752,17 +10018,21 @@ checkLicense().then(async (ativo)=>{
   }
   // Licença OK — inicializa normalmente
   openDB()
-    .catch(()=>{ db=null; })
+    .catch((err)=>{ db=null; console.warn('[IDB] openDB falhou, modo localStorage:', err); })
     .finally(async ()=>{
       const restored = await loadData();
-      loadAnexos();
+      // v1.9.4.2: migração para IndexedDB (anexos e vistorias) — não-destrutiva
+      // _migrarParaIndexedDB carrega do IDB (com fallback localStorage), garante cópia
+      // no IDB, e DEPOIS limpa backups legados bk1/bk2 do localStorage.
+      try { await _migrarParaIndexedDB(); } catch(e){ console.error('[MIGRAÇÃO] falhou:', e); }
       loadHistorico();
       loadUsuarios();
       loadHospedagens();
       loadTurnos();
       loadPlantaoManual();
       loadRecargas();
-      loadVistorias();
+      // v1.9.4.2: VISTORIAS_LIXEIRA continua no localStorage (pequena, sem documento_final_b64)
+      try{const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS);if(d)VISTORIAS_LIXEIRA=JSON.parse(d)||{};}catch(e){}
       loadCheckinsPendentes();
       agendarLimparPlantao();
       loadModulos();
