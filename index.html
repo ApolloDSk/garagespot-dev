@@ -518,16 +518,21 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 @media (max-width:480px){.rcp-grid{grid-template-columns:1fr}}
 .rcp-card{background:#fff;border-radius:12px;padding:13px;box-shadow:0 1px 3px rgba(15,30,60,.06),0 1px 2px rgba(15,30,60,.04);border:1.5px solid #E1E5EB;position:relative;overflow:hidden}
 .rcp-card.ativo{border-color:#2BB673;background:linear-gradient(180deg,#fff 0%,#F2FBF6 100%)}
+.rcp-card.concluido{border-color:#1F9A5F;background:linear-gradient(180deg,#fff 0%,#EEF9F2 100%)}
 .rcp-card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
 .rcp-label{font-size:10px;font-weight:700;color:#8892A6;text-transform:uppercase;letter-spacing:.5px}
 .rcp-vagas{font-size:17px;font-weight:800;color:#1A2238;margin-top:2px}
 .rcp-status{font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px}
 .rcp-status.livre{background:#ECF1F7;color:#5A6478}
 .rcp-status.ativo{background:#2BB673;color:#fff}
+.rcp-status.concluido{background:#1F9A5F;color:#fff}
 .rcp-bateria-big{width:54px;height:24px;border:2.5px solid #2A3445;border-radius:4px;position:relative;margin:6px 0 10px}
 .rcp-bateria-big::after{content:'';position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:4px;height:11px;background:#2A3445;border-radius:0 2px 2px 0}
 .rcp-bateria-big-nivel{position:absolute;left:2px;top:2px;bottom:2px;background:#2BB673;border-radius:2px;width:8%}
 .rcp-bateria-big.carregando .rcp-bateria-big-nivel{animation:encher-vaga 2.4s linear infinite}
+.rcp-bateria-big.cheia .rcp-bateria-big-nivel{width:calc(100% - 4px);background:#1F9A5F}
+.rcp-bateria-big-check{position:absolute;bottom:-7px;right:-8px;width:18px;height:18px;background:#1F9A5F;color:#fff;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;line-height:1}
+.rcp-bateria-big{position:relative}
 .rcp-raio-big{width:30px;height:30px;border-radius:50%;background:#fff;border:2.5px solid #E6B635;box-shadow:0 2px 6px rgba(230,138,46,.25);display:flex;align-items:center;justify-content:center;font-size:15px;margin:6px 0 10px}
 .rcp-info{font-size:11px;color:#5A6478;line-height:1.5}
 .rcp-info-row{display:flex;justify-content:space-between;margin-bottom:2px}
@@ -537,12 +542,14 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .rcp-btn{margin-top:10px;width:100%;padding:9px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;font-family:inherit}
 .rcp-btn.iniciar{background:#2BB673;color:#fff}
 .rcp-btn.ver{background:#fff;color:#185FA5;border:1.5px solid #185FA5}
+.rcp-btn.encerrar{background:#1F9A5F;color:#fff}
 .rcp-secao{padding:0 0 6px}
 .rcp-secao-titulo{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px}
 .rcp-secao-text{font-size:12px;font-weight:700;color:#5A6478;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
 .rcp-badge{background:#185FA5;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px}
 .rcp-badge.fila{background:#E68A2E}
 .rcp-ativa{background:#fff;border-radius:10px;padding:11px 13px;box-shadow:0 1px 3px rgba(15,30,60,.06);border-left:4px solid #2BB673;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:8px}
+.rcp-ativa.rcp-ativa-concluida{border-left-color:#1F9A5F;background:#F2FBF6}
 .rcp-ativa-titulo{font-size:13px;font-weight:700;color:#1A2238;display:flex;align-items:center;gap:6px}
 .rcp-ativa-tag{background:#185FA5;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px}
 .rcp-ativa-det{font-size:11px;color:#5A6478;line-height:1.4;margin-top:2px}
@@ -585,6 +592,14 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .rcp-busca-input{width:100%;padding:9px 30px 9px 32px;border:1.5px solid #E1E5EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
 .rcp-busca-input:focus{outline:none;border-color:#185FA5}
 .rcp-lista-vazia{text-align:center;padding:22px 12px;color:#8892A6;font-size:12px}
+/* Encerramento — opções de horário (radio) */
+.rcp-opc-horario{display:flex;gap:10px;padding:11px 12px;border:1.5px solid #E1E5EB;border-radius:10px;margin-bottom:7px;cursor:pointer;align-items:flex-start;background:#fff;transition:all .15s}
+.rcp-opc-horario.selecionada{border-color:#2BB673;background:#F2FBF6}
+.rcp-opc-radio{width:18px;height:18px;border:2px solid #E1E5EB;border-radius:50%;flex-shrink:0;margin-top:2px;position:relative}
+.rcp-opc-horario.selecionada .rcp-opc-radio{border-color:#2BB673}
+.rcp-opc-horario.selecionada .rcp-opc-radio::after{content:'';position:absolute;inset:3px;background:#2BB673;border-radius:50%}
+.rcp-opc-sub{font-size:11px;color:#5A6478;line-height:1.4}
+.rcp-opc-sub strong{color:#1A2238;font-weight:700}
 /* Badge anexos */
 .attach-badge{background:#185FA5;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;margin-left:2px;line-height:1.4;vertical-align:middle}
 /* STEP5 sucesso */
@@ -724,7 +739,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.3.2 -->
+<!-- GarageSpot v1.9.4.3.3 -->
 <body>
 <div class="page">
 
@@ -1260,10 +1275,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.3.2: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.3.2';
+// v1.9.4.3.3: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.3.3';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-05-29';
+const GS_BUILD_TS = '2026-05-30';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
@@ -4432,15 +4447,18 @@ function addLogSistema(msg){
   }catch(e){}
 }
 // ── SISTEMA DE RECARGA ────────────────────────────────────────────────────
-const VAGAS_RECARGA = {'8C':{par:'9C'},'9C':{par:'8C'},'1D':{par:null}};
+// v1.9.4.3.3: VAGAS_RECARGA agora é configurável (let) — fallback para padrão se nada configurado.
+let VAGAS_RECARGA = {'8C':{par:'9C'},'9C':{par:'8C'},'1D':{par:null}};
 let RECARGAS = {};        // {vagaId: {apt,hospedagem,inicio_ts,fim_ts,ativo,confirmada,usuario}}
 let FILA_RECARGA = [];    // [{apt,vagaId,hospedagem,ts_pedido,usuario}]
 let HISTORICO_RECARGAS = [];
-let RECARGA_CONFIG = {valorHora:10, arredondamento:15};
+// v1.9.4.3.3: novos campos: arredondamento_dir ('cima'/'baixo'), alertas (bool)
+let RECARGA_CONFIG = {valorHora:10, arredondamento:15, arredondamento_dir:'cima', alertas:true};
 const _recTimers = {};
 const RECARGA_LS = 'garagespot_recargas';
 const RECARGA_HIST_LS = 'garagespot_historico_recargas';
 const RECARGA_CFG_LS = 'garagespot_recarga_config';
+const RECARGA_PONTOS_LS = 'garagespot_recarga_pontos'; // v1.9.4.3.3
 
 function saveRecargas(){ try{localStorage.setItem(RECARGA_LS,JSON.stringify(RECARGAS));}catch(e){} }
 function saveRecargaHist(){ try{localStorage.setItem(RECARGA_HIST_LS,JSON.stringify(HISTORICO_RECARGAS));}catch(e){} }
@@ -4448,6 +4466,49 @@ function loadRecargas(){
   try{ const r=localStorage.getItem(RECARGA_LS); if(r) RECARGAS=JSON.parse(r)||{}; }catch(e){}
   try{ const r=localStorage.getItem(RECARGA_HIST_LS); if(r) HISTORICO_RECARGAS=JSON.parse(r)||[]; }catch(e){}
   try{ const r=localStorage.getItem(RECARGA_CFG_LS); if(r) RECARGA_CONFIG=Object.assign(RECARGA_CONFIG,JSON.parse(r)||{}); }catch(e){}
+  // v1.9.4.3.3: carregar pontos personalizados (se houver). Sem nada → mantém padrão.
+  try{
+    const p = localStorage.getItem(RECARGA_PONTOS_LS);
+    if(p){
+      const arr = JSON.parse(p);
+      if(Array.isArray(arr) && arr.length > 0){
+        _aplicarConfigPontos(arr);
+      }
+    }
+  }catch(e){}
+}
+// v1.9.4.3.3: aplica array [{vagas:['8C','9C'], compartilhado:true}, ...] em VAGAS_RECARGA + PONTOS_RECARGA
+function _aplicarConfigPontos(arr){
+  const novoVR = {};
+  arr.forEach(function(p){
+    if(!p || !Array.isArray(p.vagas) || p.vagas.length === 0) return;
+    if(p.vagas.length === 2 && p.compartilhado){
+      novoVR[p.vagas[0]] = { par: p.vagas[1] };
+      novoVR[p.vagas[1]] = { par: p.vagas[0] };
+    } else {
+      p.vagas.forEach(function(v){ novoVR[v] = { par: null }; });
+    }
+  });
+  VAGAS_RECARGA = novoVR;
+  // Reescrever PONTOS_RECARGA in-place (preservar referência)
+  if(typeof PONTOS_RECARGA !== 'undefined' && Array.isArray(PONTOS_RECARGA)){
+    PONTOS_RECARGA.length = 0;
+    arr.forEach(function(p){
+      if(p && Array.isArray(p.vagas) && p.vagas.length > 0){
+        PONTOS_RECARGA.push({ vagas:p.vagas.slice(), compartilhado:!!p.compartilhado });
+      }
+    });
+  }
+}
+function _getConfigPontosAtual(){
+  // Deriva array a partir de PONTOS_RECARGA (que reflete VAGAS_RECARGA aplicada)
+  if(typeof PONTOS_RECARGA !== 'undefined' && Array.isArray(PONTOS_RECARGA)){
+    return PONTOS_RECARGA.map(function(p){ return { vagas:p.vagas.slice(), compartilhado:!!p.compartilhado }; });
+  }
+  return [];
+}
+function saveConfigPontos(arr){
+  try{ localStorage.setItem(RECARGA_PONTOS_LS, JSON.stringify(arr)); }catch(e){}
 }
 function saveRecargaCfg(){ try{localStorage.setItem(RECARGA_CFG_LS,JSON.stringify(RECARGA_CONFIG));}catch(e){} }
 
@@ -7762,13 +7823,13 @@ function getRecargaState(vagaId){
   return 'disponivel';
 }
 
-// v1.9.4.3.1+v1.9.4.3.2: ícone-botão.
-// - Ponto LIVRE (raio amarelo): toque abre o fluxo de iniciar recarga PARA AQUELE PONTO.
-// - Ponto indisponível (raio cinza): toque navega para a aba Recarga (não inicia).
-// - Carregando/horário-batido/confirmada (bateria animada): toque navega para a aba Recarga.
+// v1.9.4.3.3: ícone-botão com 4 estados visuais:
+// - Ponto LIVRE → raio amarelo (botão → abre fluxo iniciar)
+// - Par compartilhado em uso pela outra vaga → raio cinza (botão → navega Recarga)
+// - Carregando (em andamento, antes do término) → bateria animada
+// - "horario-bateu" (passou do término, ainda não encerrada) → bateria CHEIA ✓ (Concluído)
+// - "confirmada" → bateria cheia ✓ (já encerrada, aparece brevemente até ref limpar)
 // stopPropagation evita disparar clkV/showOcc.
-// OBS: estado "horario-bateu" mantém bateria ANIMADA (não "cheia ✓") — protótipo define
-// que bateria cheia ✓ entra junto com a finalização no .3.
 function getRecargaIcon(vagaId){
   if(!MODULOS.recarga) return '';
   const st = getRecargaState(vagaId);
@@ -7783,8 +7844,12 @@ function getRecargaIcon(vagaId){
     const par = VAGAS_RECARGA[vagaId] && VAGAS_RECARGA[vagaId].par;
     return '<span class="vaga-raio indisponivel" role="button" tabindex="0" onclick="'+clickNav+'" title="Ponto compartilhado com '+(par||'par')+' em uso"></span>';
   }
-  // Bateria animada — recarga em andamento
-  if(st === 'carregando' || st === 'horario-bateu' || st === 'confirmada'){
+  // Bateria CHEIA + ✓ — Concluído (passou do término, não encerrada) ou Confirmada
+  if(st === 'horario-bateu' || st === 'confirmada'){
+    return '<span class="vaga-bateria cheia" role="button" tabindex="0" onclick="'+clickNav+'" title="Concluído — encerrar e liberar"><span class="vaga-bateria-nivel"></span><span class="vaga-bateria-check">✓</span></span>';
+  }
+  // Bateria animada — em andamento (antes do término)
+  if(st === 'carregando'){
     return '<span class="vaga-bateria carregando" role="button" tabindex="0" onclick="'+clickNav+'" title="Recarga em andamento"><span class="vaga-bateria-nivel"></span></span>';
   }
   // Fallback: raio amarelo (livre)
@@ -7799,12 +7864,16 @@ function _fmtDurRecarga(min){
   return m === 0 ? (h + 'h') : (h + 'h ' + m + 'min');
 }
 
+// v1.9.4.3.3: respeita arredondamento_dir ('cima' = ceil, 'baixo' = floor); cortesia (valorHora=0) → R$ 0,00
 function calcValorRecarga(inicio_ts, fim_ts){
-  const mins=Math.max(0,(fim_ts-inicio_ts)/60000);
-  const arr=RECARGA_CONFIG.arredondamento||15;
-  const minsArr=Math.ceil(mins/arr)*arr;
-  const horas=minsArr/60;
-  return {mins:minsArr, horas, valor:Math.round(horas*RECARGA_CONFIG.valorHora*100)/100};
+  const mins = Math.max(0, (fim_ts - inicio_ts) / 60000);
+  const arr  = RECARGA_CONFIG.arredondamento || 15;
+  const dir  = RECARGA_CONFIG.arredondamento_dir || 'cima';
+  const minsArr = dir === 'baixo' ? Math.floor(mins/arr)*arr : Math.ceil(mins/arr)*arr;
+  const horas = minsArr / 60;
+  const vh = (typeof RECARGA_CONFIG.valorHora === 'number') ? RECARGA_CONFIG.valorHora : 10;
+  const valor = vh === 0 ? 0 : Math.round(horas * vh * 100) / 100;
+  return { mins: minsArr, horas, valor };
 }
 
 function agendarAlertaRecarga(vagaId){
@@ -7902,48 +7971,193 @@ function showRecargaDetalhe(vagaId){
   setTimeout(()=>{ document.getElementById('rc-finalizar')?.addEventListener('click',()=>{ closeOv(); showRecargaFinalizar(vagaId); }); },80);
 }
 
+// v1.9.4.3.3: Encerramento com cobrança (3 opções quando em atraso). Cortesia (valorHora=0) = R$ 0,00.
 function showRecargaFinalizar(vagaId){
   const r=RECARGAS[vagaId]; if(!r) return;
   const now=Date.now();
-  const fimReal=Math.max(r.inicio_ts+60000,now); // mínimo 1min
-  const {mins,horas,valor}=calcValorRecarga(r.inicio_ts,fimReal);
+  const emAtraso = now >= r.fim_ts;
   confirmarUsuario('finalizando recarga',function(usuario){
     const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
-    showM(`<div class="mt">⚡ Finalizar Recarga — Vaga ${vagaId}</div>
-      <div style="background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700;color:#0F6E56;margin-bottom:6px">Resumo de cobranca</div>
-        <div style="font-size:12px">Apt. ${r.apt}${r.hospedagem?' · '+r.hospedagem:''}</div>
-        <div style="font-size:12px">Inicio: ${fmtDt(r.inicio_ts)} · Fim: ${fmtDt(fimReal)}</div>
-        <div style="font-size:14px;font-weight:700;margin-top:6px">Total: R$ ${valor.toFixed(2).replace('.',',')} (${_fmtDurRecarga(mins)})</div>
-        <div style="background:#FFF8E6;border-radius:5px;padding:6px 8px;margin-top:6px;font-size:11px;color:#854F0B">
-          Informar ao recepcionista: lancar R$ ${valor.toFixed(2).replace('.',',')} no Apt. ${r.apt} referente a ${_fmtDurRecarga(mins)} de recarga
-        </div>
-      </div>
-      <div class="ag">
-        <button class="bsv" id="rc-conf-finalizar">✓ Confirmar e gerar PDF</button>
-        <button class="bcx" onclick="closeOv()">Fechar sem confirmar</button>
-      </div>`);
-    setTimeout(()=>{
-      document.getElementById('rc-conf-finalizar')?.addEventListener('click',async()=>{
-        // Registrar no historico
-        const entrada={vagaId,apt:r.apt,hospedagem:r.hospedagem,inicio_ts:r.inicio_ts,fim_ts:fimReal,mins,horas,valor,usuario:usuarioStr,ts:Date.now()};
-        HISTORICO_RECARGAS.push(entrada);
-        saveRecargaHist();
-        RECARGAS[vagaId].ativo=false; RECARGAS[vagaId].confirmada=true; RECARGAS[vagaId].fim_ts=fimReal;
-        saveRecargas();
-        if(typeof ref==='function') ref(vagaId);
-        if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
-        // Gerar PDF
-        const docPdf=buildRecargaDoc([entrada]);
-        const nome='Recarga_'+r.apt+'_'+fmtNomeData(r.inicio_ts)+'_GarageSpot';
-        closeOv();
-        if(docPdf){ await gerarECompartilharPDF('Registro de Recarga',docPdf,nome); }
-        else { showToast('Recarga finalizada — R$ '+valor.toFixed(2).replace('.',',')); }
-        // Liberar ponto: notificar proximo da fila
-        _verificarFilaRecarga(vagaId);
-      });
-    },80);
+    _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now);
   });
+}
+
+// Estado local do modal de encerramento (atualiza R$/duração ao trocar opção)
+let _rcEncerrarEstado = null;
+
+function _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now){
+  // Calcular as opções
+  const opcaoProgramado = { modo:'programado', fimMs:r.fim_ts };
+  const opcaoAgora      = { modo:'agora',      fimMs:Math.max(r.inicio_ts+60000, now) };
+  const fimOutroDefault = String(new Date(now).getHours()).padStart(2,'0')+':'+String(new Date(now).getMinutes()).padStart(2,'0');
+  const opcaoOutro      = { modo:'outro',      fimMs:_hhmmParaMs(fimOutroDefault), hhmm:fimOutroDefault };
+
+  // Opção padrão: se em atraso, "programado"; se ainda no prazo, "agora" (encerramento antecipado)
+  _rcEncerrarEstado = {
+    vagaId, r, usuario, usuarioStr, emAtraso,
+    opcoes: { programado:opcaoProgramado, agora:opcaoAgora, outro:opcaoOutro },
+    selecionada: emAtraso ? 'programado' : 'agora'
+  };
+
+  const carro = 'Apt '+r.apt + (r.hospedagem?' · '+r.hospedagem:'');
+  const veicLinha = (S[vagaId] && (S[vagaId].model||S[vagaId].color))
+    ? S[vagaId].model + (S[vagaId].color?' '+S[vagaId].color:'')
+    : '';
+  const atrasoMin = emAtraso ? Math.max(0, Math.round((now - r.fim_ts)/60000)) : 0;
+
+  function _calc(modo){
+    const op = _rcEncerrarEstado.opcoes[modo];
+    const fimMs = op.fimMs;
+    const {mins, valor} = calcValorRecarga(r.inicio_ts, fimMs);
+    return { fimMs, mins, valor, hhmm:_fmtHM(fimMs) };
+  }
+
+  function _renderOpcao(modo, titulo){
+    const sel = _rcEncerrarEstado.selecionada === modo;
+    const c = _calc(modo);
+    const outroInput = modo === 'outro'
+      ? '<input type="time" class="fi" id="rc-enc-outro-input" value="'+(_rcEncerrarEstado.opcoes.outro.hhmm||'')+'" style="margin-top:6px'+(sel?'':';display:none')+'">'
+      : '';
+    const sub = modo === 'outro' && !sel
+      ? 'Defina o horário manualmente'
+      : 'Término: <strong>'+c.hhmm+'</strong> · '+_fmtDurRecarga(c.mins)+' · <strong>R$ '+c.valor.toFixed(2).replace('.',',')+'</strong>';
+    return ''+
+      '<div class="rcp-opc-horario '+(sel?'selecionada':'')+'" data-modo="'+modo+'" onclick="_rcEncerrarSelecionar(\''+modo+'\')">' +
+        '<div class="rcp-opc-radio"></div>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:13px;font-weight:700;color:#1A2238;margin-bottom:2px">'+titulo+'</div>' +
+          '<div class="rcp-opc-sub">'+sub+'</div>' +
+          outroInput +
+        '</div>' +
+      '</div>';
+  }
+
+  const corteHtml = (RECARGA_CONFIG.valorHora||0) === 0
+    ? '<div style="background:#EEF6FF;border:1px solid #C7DAEC;border-radius:7px;padding:8px 12px;font-size:12px;color:#185FA5;margin-bottom:10px">🎁 <strong>Cortesia ativa</strong> — valor/hora = R$ 0,00, o total será R$ 0,00</div>'
+    : '';
+  const alertaAtraso = emAtraso
+    ? '<div style="background:#FFF7EC;border:1px solid #FFE0B3;border-radius:8px;padding:9px 12px;font-size:12px;color:#8A5A1A;margin-bottom:12px"><strong>⚠️ Em atraso</strong>: programado até <strong>'+_fmtHM(r.fim_ts)+'</strong> · agora <strong>'+_fmtHM(now)+'</strong> · atraso de <strong>'+_fmtDurRecarga(atrasoMin)+'</strong></div>'
+    : '';
+
+  showM(''+
+    '<div class="mt">⏱ Encerrar recarga — Vaga '+vagaId+'</div>' +
+    '<div class="ms" style="background:#f5f4f0;border-radius:7px;padding:7px 10px;color:#1A2238;margin-bottom:10px"><strong>'+_vtEsc(carro)+'</strong>'+(veicLinha?' · '+_vtEsc(veicLinha):'')+'</div>' +
+    alertaAtraso +
+    corteHtml +
+    '<label class="fl">Horário a ser cobrado e registrado</label>' +
+    '<div id="rc-enc-opcoes">' +
+      _renderOpcao('programado','Cobrar até o horário programado') +
+      _renderOpcao('agora','Cobrar até agora') +
+      _renderOpcao('outro','Outro horário') +
+    '</div>' +
+    '<div class="b2" style="margin-top:12px">' +
+      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
+      '<button class="bsv" id="rc-enc-confirmar" style="background:#1F9A5F">✓ Confirmar e encerrar</button>' +
+    '</div>');
+
+  setTimeout(function(){
+    const inputOutro = document.getElementById('rc-enc-outro-input');
+    if(inputOutro){
+      inputOutro.addEventListener('input', function(e){
+        _rcEncerrarEstado.opcoes.outro.hhmm = e.target.value;
+        _rcEncerrarEstado.opcoes.outro.fimMs = _hhmmParaMs(e.target.value);
+        _rcEncerrarAtualizarOpcoes();
+      });
+    }
+    document.getElementById('rc-enc-confirmar')?.addEventListener('click', function(){
+      _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr);
+    });
+  }, 80);
+}
+
+window._rcEncerrarSelecionar = function(modo){
+  if(!_rcEncerrarEstado) return;
+  _rcEncerrarEstado.selecionada = modo;
+  _rcEncerrarAtualizarOpcoes();
+};
+
+function _rcEncerrarAtualizarOpcoes(){
+  if(!_rcEncerrarEstado) return;
+  const cont = document.getElementById('rc-enc-opcoes');
+  if(!cont) return;
+  cont.innerHTML = ''+
+    _rcRenderUmaOpcao('programado','Cobrar até o horário programado') +
+    _rcRenderUmaOpcao('agora','Cobrar até agora') +
+    _rcRenderUmaOpcao('outro','Outro horário');
+  // re-anexa listener do input "outro"
+  const inputOutro = document.getElementById('rc-enc-outro-input');
+  if(inputOutro){
+    inputOutro.addEventListener('input', function(e){
+      _rcEncerrarEstado.opcoes.outro.hhmm = e.target.value;
+      _rcEncerrarEstado.opcoes.outro.fimMs = _hhmmParaMs(e.target.value);
+      _rcEncerrarAtualizarOpcoes();
+    });
+  }
+}
+
+function _rcRenderUmaOpcao(modo, titulo){
+  const st = _rcEncerrarEstado;
+  if(!st) return '';
+  const op = st.opcoes[modo];
+  const sel = st.selecionada === modo;
+  const {mins, valor} = calcValorRecarga(st.r.inicio_ts, op.fimMs);
+  const hhmm = _fmtHM(op.fimMs);
+  const outroInput = modo === 'outro'
+    ? '<input type="time" class="fi" id="rc-enc-outro-input" value="'+(st.opcoes.outro.hhmm||'')+'" style="margin-top:6px'+(sel?'':';display:none')+'">'
+    : '';
+  const sub = modo === 'outro' && !sel
+    ? 'Defina o horário manualmente'
+    : 'Término: <strong>'+hhmm+'</strong> · '+_fmtDurRecarga(mins)+' · <strong>R$ '+valor.toFixed(2).replace('.',',')+'</strong>';
+  return ''+
+    '<div class="rcp-opc-horario '+(sel?'selecionada':'')+'" data-modo="'+modo+'" onclick="_rcEncerrarSelecionar(\''+modo+'\')">' +
+      '<div class="rcp-opc-radio"></div>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:13px;font-weight:700;color:#1A2238;margin-bottom:2px">'+titulo+'</div>' +
+        '<div class="rcp-opc-sub">'+sub+'</div>' +
+        outroInput +
+      '</div>' +
+    '</div>';
+}
+
+async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
+  const st = _rcEncerrarEstado; if(!st) return;
+  const op = st.opcoes[st.selecionada];
+  let fimReal = op.fimMs;
+  if(st.selecionada === 'outro'){
+    if(!st.opcoes.outro.hhmm){ showToast('Defina o horário em "Outro horário"',2500); return; }
+    fimReal = _hhmmParaMs(st.opcoes.outro.hhmm);
+  }
+  if(fimReal < r.inicio_ts + 60000) fimReal = r.inicio_ts + 60000; // mínimo 1min
+  const {mins, horas, valor} = calcValorRecarga(r.inicio_ts, fimReal);
+  // Registrar no histórico
+  const entrada = {
+    vagaId, apt:r.apt, hospedagem:r.hospedagem,
+    model:(S[vagaId]&&S[vagaId].model)||r.model||'',
+    color:(S[vagaId]&&S[vagaId].color)||r.color||'',
+    inicio_ts:r.inicio_ts, fim_ts:fimReal, fim_programado_ts:r.fim_ts,
+    modo_encerramento:st.selecionada,
+    mins, horas, valor, valor_hora:RECARGA_CONFIG.valorHora, arredondamento:RECARGA_CONFIG.arredondamento,
+    cortesia:(RECARGA_CONFIG.valorHora||0) === 0,
+    usuario:usuarioStr, ts:Date.now()
+  };
+  if(typeof HISTORICO_RECARGAS !== 'undefined' && Array.isArray(HISTORICO_RECARGAS)) HISTORICO_RECARGAS.push(entrada);
+  if(typeof saveRecargaHist === 'function') saveRecargaHist();
+  // Liberar ponto: encerrar recarga
+  RECARGAS[vagaId].ativo = false;
+  RECARGAS[vagaId].confirmada = true;
+  RECARGAS[vagaId].fim_ts = fimReal;
+  saveRecargas();
+  if(typeof ref === 'function') ref(vagaId);
+  if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
+  // PDF
+  const docPdf = buildRecargaDoc([entrada]);
+  const nome = 'Recarga_'+r.apt+'_'+fmtNomeData(r.inicio_ts)+'_GarageSpot';
+  closeOv();
+  _rcEncerrarEstado = null;
+  if(docPdf){ await gerarECompartilharPDF('Registro de Recarga', docPdf, nome); }
+  else { showToast('Recarga encerrada — R$ '+valor.toFixed(2).replace('.',','),3500); }
+  // Ofertar próximo da fila
+  _verificarFilaRecarga(vagaId);
 }
 
 function _verificarFilaRecarga(vagaId){
@@ -8016,23 +8230,36 @@ function renderTelaRecarga(){
       const rem=Math.max(0,Math.ceil((r.fim_ts-agora)/60000));
       const carro = (S[vagaAtiva] && S[vagaAtiva].apt ? 'Apt '+S[vagaAtiva].apt : 'Apt '+r.apt) +
                     ((S[vagaAtiva]&&(S[vagaAtiva].model||S[vagaAtiva].color)) ? ' · '+(S[vagaAtiva].model||'')+(S[vagaAtiva].color?' '+S[vagaAtiva].color:'') : '');
+      // v1.9.4.3.3: distingue Ativo vs Concluído (horario-bateu)
+      const concluido = (stV === 'horario-bateu' || stV === 'confirmada');
+      const bateriaCls = concluido ? 'cheia' : 'carregando';
+      const statusCls  = concluido ? 'concluido' : 'ativo';
+      const statusTxt  = concluido ? '✓ Concluído' : '⚡ Ativo';
+      const cardCls    = concluido ? 'rcp-card concluido' : 'rcp-card ativo';
+      const linhaDest  = concluido
+        ? '<div class="rcp-info-row destaque"><span>Concluído</span><strong class="restante">'+_fmtHM(r.fim_ts)+'</strong></div>'
+        : '<div class="rcp-info-row destaque"><span>Restante</span><strong class="restante">'+_fmtDurRecarga(rem)+'</strong></div>';
+      const botaoCard = concluido
+        ? '<button class="rcp-btn encerrar" onclick="showRecargaFinalizar(\''+vagaAtiva+'\')">✓ Encerrar e liberar</button>'
+        : '<button class="rcp-btn ver" onclick="showRecargaDetalhe(\''+vagaAtiva+'\')">Ver detalhes</button>';
+      const checkSuffix = concluido ? '<div class="rcp-bateria-big-check">✓</div>' : '';
       return ''+
-        '<div class="rcp-card ativo">' +
+        '<div class="'+cardCls+'">' +
           '<div class="rcp-card-hdr">' +
             '<div>' +
               '<div class="rcp-label">'+_vtEsc(rotuloPonto)+'</div>' +
               '<div class="rcp-vagas">'+vagaAtiva+'</div>' +
             '</div>' +
-            '<span class="rcp-status ativo">⚡ Ativo</span>' +
+            '<span class="rcp-status '+statusCls+'">'+statusTxt+'</span>' +
           '</div>' +
-          '<div class="rcp-bateria-big carregando"><div class="rcp-bateria-big-nivel"></div></div>' +
+          '<div class="rcp-bateria-big '+bateriaCls+'"><div class="rcp-bateria-big-nivel"></div>'+checkSuffix+'</div>' +
           '<div class="rcp-info">' +
             '<div class="rcp-info-row"><span>Carro</span><strong>'+_vtEsc(carro)+'</strong></div>' +
             '<div class="rcp-info-row"><span>Início</span><strong>'+_fmtHM(r.inicio_ts)+'</strong></div>' +
             '<div class="rcp-info-row"><span>Término previsto</span><strong>'+_fmtHM(r.fim_ts)+'</strong></div>' +
-            '<div class="rcp-info-row destaque"><span>Restante</span><strong class="restante">'+_fmtDurRecarga(rem)+'</strong></div>' +
+            linhaDest +
           '</div>' +
-          '<button class="rcp-btn ver" onclick="showRecargaDetalhe(\''+vagaAtiva+'\')">Ver detalhes</button>' +
+          botaoCard +
         '</div>';
     }
     // Ponto LIVRE — mostra "8C / 9C" ou "1D" e raio amarelo
@@ -8065,17 +8292,24 @@ function renderTelaRecarga(){
     const pct = Math.max(0, Math.min(100, (decorrido / dur) * 100));
     const rem = Math.max(0, dur - decorrido);
     const carro = 'Apt '+r.apt + (S[vagaId]&&(S[vagaId].model||S[vagaId].color) ? ' · '+(S[vagaId].model||'')+(S[vagaId].color?' '+S[vagaId].color:'') : '');
+    // v1.9.4.3.3: distingue Concluído (passou do término) vs Ativo (em andamento)
+    const stAtiva = getRecargaState(vagaId);
+    const concluido = (stAtiva === 'horario-bateu' || stAtiva === 'confirmada');
+    const tempoNum  = concluido ? '✓' : _fmtDurRecarga(rem);
+    const tempoLbl  = concluido ? 'concluído' : 'restantes';
+    const btnTxt    = concluido ? '✓ Encerrar e liberar' : 'Encerrar';
+    const bordaCls  = concluido ? ' rcp-ativa-concluida' : '';
     return ''+
-      '<div class="rcp-ativa">' +
+      '<div class="rcp-ativa'+bordaCls+'">' +
         '<div>' +
           '<div class="rcp-ativa-titulo"><span class="rcp-ativa-tag">'+vagaId+'</span>'+_vtEsc(carro)+'</div>' +
           '<div class="rcp-ativa-det">Início '+_fmtHM(r.inicio_ts)+' · término previsto '+_fmtHM(r.fim_ts)+(r.usuario?' · '+_vtEsc(r.usuario):'')+'</div>' +
           '<div class="rcp-progresso"><div class="rcp-progresso-barra" style="width:'+pct.toFixed(1)+'%"></div></div>' +
         '</div>' +
         '<div class="rcp-tempo">' +
-          '<div class="rcp-tempo-num">'+_fmtDurRecarga(rem)+'</div>' +
-          '<div class="rcp-tempo-label">restantes</div>' +
-          '<button onclick="showRecargaFinalizar(\''+vagaId+'\')" style="margin-top:5px;font-size:10px;font-weight:700;color:#1F9A5F;background:#fff;border:1.5px solid #1F9A5F;border-radius:7px;padding:4px 8px;cursor:pointer;font-family:inherit">Encerrar</button>' +
+          '<div class="rcp-tempo-num">'+tempoNum+'</div>' +
+          '<div class="rcp-tempo-label">'+tempoLbl+'</div>' +
+          '<button onclick="showRecargaFinalizar(\''+vagaId+'\')" style="margin-top:5px;font-size:10px;font-weight:700;color:'+(concluido?'#fff':'#1F9A5F')+';background:'+(concluido?'#1F9A5F':'#fff')+';border:1.5px solid #1F9A5F;border-radius:7px;padding:4px 8px;cursor:pointer;font-family:inherit">'+btnTxt+'</button>' +
         '</div>' +
       '</div>';
   }
@@ -8106,13 +8340,16 @@ function renderTelaRecarga(){
     : hist.map(function(h){
         const dur = h.mins || 0;
         const dataFmt = _fmtDM(h.inicio_ts)+' '+_fmtHM(h.inicio_ts)+' → '+_fmtHM(h.fim_ts);
+        const veic = [h.model, h.color].filter(Boolean).join(' ');
+        const titulo = 'Vaga '+h.vagaId+' · Apt '+_vtEsc(h.apt||'')+(veic?' · '+_vtEsc(veic):'');
+        const valorTxt = (h.cortesia || h.valor === 0) ? 'Cortesia' : 'R$ '+(h.valor||0).toFixed(2).replace('.',',');
         return ''+
           '<div class="rcp-hist">' +
             '<div>' +
-              '<div class="rcp-hist-titulo">Vaga '+h.vagaId+' · Apt '+_vtEsc(h.apt||'')+'</div>' +
+              '<div class="rcp-hist-titulo">'+titulo+'</div>' +
               '<div class="rcp-hist-sub">'+dataFmt+' · '+_fmtDurRecarga(dur)+(h.usuario?' · '+_vtEsc(h.usuario):'')+'</div>' +
             '</div>' +
-            '<div class="rcp-hist-valor">R$ '+(h.valor||0).toFixed(2).replace('.',',')+'</div>' +
+            '<div class="rcp-hist-valor">'+valorTxt+'</div>' +
           '</div>';
       }).join('');
 
@@ -8168,46 +8405,49 @@ function _fmtDM(ts){ const d=new Date(ts); return String(d.getDate()).padStart(2
 window._iniciarRecargaPonto = function(vagaId){
   if(!MODULOS.recarga){ showToast('Módulo Recarga desabilitado',2500); return; }
   if(!VAGAS_RECARGA[vagaId]){ showToast('Vaga não tem ponto de recarga',2500); return; }
-  const st = getRecargaState(vagaId);
-  if(st === 'carregando' || st === 'horario-bateu' || st === 'confirmada'){
-    showRecargaDetalhe(vagaId); return;
-  }
-  if(st === 'ponto-ocupado'){
-    const par = VAGAS_RECARGA[vagaId] && VAGAS_RECARGA[vagaId].par;
-    showToast('Ponto compartilhado em uso pela vaga '+(par||'par'),2800);
-    return;
-  }
-  // Ponto livre — confirma operador e segue
+  // v1.9.4.3.3: usar o PONTO inteiro (não uma vaga específica). Para compartilhado 8C/9C,
+  // considera as duas vagas; para individual 1D, considera só ela.
+  const ponto = (typeof _pontoDaVaga==='function') ? _pontoDaVaga(vagaId) : null;
+  const vagasDoPonto = ponto ? ponto.vagas : [vagaId];
+  // Ponto carregando em ALGUMA das vagas? → abre detalhe daquela
+  const vagaCarregando = vagasDoPonto.find(function(v){ return RECARGAS[v] && RECARGAS[v].ativo; });
+  if(vagaCarregando){ showRecargaDetalhe(vagaCarregando); return; }
+  // Ponto livre — confirma operador e segue para a lista
   confirmarUsuario('iniciando recarga', function(usuario){
     if(typeof closeOv==='function') closeOv();
-    _rcEscolherCarro(vagaId, usuario);
+    _rcEscolherCarro(vagasDoPonto, usuario);
   });
 };
 
-function _rcColetarCarrosDisponiveis(vagaIdPonto){
-  // Carro na vaga do ponto (V) — máxima prioridade
+// v1.9.4.3.3: agora recebe um ARRAY de vagas do ponto (ex.: ['8C','9C'] ou ['1D']).
+// Listar TODOS os carros das vagas do ponto separadamente (compartilhado 8C/9C → as duas vagas).
+function _rcColetarCarrosDisponiveis(vagasDoPonto){
   const carros = [];
-  const vagaPonto = S[vagaIdPonto];
-  const carroDaVaga = (vagaPonto && vagaPonto.status==='occupied') ? {
-    fonte:'vaga', vagaId:vagaIdPonto, apt:vagaPonto.apt, model:vagaPonto.model||'', color:vagaPonto.color||'',
-    plate:vagaPonto.plate||'', guest:vagaPonto.guest||'', obs:vagaPonto.obs||'', hospedagem:vagaPonto.hospedagem||''
-  } : null;
-  if(carroDaVaga) carros.push(carroDaVaga);
-  // Carros na fila (não-duplicar com o da vaga)
+  const setPonto = new Set(vagasDoPonto);
+  // 1) Carro(s) NAS vaga(s) do ponto — cada vaga ocupada vira um item separado, em ordem
+  vagasDoPonto.forEach(function(vid){
+    const v = S[vid];
+    if(v && v.status === 'occupied'){
+      carros.push({ fonte:'vaga', vagaId:vid, apt:v.apt||'', model:v.model||'', color:v.color||'',
+        plate:v.plate||'', guest:v.guest||'', obs:v.obs||'', hospedagem:v.hospedagem||'' });
+    }
+  });
+  // 2) Carros na fila (não-duplicar com os já listados)
+  const jaListados = new Set(carros.map(function(c){ return c.vagaId+'|'+c.apt; }));
   FILA_RECARGA.forEach(function(f){
     if(!f) return;
-    if(carroDaVaga && f.apt === carroDaVaga.apt && f.vagaId === carroDaVaga.vagaId) return;
+    if(jaListados.has(f.vagaId+'|'+f.apt)) return;
     const vagaSrc = S[f.vagaId];
     carros.push({ fonte:'fila', vagaId:f.vagaId, apt:f.apt, hospedagem:f.hospedagem||'',
-      model:(vagaSrc&&vagaSrc.model)||'', color:(vagaSrc&&vagaSrc.color)||'',
+      model:(vagaSrc&&vagaSrc.model)||f.model||'', color:(vagaSrc&&vagaSrc.color)||f.color||'',
       plate:(vagaSrc&&vagaSrc.plate)||'', guest:(vagaSrc&&vagaSrc.guest)||'', ts_pedido:f.ts_pedido });
+    jaListados.add(f.vagaId+'|'+f.apt);
   });
-  // Demais carros do hotel (outras vagas ocupadas, fora do ponto e fora da fila)
+  // 3) Demais carros do hotel (vagas ocupadas FORA do ponto e FORA da fila)
   Object.keys(S).forEach(function(vid){
-    if(vid === vagaIdPonto) return;
+    if(setPonto.has(vid)) return;
     const v = S[vid];
     if(!v || v.status !== 'occupied' || v.mergedSlave) return;
-    // já está na fila?
     const naFila = FILA_RECARGA.some(function(f){ return f && f.vagaId === vid; });
     if(naFila) return;
     carros.push({ fonte:'outro', vagaId:vid, apt:v.apt||'', model:v.model||'', color:v.color||'',
@@ -8216,7 +8456,7 @@ function _rcColetarCarrosDisponiveis(vagaIdPonto){
   return carros;
 }
 
-function _rcRenderListaCarros(carros, vagaIdPonto, query){
+function _rcRenderListaCarros(carros, vagasDoPonto, query){
   const q = (query||'').toLowerCase().trim();
   const filtrados = !q ? carros : carros.filter(function(c){
     const blob = [c.apt, c.model, c.color, c.plate, c.guest, c.vagaId].join(' ').toLowerCase();
@@ -8245,11 +8485,17 @@ function _rcRenderListaCarros(carros, vagaIdPonto, query){
 
 let _rcEstado = null; // estado do fluxo atual
 
-function _rcEscolherCarro(vagaIdPonto, usuario){
-  const carros = _rcColetarCarrosDisponiveis(vagaIdPonto);
-  _rcEstado = { vagaIdPonto, usuario, carros, escolhidoIdx: (carros.length>0 && carros[0].fonte==='vaga') ? 0 : -1, query:'' };
+function _rcEscolherCarro(vagasDoPonto, usuario){
+  // v1.9.4.3.3: recebe um ARRAY de vagas do ponto. Mantém compat. com chamadas antigas (string).
+  if(typeof vagasDoPonto === 'string') vagasDoPonto = [vagasDoPonto];
+  const carros = _rcColetarCarrosDisponiveis(vagasDoPonto);
+  // Pre-selecionar: primeiro carro que está em alguma vaga do ponto, se houver
+  const primIdxVaga = carros.findIndex(function(c){ return c.fonte === 'vaga'; });
+  _rcEstado = { vagasDoPonto, usuario, carros, escolhidoIdx: primIdxVaga, query:'' };
   const mc = document.getElementById('mc');
-  const subtitulo = 'Ponto · Vaga '+vagaIdPonto;
+  const subtitulo = vagasDoPonto.length > 1
+    ? 'Ponto compartilhado '+vagasDoPonto.join('/')
+    : 'Ponto · Vaga '+vagasDoPonto[0];
   mc.innerHTML = ''+
     '<div class="mt">⚡ Iniciar Recarga</div>' +
     '<div class="ms">'+_vtEsc(subtitulo)+'</div>' +
@@ -8257,7 +8503,7 @@ function _rcEscolherCarro(vagaIdPonto, usuario){
       '<span class="rcp-busca-ico">🔍</span>' +
       '<input class="rcp-busca-input" id="rc-busca" placeholder="Buscar por apto, modelo, cor, placa, hóspede...">' +
     '</div>' +
-    '<div id="rc-lista-carros" style="max-height:260px;overflow-y:auto;margin-bottom:8px">'+_rcRenderListaCarros(carros, vagaIdPonto, '')+'</div>' +
+    '<div id="rc-lista-carros" style="max-height:260px;overflow-y:auto;margin-bottom:8px">'+_rcRenderListaCarros(carros, vagasDoPonto, '')+'</div>' +
     '<div class="b2">' +
       '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
       '<button class="bsv" id="rc-prox" '+(_rcEstado.escolhidoIdx<0?'disabled style="opacity:.5;cursor:not-allowed"':'')+'>Próximo →</button>' +
@@ -8274,7 +8520,7 @@ function _rcEscolherCarro(vagaIdPonto, usuario){
       _rcEstado.query = e.target.value;
       _rcEstado.escolhidoIdx = -1;
       const list = document.getElementById('rc-lista-carros');
-      if(list) list.innerHTML = _rcRenderListaCarros(_rcEstado.carros, vagaIdPonto, e.target.value);
+      if(list) list.innerHTML = _rcRenderListaCarros(_rcEstado.carros, vagasDoPonto, e.target.value);
       const btn = document.getElementById('rc-prox');
       if(btn){ btn.disabled = true; btn.style.opacity='.5'; btn.style.cursor='not-allowed'; }
     });
@@ -8312,38 +8558,46 @@ window._rcSelecionarCarro = function(idx){
   if(btn){ btn.disabled = false; btn.style.opacity='1'; btn.style.cursor='pointer'; }
 };
 
+// v1.9.4.3.3: agora considera TODAS as vagas do ponto.
+// - Carro já em uma vaga do ponto → inicia ALI, sem mover.
+// - Carro fora do ponto + ALGUMA vaga do ponto LIVRE → traz para essa vaga livre.
+// - Carro fora do ponto + TODAS as vagas do ponto ocupadas → remaneja UMA (a 1ª).
 function _rcAvaliarRemanejamento(carro){
   if(!_rcEstado) return;
-  const vp = _rcEstado.vagaIdPonto;
-  // Caso 1: o carro escolhido JÁ é o que está em vp → segue direto
-  if(carro.fonte === 'vaga' && carro.vagaId === vp){
+  const vagasDoPonto = _rcEstado.vagasDoPonto || [];
+  // Caso 1: carro escolhido já está numa vaga do ponto → INICIA nessa vaga, SEM MOVER
+  if(carro.fonte === 'vaga' && vagasDoPonto.indexOf(carro.vagaId) >= 0){
     _rcModalTempo(carro);
     return;
   }
-  // Caso 2: vp está vazia → traz o carro para vp (move)
-  const vpVaga = S[vp];
-  const vpVazia = !vpVaga || vpVaga.status !== 'occupied';
-  if(vpVazia){
-    // move o carro da fonte para vp
+  // Caso 2: existe vaga LIVRE no ponto → traz o carro para essa vaga livre (move)
+  const vagaLivre = vagasDoPonto.find(function(vid){
+    const v = S[vid];
+    return !v || v.status !== 'occupied';
+  });
+  if(vagaLivre){
     if(carro.fonte === 'outro' || carro.fonte === 'fila'){
-      _rcMoverCarroParaPonto(carro, vp, function(){
-        // remover da fila se estava
+      _rcMoverCarroParaPonto(carro, vagaLivre, function(){
         if(carro.fonte === 'fila'){
           const idxF = FILA_RECARGA.findIndex(function(f){ return f && f.apt===carro.apt && f.vagaId===carro.vagaId; });
           if(idxF >= 0) FILA_RECARGA.splice(idxF, 1);
         }
-        const carroNoPonto = { fonte:'vaga', vagaId:vp, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
+        const carroNoPonto = { fonte:'vaga', vagaId:vagaLivre, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
         _rcModalTempo(carroNoPonto);
       });
       return;
     }
-    _rcModalTempo(carro); return;
+    // 'vaga' fora do ponto (não deveria entrar aqui pelo Caso 1, mas defensivo)
+    _rcModalTempo(carro);
+    return;
   }
-  // Caso 3: vp tem OUTRO carro → precisa remanejar o atual
-  const carroAtualVp = { vagaId:vp, apt:vpVaga.apt, model:vpVaga.model||'', color:vpVaga.color||'', plate:vpVaga.plate||'', guest:vpVaga.guest||'' };
+  // Caso 3: TODAS as vagas do ponto ocupadas → remaneja uma (a primeira que NÃO seja o carro escolhido)
+  const vagaParaRemanejar = vagasDoPonto[0]; // se compartilhado, escolhe a 1ª (8C)
+  const vpVaga = S[vagaParaRemanejar];
+  const carroAtualVp = { vagaId:vagaParaRemanejar, apt:vpVaga.apt, model:vpVaga.model||'', color:vpVaga.color||'', plate:vpVaga.plate||'', guest:vpVaga.guest||'' };
   showModalAux({
-    titulo: 'Remanejar carro da vaga '+vp,
-    texto: 'A vaga '+vp+' está ocupada pelo Apt '+(carroAtualVp.apt||'?')+(carroAtualVp.model?' · '+carroAtualVp.model:'')+'. Para onde mover esse carro?',
+    titulo: 'Remanejar carro da vaga '+vagaParaRemanejar,
+    texto: 'A vaga '+vagaParaRemanejar+' está ocupada pelo Apt '+(carroAtualVp.apt||'?')+(carroAtualVp.model?' · '+carroAtualVp.model:'')+'. Para onde mover esse carro?',
     botoes:[
       {label:'Cancelar', action:'close'},
       {label:'Escolher vaga no mapa', cls:'primary', action:function(){
@@ -8401,16 +8655,17 @@ window._rcConsumirRemanejamento = function(vagaDestino){
   const b = document.getElementById('rc-remanejar-banner');
   if(b && b.parentNode) b.parentNode.removeChild(b);
   _rcEstado.modoRemanejamento = null;
-  // Agora trazer o carro escolhido para a vp (que ficou livre)
-  const vp = _rcEstado.vagaIdPonto;
+  // v1.9.4.3.3: trazer o carro escolhido para a vaga do ponto que ACABOU de ficar livre
+  // (carroAtualVp.vagaId é a vaga que ficou livre após o remanejamento)
+  const vagaLivreNoPonto = st.carroAtualVp.vagaId;
   const carro = st.carroEscolhido;
   if(carro.fonte === 'outro' || carro.fonte === 'fila'){
-    _rcMoverCarroParaPonto(carro, vp, function(){
+    _rcMoverCarroParaPonto(carro, vagaLivreNoPonto, function(){
       if(carro.fonte === 'fila'){
         const idxF = FILA_RECARGA.findIndex(function(f){ return f && f.apt===carro.apt && f.vagaId===carro.vagaId; });
         if(idxF >= 0) FILA_RECARGA.splice(idxF, 1);
       }
-      const carroNoPonto = { fonte:'vaga', vagaId:vp, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
+      const carroNoPonto = { fonte:'vaga', vagaId:vagaLivreNoPonto, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
       _rcModalTempo(carroNoPonto);
     });
   } else {
@@ -8428,10 +8683,12 @@ function _rcMoverCarroParaPonto(carro, vagaDestino, cb){
 }
 
 // PARTE 4 — Modal de tempo com dois modos (bidirecionais)
+// v1.9.4.3.3: usa a VAGA REAL onde o carro está (carro.vagaId) — não a primeira do ponto.
 function _rcModalTempo(carro){
   if(!_rcEstado) return;
-  const vp = _rcEstado.vagaIdPonto;
+  const vp = carro.vagaId; // vaga real onde a recarga vai iniciar
   _rcEstado.carroNoPonto = carro;
+  _rcEstado.vagaRealRecarga = vp;
   const agora = new Date();
   const hhAgora = String(agora.getHours()).padStart(2,'0')+':'+String(agora.getMinutes()).padStart(2,'0');
   // Defaults: 3 horas → hora final calculada
@@ -8532,7 +8789,8 @@ function _hhmmParaMs(hhmm){
 }
 
 function _rcConfirmacaoFinal(carro, fimMs){
-  const vp = _rcEstado.vagaIdPonto;
+  // v1.9.4.3.3: usar a VAGA REAL onde o carro está (não a primeira do ponto)
+  const vp = carro.vagaId;
   const usuario = _rcEstado.usuario;
   const totalMin = Math.max(0, Math.round((fimMs - Date.now())/60000));
   const {valor} = calcValorRecarga(Date.now(), fimMs);
@@ -8658,56 +8916,165 @@ window._rcAddFilaSelecionar = function(idx){
   if(btn){ btn.disabled = false; btn.style.opacity='1'; }
 };
 
+// v1.9.4.3.3: Configurações de Recarga completas (em Gestão).
+// Pontos (compartilhado/individual) + valor/hora + arredondamento (15/30, cima/baixo) + cortesia + alertas.
 function showRecargaCfg(){
-  showM(`<div class="mt">⚙ Config. Recarga</div>
-    <label class="fl">Valor por hora (R$)</label>
-    <input class="fi" id="rc-cfg-valor" type="number" step="0.5" min="0" value="${RECARGA_CONFIG.valorHora}">
-    <label class="fl">Arredondamento (minutos)</label>
-    <select class="fi" id="rc-cfg-arr">
-      ${[5,10,15,30,60].map(v=>`<option value="${v}" ${RECARGA_CONFIG.arredondamento===v?'selected':''}>${v} min</option>`).join('')}
-    </select>
-    <div class="ag">
-      <button class="bcx" onclick="closeOv()">Cancelar</button>
-      <button class="bsv" id="rc-cfg-ok">Salvar</button>
-    </div>`);
-  setTimeout(()=>{
-    document.getElementById('rc-cfg-ok')?.addEventListener('click',()=>{
-      RECARGA_CONFIG.valorHora=parseFloat(document.getElementById('rc-cfg-valor').value)||10;
-      RECARGA_CONFIG.arredondamento=parseInt(document.getElementById('rc-cfg-arr').value)||15;
-      saveRecargaCfg(); closeOv();
-      showToast('Configuracoes salvas');
+  const pontos = _getConfigPontosAtual();
+  _rcCfgEstado = { pontos: pontos.length ? pontos : [{vagas:['8C','9C'],compartilhado:true},{vagas:['1D'],compartilhado:false}] };
+  _rcCfgRender();
+}
+let _rcCfgEstado = null;
+function _rcCfgRender(){
+  const cfg = RECARGA_CONFIG;
+  const pontos = _rcCfgEstado.pontos;
+  const pontosHtml = pontos.map(function(p, idx){
+    const tipo = p.compartilhado ? 'Compartilhado' : 'Individual';
+    return ''+
+      '<div style="border:1px solid #eee;border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;align-items:center;gap:8px">' +
+        '<div style="flex:1">' +
+          '<div style="font-size:13px;font-weight:700;color:#1A2238">Ponto '+(idx+1)+' — '+tipo+'</div>' +
+          '<div style="font-size:11px;color:#5A6478">Vagas: '+p.vagas.join(' / ')+'</div>' +
+        '</div>' +
+        '<button onclick="_rcCfgEditarPonto('+idx+')" style="background:#fff;border:1px solid #185FA5;color:#185FA5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit">✏️</button>' +
+        '<button onclick="_rcCfgRemoverPonto('+idx+')" style="background:#fff;border:1px solid #A32D2D;color:#A32D2D;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>' +
+      '</div>';
+  }).join('');
+  showM(''+
+    '<div class="mt">⚡ Configurações de Recarga</div>' +
+    '<div class="gestao-menu-sep" style="margin-top:0">Pontos de recarga</div>' +
+    pontosHtml +
+    '<button onclick="_rcCfgAdicionarPonto()" style="width:100%;padding:8px;background:#fff;border:1.5px dashed #185FA5;color:#185FA5;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px">➕ Adicionar ponto</button>' +
+    '<div class="gestao-menu-sep">Cobrança</div>' +
+    '<label class="fl">Valor por hora (R$) <span style="color:#888;font-weight:400;font-size:11px">— 0 = cortesia (gratuito)</span></label>' +
+    '<input class="fi" id="rc-cfg-valor" type="number" step="0.5" min="0" value="'+cfg.valorHora+'">' +
+    '<label class="fl">Arredondamento (minutos)</label>' +
+    '<select class="fi" id="rc-cfg-arr">' +
+      [5,10,15,30,60].map(function(v){ return '<option value="'+v+'" '+(cfg.arredondamento===v?'selected':'')+'>'+v+' min</option>'; }).join('') +
+    '</select>' +
+    '<label class="fl">Direção do arredondamento</label>' +
+    '<select class="fi" id="rc-cfg-dir">' +
+      '<option value="cima" '+(cfg.arredondamento_dir==='cima'?'selected':'')+'>↑ Pra cima (ceil)</option>' +
+      '<option value="baixo" '+(cfg.arredondamento_dir==='baixo'?'selected':'')+'>↓ Pra baixo (floor)</option>' +
+    '</select>' +
+    '<div class="gestao-menu-sep">Alertas</div>' +
+    '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" id="rc-cfg-alertas" '+(cfg.alertas?'checked':'')+' style="width:18px;height:18px"> Alertas quando recarga concluir</label>' +
+    '<div class="ag">' +
+      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
+      '<button class="bsv" id="rc-cfg-ok">Salvar</button>' +
+    '</div>');
+  setTimeout(function(){
+    document.getElementById('rc-cfg-ok')?.addEventListener('click', function(){
+      RECARGA_CONFIG.valorHora       = parseFloat(document.getElementById('rc-cfg-valor').value);
+      if(isNaN(RECARGA_CONFIG.valorHora)) RECARGA_CONFIG.valorHora = 10;
+      RECARGA_CONFIG.arredondamento  = parseInt(document.getElementById('rc-cfg-arr').value) || 15;
+      RECARGA_CONFIG.arredondamento_dir = document.getElementById('rc-cfg-dir').value || 'cima';
+      RECARGA_CONFIG.alertas         = !!document.getElementById('rc-cfg-alertas').checked;
+      saveRecargaCfg();
+      _aplicarConfigPontos(_rcCfgEstado.pontos);
+      saveConfigPontos(_rcCfgEstado.pontos);
+      closeOv();
+      showToast('Configurações salvas');
+      if(typeof applyModulos==='function') applyModulos();
+      if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
     });
   },80);
 }
+window._rcCfgAdicionarPonto = function(){
+  // Modal simples: digitar IDs de vagas (1 ou 2) + compartilhado
+  const mc = document.getElementById('mc');
+  mc.innerHTML = ''+
+    '<div class="mt">➕ Novo ponto de recarga</div>' +
+    '<label class="fl">Vagas (1 = individual; 2 = compartilhado, ex: 8C,9C)</label>' +
+    '<input class="fi" id="rc-cfg-novo-vagas" placeholder="Ex: 8C,9C  ou  1D" autocomplete="off">' +
+    '<label style="display:flex;align-items:center;gap:8px;padding:6px 0 0;font-size:13px"><input type="checkbox" id="rc-cfg-novo-comp" checked style="width:18px;height:18px"> Compartilhado (uma só tomada entre as vagas)</label>' +
+    '<div class="ag" style="margin-top:10px">' +
+      '<button class="bcx" onclick="_rcCfgRender()">Cancelar</button>' +
+      '<button class="bsv" onclick="_rcCfgSalvarNovoPonto()">✓ Adicionar</button>' +
+    '</div>';
+};
+window._rcCfgSalvarNovoPonto = function(){
+  const txt = (document.getElementById('rc-cfg-novo-vagas').value || '').toUpperCase().trim();
+  const comp = !!document.getElementById('rc-cfg-novo-comp').checked;
+  const vagas = txt.split(/[,\s]+/).filter(Boolean);
+  if(vagas.length === 0){ showToast('Informe ao menos uma vaga',2500); return; }
+  if(vagas.length > 2){ showToast('Máximo 2 vagas por ponto',2500); return; }
+  // valida: cada vaga existe em S? (não obrigatório, mas avisa)
+  vagas.forEach(function(v){ if(!S[v]) console.warn('[rc-cfg] vaga não existe em S:', v); });
+  _rcCfgEstado.pontos.push({ vagas, compartilhado: vagas.length === 2 ? comp : false });
+  _rcCfgRender();
+};
+window._rcCfgRemoverPonto = function(idx){
+  if(idx < 0 || idx >= _rcCfgEstado.pontos.length) return;
+  _rcCfgEstado.pontos.splice(idx, 1);
+  _rcCfgRender();
+};
+window._rcCfgEditarPonto = function(idx){
+  const p = _rcCfgEstado.pontos[idx]; if(!p) return;
+  const mc = document.getElementById('mc');
+  mc.innerHTML = ''+
+    '<div class="mt">✏️ Editar ponto '+(idx+1)+'</div>' +
+    '<label class="fl">Vagas (1 = individual; 2 = compartilhado)</label>' +
+    '<input class="fi" id="rc-cfg-novo-vagas" value="'+p.vagas.join(',')+'" autocomplete="off">' +
+    '<label style="display:flex;align-items:center;gap:8px;padding:6px 0 0;font-size:13px"><input type="checkbox" id="rc-cfg-novo-comp" '+(p.compartilhado?'checked':'')+' style="width:18px;height:18px"> Compartilhado (uma só tomada)</label>' +
+    '<div class="ag" style="margin-top:10px">' +
+      '<button class="bcx" onclick="_rcCfgRender()">Cancelar</button>' +
+      '<button class="bsv" onclick="_rcCfgSalvarEditarPonto('+idx+')">✓ Salvar</button>' +
+    '</div>';
+};
+window._rcCfgSalvarEditarPonto = function(idx){
+  const txt = (document.getElementById('rc-cfg-novo-vagas').value || '').toUpperCase().trim();
+  const comp = !!document.getElementById('rc-cfg-novo-comp').checked;
+  const vagas = txt.split(/[,\s]+/).filter(Boolean);
+  if(vagas.length === 0 || vagas.length > 2){ showToast('Informe 1 ou 2 vagas',2500); return; }
+  _rcCfgEstado.pontos[idx] = { vagas, compartilhado: vagas.length === 2 ? comp : false };
+  _rcCfgRender();
+};
+// saveRecargaCfg já definida em 4513
 
 function fmtNomeData(ts){
   const d=new Date(ts);
   return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getFullYear()).slice(-2);
 }
 
+// v1.9.4.3.3: PDF de recarga com duração em horas (via _fmtDurRecarga), operador e modo de encerramento.
 function buildRecargaDoc(entradas){
   if(!window.jspdf) return null;
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
-  const total=entradas.reduce((s,e)=>s+e.valor,0);
+  const total=entradas.reduce((s,e)=>s+(e.valor||0),0);
   const apt=entradas[0]?.apt||''; const hosp=entradas[0]?.hospedagem||'';
-  let y=_pdfHeader(doc,'Registro de Recarga',(hosp?hosp+' · ':' ')+'Apt. '+apt);
+  const cortesia = entradas.every(function(e){ return (e.valor||0) === 0; });
+  let y=_pdfHeader(doc,'Registro de Recarga',(hosp?hosp+' · ':' ')+'Apt. '+apt+(cortesia?' · Cortesia':''));
   doc.autoTable({
     startY:y+2,
-    head:[['Vaga','Inicio','Fim','Duracao','Valor']],
-    body:entradas.map(e=>[e.vagaId,fmtDt(e.inicio_ts),fmtDt(e.fim_ts),e.mins+'min','R$ '+e.valor.toFixed(2).replace('.',',')]),
+    head:[['Vaga','Inicio','Fim','Duracao','Operador','Valor']],
+    body:entradas.map(function(e){
+      return [
+        e.vagaId,
+        fmtDt(e.inicio_ts),
+        fmtDt(e.fim_ts),
+        _fmtDurRecarga(e.mins||0),
+        e.usuario||'—',
+        cortesia ? 'Cortesia' : 'R$ '+(e.valor||0).toFixed(2).replace('.',',')
+      ];
+    }),
     theme:'striped',
     headStyles:{fillColor:[24,95,165],textColor:255,fontSize:9},
-    styles:{fontSize:9,cellPadding:3},
-    columnStyles:{0:{cellWidth:20},1:{cellWidth:45},2:{cellWidth:45},3:{cellWidth:25},4:{cellWidth:35}},
+    styles:{fontSize:9,cellPadding:2.5},
+    columnStyles:{0:{cellWidth:16},1:{cellWidth:38},2:{cellWidth:38},3:{cellWidth:25},4:{cellWidth:43},5:{cellWidth:30}},
     margin:{left:10,right:10}
   });
   const finalY=doc.lastAutoTable.finalY+8;
-  doc.setFillColor(238,249,242); doc.rect(10,finalY-2,190,12,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(15,110,86);
-  doc.text('Total: R$ '+total.toFixed(2).replace('.',','),105,finalY+6,{align:'center'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(133,79,11);
-  doc.text('Informar ao recepcionista: lancar R$ '+total.toFixed(2).replace('.',',')+' no Apt. '+apt+' referente a recarga de veiculo.',105,finalY+12,{align:'center'});
+  const corFundo = cortesia ? [238,246,255] : [238,249,242];
+  const corTxt   = cortesia ? [24,95,165]   : [15,110,86];
+  doc.setFillColor.apply(doc, corFundo); doc.rect(10,finalY-2,190,12,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor.apply(doc, corTxt);
+  const totalTxt = cortesia ? 'Total: Cortesia (R$ 0,00)' : 'Total: R$ '+total.toFixed(2).replace('.',',');
+  doc.text(totalTxt,105,finalY+6,{align:'center'});
+  if(!cortesia){
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(133,79,11);
+    doc.text('Informar ao recepcionista: lancar R$ '+total.toFixed(2).replace('.',',')+' no Apt. '+apt+' referente a recarga de veiculo.',105,finalY+12,{align:'center'});
+  }
   doc.setTextColor(0,0,0);
   _pdfFooter(doc);
   return doc;
@@ -8802,6 +9169,7 @@ function showConfiguracoesSistema(){
       </div>
       ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
     </div>
+    <div class="gestao-menu-item" onclick="closeOv();showRecargaCfg()" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>
     <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
     <div class="gestao-menu-sep" style="margin-top:14px">Aparência</div>
     <div class="gestao-menu-item" onclick="closeOv();showTema()">🎨 <span>Cor do tema</span></div>
