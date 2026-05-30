@@ -474,15 +474,19 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 /* Pulse animation vaga recém designada */
 @keyframes pulse-vaga{0%,100%{box-shadow:inset 0 0 0 0 rgba(15,110,86,0)}40%{box-shadow:inset 0 0 0 4px rgba(15,110,86,.55)}}
 td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
-/* === Recarga visual no mapa (v1.9.4.3.1) === */
+/* === Recarga visual no mapa (v1.9.4.3.1 / refinado v1.9.4.3.2) === */
+/* Wrapper âncora: ocupa todo o td (inset:0) e posiciona o ícone no canto superior direito
+   sem transbordar para fora da célula. Em celular/tablet os ícones reduzem proporcionalmente. */
+.rc-icon-wrap{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-end;padding:2px;pointer-events:none;z-index:6}
+.rc-icon-wrap > *{pointer-events:auto}
 /* Raio amarelo (ponto livre) — botão */
-.vaga-raio{position:absolute;top:-6px;right:-6px;width:24px;height:24px;background:#fff;border:2px solid #E6B635;border-radius:50%;box-shadow:0 2px 6px rgba(230,138,46,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:6;pointer-events:auto;font-size:13px;line-height:1;color:#E6B635}
+.vaga-raio{position:relative;width:22px;height:22px;background:#fff;border:2px solid #E6B635;border-radius:50%;box-shadow:0 2px 6px rgba(230,138,46,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:#E6B635;flex-shrink:0}
 .vaga-raio::before{content:'⚡'}
 /* Raio cinza (ponto compartilhado em uso pelo par) */
 .vaga-raio.indisponivel{border-color:#C2C8D2;box-shadow:none;color:#9098A6;background:#F4F5F7;opacity:.7}
 /* Bateria na vaga */
-.vaga-bateria{position:absolute;top:-8px;right:-8px;width:34px;height:16px;border:2px solid #2A3445;border-radius:3px;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.15);cursor:pointer;z-index:6;pointer-events:auto}
-.vaga-bateria::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:3px;height:7px;background:#2A3445;border-radius:0 2px 2px 0}
+.vaga-bateria{position:relative;width:30px;height:14px;border:2px solid #2A3445;border-radius:3px;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.15);cursor:pointer;flex-shrink:0}
+.vaga-bateria::after{content:'';position:absolute;right:-3px;top:50%;transform:translateY(-50%);width:2.5px;height:6px;background:#2A3445;border-radius:0 2px 2px 0}
 .vaga-bateria-nivel{position:absolute;left:1px;top:1px;bottom:1px;background:#2BB673;border-radius:1px;width:8%}
 .vaga-bateria.carregando .vaga-bateria-nivel{animation:encher-vaga 2.4s linear infinite}
 @keyframes encher-vaga{
@@ -490,7 +494,97 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
   91%{width:calc(100% - 2px);opacity:0} 92%{width:0%;opacity:0} 93%{width:0%;opacity:1} 100%{width:8%;opacity:1}
 }
 .vaga-bateria.cheia .vaga-bateria-nivel{width:calc(100% - 2px);background:#1F9A5F;animation:none}
-.vaga-bateria-check{position:absolute;bottom:-7px;right:-7px;width:13px;height:13px;background:#1F9A5F;color:#fff;border-radius:50%;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;line-height:1}
+.vaga-bateria-check{position:absolute;bottom:-5px;right:-5px;width:11px;height:11px;background:#1F9A5F;color:#fff;border-radius:50%;font-size:7px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;line-height:1}
+/* Responsivo — tablets ganham ícones um pouco maiores */
+@media (min-width: 768px){
+  .vaga-raio{width:26px;height:26px;font-size:14px}
+  .vaga-bateria{width:36px;height:16px}
+  .vaga-bateria::after{width:3px;height:7px;right:-4px}
+  .vaga-bateria-check{width:13px;height:13px;font-size:8px;bottom:-6px;right:-6px}
+}
+/* Telas muito estreitas (celulares ~360px) — reduz um toque mais */
+@media (max-width: 380px){
+  .vaga-raio{width:20px;height:20px;font-size:11px}
+  .vaga-bateria{width:26px;height:12px}
+  .vaga-bateria::after{height:5px;width:2px}
+}
+
+/* === Painel Recarga redesenhado (v1.9.4.3.2) — prefixo rcp- === */
+.rcp-header{background:linear-gradient(135deg,#1A6FB8 0%,#0C447C 100%);color:#fff;padding:14px 14px 18px;border-radius:10px;margin-bottom:12px;position:relative;overflow:hidden}
+.rcp-titulo{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.rcp-titulo-icon{color:#2BB673;font-size:19px}
+.rcp-sub{font-size:12px;opacity:.9}
+.rcp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+@media (max-width:480px){.rcp-grid{grid-template-columns:1fr}}
+.rcp-card{background:#fff;border-radius:12px;padding:13px;box-shadow:0 1px 3px rgba(15,30,60,.06),0 1px 2px rgba(15,30,60,.04);border:1.5px solid #E1E5EB;position:relative;overflow:hidden}
+.rcp-card.ativo{border-color:#2BB673;background:linear-gradient(180deg,#fff 0%,#F2FBF6 100%)}
+.rcp-card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.rcp-label{font-size:10px;font-weight:700;color:#8892A6;text-transform:uppercase;letter-spacing:.5px}
+.rcp-vagas{font-size:17px;font-weight:800;color:#1A2238;margin-top:2px}
+.rcp-status{font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px}
+.rcp-status.livre{background:#ECF1F7;color:#5A6478}
+.rcp-status.ativo{background:#2BB673;color:#fff}
+.rcp-bateria-big{width:54px;height:24px;border:2.5px solid #2A3445;border-radius:4px;position:relative;margin:6px 0 10px}
+.rcp-bateria-big::after{content:'';position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:4px;height:11px;background:#2A3445;border-radius:0 2px 2px 0}
+.rcp-bateria-big-nivel{position:absolute;left:2px;top:2px;bottom:2px;background:#2BB673;border-radius:2px;width:8%}
+.rcp-bateria-big.carregando .rcp-bateria-big-nivel{animation:encher-vaga 2.4s linear infinite}
+.rcp-raio-big{width:30px;height:30px;border-radius:50%;background:#fff;border:2.5px solid #E6B635;box-shadow:0 2px 6px rgba(230,138,46,.25);display:flex;align-items:center;justify-content:center;font-size:15px;margin:6px 0 10px}
+.rcp-info{font-size:11px;color:#5A6478;line-height:1.5}
+.rcp-info-row{display:flex;justify-content:space-between;margin-bottom:2px}
+.rcp-info-row strong{color:#1A2238;font-weight:700}
+.rcp-info-row.destaque{margin-top:6px;padding-top:6px;border-top:1px dashed #E1E5EB}
+.rcp-info-row.destaque strong.restante{color:#1F9A5F;font-weight:800}
+.rcp-btn{margin-top:10px;width:100%;padding:9px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;font-family:inherit}
+.rcp-btn.iniciar{background:#2BB673;color:#fff}
+.rcp-btn.ver{background:#fff;color:#185FA5;border:1.5px solid #185FA5}
+.rcp-secao{padding:0 0 6px}
+.rcp-secao-titulo{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px}
+.rcp-secao-text{font-size:12px;font-weight:700;color:#5A6478;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+.rcp-badge{background:#185FA5;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px}
+.rcp-badge.fila{background:#E68A2E}
+.rcp-ativa{background:#fff;border-radius:10px;padding:11px 13px;box-shadow:0 1px 3px rgba(15,30,60,.06);border-left:4px solid #2BB673;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:8px}
+.rcp-ativa-titulo{font-size:13px;font-weight:700;color:#1A2238;display:flex;align-items:center;gap:6px}
+.rcp-ativa-tag{background:#185FA5;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px}
+.rcp-ativa-det{font-size:11px;color:#5A6478;line-height:1.4;margin-top:2px}
+.rcp-progresso{margin-top:6px;height:5px;background:#ECF1F7;border-radius:3px;overflow:hidden}
+.rcp-progresso-barra{height:100%;background:linear-gradient(90deg,#2BB673,#1F9A5F);border-radius:3px;transition:width .4s}
+.rcp-tempo{text-align:center;min-width:74px}
+.rcp-tempo-num{font-size:16px;font-weight:800;color:#1F9A5F;font-variant-numeric:tabular-nums}
+.rcp-tempo-label{font-size:9px;color:#8892A6;text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+.rcp-banner-fila{background:#FFF7EC;border:1px solid #FFE0B3;padding:9px 12px;border-radius:10px;font-size:12px;color:#8A5A1A;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.rcp-fila{background:#fff;border-radius:10px;padding:11px 13px;box-shadow:0 1px 3px rgba(15,30,60,.06);border-left:4px solid #E68A2E;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-bottom:6px}
+.rcp-fila-pos{width:26px;height:26px;background:#E68A2E;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0}
+.rcp-fila-titulo{font-size:13px;font-weight:700;color:#1A2238}
+.rcp-fila-sub{font-size:11px;color:#5A6478;margin-top:2px}
+.rcp-fila-x{width:30px;height:30px;border-radius:8px;border:1.5px solid #E1E5EB;background:#fff;cursor:pointer;color:#A32D2D;font-size:14px;font-weight:700;font-family:inherit}
+.rcp-btn-add-fila{width:100%;margin-top:6px;padding:10px;background:#fff;border:1.5px dashed #E68A2E;color:#E68A2E;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px}
+.rcp-hist{background:#fff;border-radius:8px;padding:9px 12px;box-shadow:0 1px 3px rgba(15,30,60,.06);display:flex;justify-content:space-between;align-items:center;border-left:3px solid #1F9A5F;margin-bottom:5px}
+.rcp-hist-titulo{font-size:12px;font-weight:700;color:#1A2238}
+.rcp-hist-sub{font-size:10px;color:#8892A6;margin-top:1px}
+.rcp-hist-valor{font-size:13px;font-weight:800;color:#1F9A5F;font-variant-numeric:tabular-nums}
+/* Modal Recarga (iniciar/fila) */
+.rcp-modal-toggle{display:flex;background:#F4F6F9;border-radius:8px;padding:4px;margin-bottom:8px}
+.rcp-modal-toggle-item{flex:1;padding:8px;text-align:center;font-size:12px;font-weight:700;color:#5A6478;border-radius:6px;cursor:pointer;user-select:none}
+.rcp-modal-toggle-item.ativo{background:#185FA5;color:#fff}
+.rcp-modal-valor-info{background:#F2FBF6;border:1px solid #C7EBD9;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:12px}
+.rcp-modal-valor-info-label{color:#1F9A5F;font-weight:600}
+.rcp-modal-valor-info-valor{font-size:15px;font-weight:800;color:#1F9A5F}
+.rcp-carro-opcao{padding:11px 12px;border:1.5px solid #E1E5EB;border-radius:10px;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#fff}
+.rcp-carro-opcao.selecionado{border-color:#E68A2E;background:#FFF7EC}
+.rcp-carro-opcao.destacado{border-color:#185FA5;background:#EEF6FF}
+.rcp-carro-info{font-size:13px;font-weight:700;color:#1A2238}
+.rcp-carro-vaga{font-size:11px;color:#5A6478;margin-top:2px}
+.rcp-carro-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 6px;border-radius:3px;margin-top:3px;display:inline-block}
+.rcp-carro-tag.vaga{background:#EEF6FF;color:#185FA5}
+.rcp-carro-tag.fila{background:#FFF7EC;color:#E68A2E}
+.rcp-carro-tag.outro{background:#F4F6F9;color:#5A6478}
+.rcp-carro-check{width:20px;height:20px;border:2px solid #E1E5EB;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;flex-shrink:0}
+.rcp-carro-opcao.selecionado .rcp-carro-check{background:#E68A2E;border-color:#E68A2E}
+.rcp-busca-wrap{position:relative;display:flex;align-items:center;margin-bottom:8px}
+.rcp-busca-ico{position:absolute;left:11px;font-size:13px;color:#8892A6;pointer-events:none}
+.rcp-busca-input{width:100%;padding:9px 30px 9px 32px;border:1.5px solid #E1E5EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
+.rcp-busca-input:focus{outline:none;border-color:#185FA5}
+.rcp-lista-vazia{text-align:center;padding:22px 12px;color:#8892A6;font-size:12px}
 /* Badge anexos */
 .attach-badge{background:#185FA5;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;margin-left:2px;line-height:1.4;vertical-align:middle}
 /* STEP5 sucesso */
@@ -630,7 +724,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.3.1 -->
+<!-- GarageSpot v1.9.4.3.2 -->
 <body>
 <div class="page">
 
@@ -1166,8 +1260,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.3.1: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.3.1';
+// v1.9.4.3.2: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.3.2';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-05-29';
 
@@ -1532,16 +1626,32 @@ function positionPilares(){
   });
 }
 
+// v1.9.4.3.2: barra "A passeio" agora só aparece no Mapa, e o chevron controla SÓ ela.
+// A barra de abas (#navbar) fica SEMPRE visível.
 function togglePanel(){
   const body=document.getElementById('panel-body');
-  const navbar=document.getElementById('navbar');
   const btn=document.getElementById('pt-arrow');
   const willClose=body.classList.contains('open');
   body.classList.toggle('open',!willClose);
   body.classList.toggle('closed',willClose);
-  if(navbar) navbar.style.display=willClose?'none':'';
-  btn.textContent=willClose?'▴':'▾';
+  if(btn) btn.textContent=willClose?'▴':'▾';
   requestAnimationFrame(positionPilares);
+}
+// v1.9.4.3.2: chama ao trocar de aba — mostra a barra "A passeio" só no Mapa.
+function _atualizarBarraPasseio(v){
+  const body=document.getElementById('panel-body');
+  const ptArrow=document.getElementById('pt-arrow');
+  if(!body) return;
+  if(v==='mapa'){
+    body.style.display='';
+    if(ptArrow) ptArrow.style.display='';
+    // respeita o estado do toggle (open/closed) — não força aberta
+    const btnTxt = body.classList.contains('open') ? '▾' : '▴';
+    if(ptArrow) ptArrow.textContent = btnTxt;
+  } else {
+    body.style.display='none';
+    if(ptArrow) ptArrow.style.display='none';
+  }
 }
 
 function upd(){
@@ -1999,6 +2109,8 @@ function clkV(id){
   if(dragState) return;
   // Bug T v1.9.4.3.1: ignora se for clique fantasma logo após fechar o NCI
   if(_nciFechandoGuard){ console.log('[BUG T] clkV bloqueado pelo escudo'); return; }
+  // v1.9.4.3.2: se estamos em modo "escolher destino do remanejamento de recarga", consome o toque
+  if(typeof _rcConsumirRemanejamento === 'function' && _rcConsumirRemanejamento(id)) return;
   cur=id;
   // Bug T v1.9.4.1.8: se MODO_DESIGNACAO foi perdido (crash JS, garbage collection do
   // webview Android, etc.) mas o banner ainda está visível, RESTAURAR do sessionStorage.
@@ -3446,6 +3558,8 @@ function navTo(v){
   if(v==='painel') renderPainelDia();
   if(v==='recarga') renderTelaRecarga();
   if(v==='mapa') setTimeout(positionPilares,100);
+  // v1.9.4.3.2: barra "A passeio" só no Mapa (independente do toggle)
+  if(typeof _atualizarBarraPasseio==='function') _atualizarBarraPasseio(v);
   // v1.9.4.1: banner de designação só aparece no mapa
   if(typeof _atualizarBannerDesignacao==='function') _atualizarBannerDesignacao();
   fecharBusca();
@@ -7648,31 +7762,41 @@ function getRecargaState(vagaId){
   return 'disponivel';
 }
 
-// v1.9.4.3.1: ícone-botão. Em qualquer estado, o onclick navega para a aba Recarga
-// (NÃO chama showRecargaModal/Detalhe/Finalizar/Fila — o fluxo de iniciar/finalizar
-// recarga é responsabilidade do .2/.3). stopPropagation evita disparar clkV/showOcc.
-// OBS: estado "horario-bateu" mantém bateria ANIMADA (não "cheia ✓") porque o protótipo
-// aprovado define que bateria cheia ✓ entra junto com a finalização no .3.
+// v1.9.4.3.1+v1.9.4.3.2: ícone-botão.
+// - Ponto LIVRE (raio amarelo): toque abre o fluxo de iniciar recarga PARA AQUELE PONTO.
+// - Ponto indisponível (raio cinza): toque navega para a aba Recarga (não inicia).
+// - Carregando/horário-batido/confirmada (bateria animada): toque navega para a aba Recarga.
+// stopPropagation evita disparar clkV/showOcc.
+// OBS: estado "horario-bateu" mantém bateria ANIMADA (não "cheia ✓") — protótipo define
+// que bateria cheia ✓ entra junto com a finalização no .3.
 function getRecargaIcon(vagaId){
   if(!MODULOS.recarga) return '';
   const st = getRecargaState(vagaId);
-  const click = "event.stopPropagation();event.preventDefault();(typeof navTo==='function')&&navTo('recarga');";
-  // Raio amarelo (botão) — ponto LIVRE (com ou sem carro na vaga, sem recarga ativa)
+  const clickNav = "event.stopPropagation();event.preventDefault();(typeof navTo==='function')&&navTo('recarga');";
+  const clickIniciar = "event.stopPropagation();event.preventDefault();_iniciarRecargaPonto('"+vagaId+"');";
+  // Raio amarelo (botão) — ponto LIVRE → abre fluxo de iniciar
   if(st === 'sem-carro' || st === 'disponivel'){
-    return '<span class="vaga-raio" role="button" tabindex="0" onclick="'+click+'" title="Recarga disponível"></span>';
+    return '<span class="vaga-raio" role="button" tabindex="0" onclick="'+clickIniciar+'" title="Iniciar recarga"></span>';
   }
   // Raio cinza (botão) — par compartilhado em uso pela outra vaga
   if(st === 'ponto-ocupado'){
     const par = VAGAS_RECARGA[vagaId] && VAGAS_RECARGA[vagaId].par;
-    return '<span class="vaga-raio indisponivel" role="button" tabindex="0" onclick="'+click+'" title="Ponto compartilhado com '+(par||'par')+' em uso"></span>';
+    return '<span class="vaga-raio indisponivel" role="button" tabindex="0" onclick="'+clickNav+'" title="Ponto compartilhado com '+(par||'par')+' em uso"></span>';
   }
-  // Bateria animada — recarga em andamento (carregando, horário batido ou confirmada nesta v1.9.4.3.1)
-  // "horario-bateu" mantido como animada — bateria cheia ✓ entra no .3 (finalização).
+  // Bateria animada — recarga em andamento
   if(st === 'carregando' || st === 'horario-bateu' || st === 'confirmada'){
-    return '<span class="vaga-bateria carregando" role="button" tabindex="0" onclick="'+click+'" title="Recarga em andamento"><span class="vaga-bateria-nivel"></span></span>';
+    return '<span class="vaga-bateria carregando" role="button" tabindex="0" onclick="'+clickNav+'" title="Recarga em andamento"><span class="vaga-bateria-nivel"></span></span>';
   }
   // Fallback: raio amarelo (livre)
-  return '<span class="vaga-raio" role="button" tabindex="0" onclick="'+click+'" title="Recarga"></span>';
+  return '<span class="vaga-raio" role="button" tabindex="0" onclick="'+clickIniciar+'" title="Recarga"></span>';
+}
+
+// v1.9.4.3.2: helper de formatação. ≥60min em horas ("3h 51min", "24h"); <60min em minutos.
+function _fmtDurRecarga(min){
+  min = Math.max(0, Math.round(Number(min) || 0));
+  if(min < 60) return min + 'min';
+  const h = Math.floor(min / 60), m = min % 60;
+  return m === 0 ? (h + 'h') : (h + 'h ' + m + 'min');
 }
 
 function calcValorRecarga(inicio_ts, fim_ts){
@@ -7740,7 +7864,7 @@ function showRecargaModal(vagaId){
       if(fim2<=Date.now()) fim2+=86400000;
       const {mins,horas,valor}=calcValorRecarga(Date.now(),fim2);
       const el=document.getElementById('rc-est');
-      if(el) el.textContent=`${mins}min de recarga → R$ ${valor.toFixed(2).replace('.',',')} (R$ ${RECARGA_CONFIG.valorHora}/h, arred. ${RECARGA_CONFIG.arredondamento}min)`;
+      if(el) el.textContent=`${_fmtDurRecarga(mins)} de recarga → R$ ${valor.toFixed(2).replace('.',',')} (R$ ${RECARGA_CONFIG.valorHora}/h, arred. ${RECARGA_CONFIG.arredondamento}min)`;
     }
     setTimeout(()=>{
       document.getElementById('rc-fim')?.addEventListener('change',atualizarEst);
@@ -7765,7 +7889,7 @@ function showRecargaDetalhe(vagaId){
     <div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:8px;padding:9px;font-size:12px;margin-bottom:8px">
       <div>Inicio: <strong>${fmtDt(r.inicio_ts)}</strong></div>
       <div>Termino previsto: <strong>${fmtDt(r.fim_ts)}</strong></div>
-      ${st==='carregando'?'<div>Restam: <strong>'+rem+'min</strong></div>':''}
+      ${st==='carregando'?'<div>Restam: <strong>'+_fmtDurRecarga(rem)+'</strong></div>':''}
       <div>Valor estimado: <strong>R$ ${valor.toFixed(2).replace('.',',')}</strong> (${horas.toFixed(1)}h)</div>
       ${r.usuario?'<div style="color:#888;font-size:10px">'+r.usuario+'</div>':''}
     </div>
@@ -7790,9 +7914,9 @@ function showRecargaFinalizar(vagaId){
         <div style="font-size:13px;font-weight:700;color:#0F6E56;margin-bottom:6px">Resumo de cobranca</div>
         <div style="font-size:12px">Apt. ${r.apt}${r.hospedagem?' · '+r.hospedagem:''}</div>
         <div style="font-size:12px">Inicio: ${fmtDt(r.inicio_ts)} · Fim: ${fmtDt(fimReal)}</div>
-        <div style="font-size:14px;font-weight:700;margin-top:6px">Total: R$ ${valor.toFixed(2).replace('.',',')} (${mins}min)</div>
+        <div style="font-size:14px;font-weight:700;margin-top:6px">Total: R$ ${valor.toFixed(2).replace('.',',')} (${_fmtDurRecarga(mins)})</div>
         <div style="background:#FFF8E6;border-radius:5px;padding:6px 8px;margin-top:6px;font-size:11px;color:#854F0B">
-          Informar ao recepcionista: lancar R$ ${valor.toFixed(2).replace('.',',')} no Apt. ${r.apt} referente a ${mins}min de recarga
+          Informar ao recepcionista: lancar R$ ${valor.toFixed(2).replace('.',',')} no Apt. ${r.apt} referente a ${_fmtDurRecarga(mins)} de recarga
         </div>
       </div>
       <div class="ag">
@@ -7823,13 +7947,28 @@ function showRecargaFinalizar(vagaId){
 }
 
 function _verificarFilaRecarga(vagaId){
-  const par=VAGAS_RECARGA[vagaId]?.par;
-  const pontosLiberados=[vagaId];
-  if(par) pontosLiberados.push(par);
-  const proximo=FILA_RECARGA.find(f=>pontosLiberados.includes(f.vagaId)||pontosLiberados.includes(VAGAS_RECARGA[f.vagaId]?.par));
-  if(proximo){
-    showToast('Proximo da fila: Apt. '+proximo.apt+' (Vaga '+proximo.vagaId+')',6000);
+  // v1.9.4.3.2: ao vagar um ponto, se houver fila, OFERECE designar o próximo (modal).
+  if(!FILA_RECARGA || FILA_RECARGA.length === 0) return;
+  const proximo = FILA_RECARGA[0];
+  if(!proximo) return;
+  const veic = [proximo.model, proximo.color].filter(Boolean).join(' ');
+  if(typeof showModalAux !== 'function'){
+    showToast('Próximo da fila: Apt '+proximo.apt+' — vá até o painel Recarga',5000);
+    return;
   }
+  setTimeout(function(){
+    showModalAux({
+      titulo: 'Designar o próximo da fila?',
+      texto: 'O ponto da vaga '+vagaId+' está livre. Próximo na fila: Apt '+proximo.apt+(veic?' · '+veic:'')+'.',
+      botoes:[
+        {label:'Agora não', action:'close'},
+        {label:'Designar', cls:'primary', action:function(){
+          if(typeof navTo==='function') navTo('recarga');
+          setTimeout(function(){ _iniciarRecargaPonto(vagaId); }, 200);
+        }}
+      ]
+    });
+  }, 500);
 }
 
 function showRecargaFila(vagaId){
@@ -7856,62 +7995,668 @@ function showRecargaFila(vagaId){
   },80);
 }
 
+// v1.9.4.3.2: Painel Recarga redesenhado conforme protótipo.
+// Header dinâmico + cards de ponto (livre/em uso) + recargas ativas (com barra de progresso)
+// + fila (banner + lista + add) + histórico recente. SEM botão "Configurações de Recarga"
+// (configuração ficará em Gestão no .3). Tempo em horas via _fmtDurRecarga.
 function renderTelaRecarga(){
   const rw=document.getElementById('recarga-wrap'); if(!rw) return;
   const agora=Date.now();
-  const ativas=Object.entries(RECARGAS).filter(([v,r])=>r.ativo);
-  const hist=HISTORICO_RECARGAS.slice(-20).reverse();
+  const ativas=Object.entries(RECARGAS).filter(function(e){ return e[1] && e[1].ativo; });
+  const filaCount=FILA_RECARGA.length;
 
-  const ativasHtml=ativas.length===0?'<div style="color:#bbb;font-size:12px">Nenhuma recarga ativa</div>':
-    ativas.map(([vagaId,r])=>{
-      const st=getRecargaState(vagaId);
+  // Cards de ponto: para cada PONTO_RECARGA, descobrir a vaga ativa (se houver) ou
+  // mostrar livre listando todas as vagas do ponto ("8C / 9C", "1D")
+  function _renderPontoCard(ponto, idxPonto){
+    const vagaAtiva = ponto.vagas.find(function(v){ return RECARGAS[v] && RECARGAS[v].ativo; });
+    const rotuloPonto = 'Ponto '+(idxPonto+1)+' · '+(ponto.compartilhado?'compartilhado '+ponto.vagas.join('/'):'individual');
+    if(vagaAtiva){
+      const r=RECARGAS[vagaAtiva];
+      const stV=getRecargaState(vagaAtiva);
       const rem=Math.max(0,Math.ceil((r.fim_ts-agora)/60000));
-      const {valor}=calcValorRecarga(r.inicio_ts,r.fim_ts);
-      return `<div style="border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer" onclick="${st==='horario-bateu'?'showRecargaFinalizar':'showRecargaDetalhe'}('${vagaId}')">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="font-weight:700">⚡ Vaga ${vagaId} · Apt. ${r.apt}</div>
-          <span style="background:${st==='horario-bateu'?'#EEF9F2':'#FFF8E6'};color:${st==='horario-bateu'?'#0F6E56':'#854F0B'};font-size:10px;border-radius:4px;padding:2px 7px;font-weight:700">
-            ${st==='horario-bateu'?'CONCLUIDA':'⏳ '+rem+'min'}
-          </span>
-        </div>
-        <div style="font-size:11px;color:#888;margin-top:2px">${fmtDt(r.inicio_ts)} → ${fmtDt(r.fim_ts)} · R$ ${valor.toFixed(2).replace('.',',')}</div>
-      </div>`;
-    }).join('');
+      const carro = (S[vagaAtiva] && S[vagaAtiva].apt ? 'Apt '+S[vagaAtiva].apt : 'Apt '+r.apt) +
+                    ((S[vagaAtiva]&&(S[vagaAtiva].model||S[vagaAtiva].color)) ? ' · '+(S[vagaAtiva].model||'')+(S[vagaAtiva].color?' '+S[vagaAtiva].color:'') : '');
+      return ''+
+        '<div class="rcp-card ativo">' +
+          '<div class="rcp-card-hdr">' +
+            '<div>' +
+              '<div class="rcp-label">'+_vtEsc(rotuloPonto)+'</div>' +
+              '<div class="rcp-vagas">'+vagaAtiva+'</div>' +
+            '</div>' +
+            '<span class="rcp-status ativo">⚡ Ativo</span>' +
+          '</div>' +
+          '<div class="rcp-bateria-big carregando"><div class="rcp-bateria-big-nivel"></div></div>' +
+          '<div class="rcp-info">' +
+            '<div class="rcp-info-row"><span>Carro</span><strong>'+_vtEsc(carro)+'</strong></div>' +
+            '<div class="rcp-info-row"><span>Início</span><strong>'+_fmtHM(r.inicio_ts)+'</strong></div>' +
+            '<div class="rcp-info-row"><span>Término previsto</span><strong>'+_fmtHM(r.fim_ts)+'</strong></div>' +
+            '<div class="rcp-info-row destaque"><span>Restante</span><strong class="restante">'+_fmtDurRecarga(rem)+'</strong></div>' +
+          '</div>' +
+          '<button class="rcp-btn ver" onclick="showRecargaDetalhe(\''+vagaAtiva+'\')">Ver detalhes</button>' +
+        '</div>';
+    }
+    // Ponto LIVRE — mostra "8C / 9C" ou "1D" e raio amarelo
+    const rotuloVagas = ponto.vagas.join(' / ');
+    const dicaToque = ponto.compartilhado
+      ? 'Toque o raio em qualquer vaga do ponto, no mapa, para iniciar.'
+      : 'Toque o raio na vaga '+ponto.vagas[0]+', no mapa, para iniciar.';
+    return ''+
+      '<div class="rcp-card">' +
+        '<div class="rcp-card-hdr">' +
+          '<div>' +
+            '<div class="rcp-label">'+_vtEsc(rotuloPonto)+'</div>' +
+            '<div class="rcp-vagas">'+_vtEsc(rotuloVagas)+'</div>' +
+          '</div>' +
+          '<span class="rcp-status livre">Livre</span>' +
+        '</div>' +
+        '<div class="rcp-raio-big">⚡</div>' +
+        '<div class="rcp-info">' +
+          '<div class="rcp-info-row"><span>Status</span><strong>Disponível</strong></div>' +
+          '<div class="rcp-info-row" style="color:#8892A6">'+_vtEsc(dicaToque)+'</div>' +
+        '</div>' +
+        '<button class="rcp-btn iniciar" onclick="_iniciarRecargaPonto(\''+ponto.vagas[0]+'\')">⚡ Iniciar recarga</button>' +
+      '</div>';
+  }
 
-  const filaHtml=FILA_RECARGA.length===0?'':
-    `<div style="margin-top:12px"><div style="font-weight:700;font-size:12px;color:#185FA5;margin-bottom:6px">Fila de espera (${FILA_RECARGA.length})</div>`+
-    FILA_RECARGA.map((f,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f0efea;font-size:12px">
-      <span style="color:#888">${i+1}.</span>
-      <div style="flex:1">Apt. ${f.apt} · Vaga ${f.vagaId}${f.hospedagem?' · '+f.hospedagem:''}</div>
-      <button onclick="FILA_RECARGA.splice(${i},1);renderTelaRecarga()" style="background:none;border:none;color:#A32D2D;font-size:13px;cursor:pointer">✕</button>
-    </div>`).join('')+'</div>';
+  // Recargas ativas (lista)
+  function _renderAtiva([vagaId,r]){
+    const dur = Math.max(1, Math.round((r.fim_ts - r.inicio_ts) / 60000));
+    const decorrido = Math.max(0, Math.min(dur, Math.round((agora - r.inicio_ts) / 60000)));
+    const pct = Math.max(0, Math.min(100, (decorrido / dur) * 100));
+    const rem = Math.max(0, dur - decorrido);
+    const carro = 'Apt '+r.apt + (S[vagaId]&&(S[vagaId].model||S[vagaId].color) ? ' · '+(S[vagaId].model||'')+(S[vagaId].color?' '+S[vagaId].color:'') : '');
+    return ''+
+      '<div class="rcp-ativa">' +
+        '<div>' +
+          '<div class="rcp-ativa-titulo"><span class="rcp-ativa-tag">'+vagaId+'</span>'+_vtEsc(carro)+'</div>' +
+          '<div class="rcp-ativa-det">Início '+_fmtHM(r.inicio_ts)+' · término previsto '+_fmtHM(r.fim_ts)+(r.usuario?' · '+_vtEsc(r.usuario):'')+'</div>' +
+          '<div class="rcp-progresso"><div class="rcp-progresso-barra" style="width:'+pct.toFixed(1)+'%"></div></div>' +
+        '</div>' +
+        '<div class="rcp-tempo">' +
+          '<div class="rcp-tempo-num">'+_fmtDurRecarga(rem)+'</div>' +
+          '<div class="rcp-tempo-label">restantes</div>' +
+          '<button onclick="showRecargaFinalizar(\''+vagaId+'\')" style="margin-top:5px;font-size:10px;font-weight:700;color:#1F9A5F;background:#fff;border:1.5px solid #1F9A5F;border-radius:7px;padding:4px 8px;cursor:pointer;font-family:inherit">Encerrar</button>' +
+        '</div>' +
+      '</div>';
+  }
+  const ativasHtml = ativas.length===0 ? '<div style="color:#8892A6;font-size:12px;text-align:center;padding:14px;background:#fff;border-radius:10px">Nenhuma recarga ativa</div>'
+                                       : ativas.map(_renderAtiva).join('');
 
-  const histHtml=hist.length===0?'<div style="color:#bbb;font-size:12px">Sem historico</div>':
-    hist.map(h=>`<div style="border-bottom:1px solid #f0efea;padding:5px 0;font-size:11px">
-      <div style="display:flex;justify-content:space-between"><span style="font-weight:700">Vaga ${h.vagaId} · Apt. ${h.apt}</span><span style="color:#0F6E56;font-weight:700">R$ ${h.valor.toFixed(2).replace('.',',')}</span></div>
-      <div style="color:#888">${fmtDt(h.inicio_ts)} → ${fmtDt(h.fim_ts)} · ${h.mins}min</div>
-    </div>`).join('');
+  // Fila
+  function _renderFila(f,i){
+    const sub = 'Vaga '+f.vagaId+(f.ts_pedido?' · aguardando desde '+_fmtHM(f.ts_pedido):'');
+    return ''+
+      '<div class="rcp-fila">' +
+        '<div class="rcp-fila-pos">'+(i+1)+'</div>' +
+        '<div>' +
+          '<div class="rcp-fila-titulo">Apt '+_vtEsc(f.apt||'')+(f.model?' · '+_vtEsc(f.model):'')+'</div>' +
+          '<div class="rcp-fila-sub">'+_vtEsc(sub)+'</div>' +
+        '</div>' +
+        '<button class="rcp-fila-x" title="Remover da fila" onclick="_removerDaFilaRecarga('+i+')">✕</button>' +
+      '</div>';
+  }
+  const filaHtml = filaCount===0
+    ? '<div style="color:#8892A6;font-size:12px;text-align:center;padding:14px;background:#fff;border-radius:10px;margin-bottom:6px">Nenhum carro na fila</div>'
+    : FILA_RECARGA.map(_renderFila).join('');
 
-  rw.innerHTML=`
-    <div style="font-weight:700;font-size:15px;color:#185FA5;margin-bottom:10px">⚡ Recarga</div>
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      ${Object.keys(VAGAS_RECARGA).map(vagaId=>{
-        const vaga=S[vagaId]; const st=getRecargaState(vagaId);
-        const stColors={'sem-carro':'#f0efea','disponivel':'#EEF6FF','carregando':'#FFF8E6','horario-bateu':'#EEF9F2','confirmada':'#EEF9F2','ponto-ocupado':'#f8f8f6'};
-        const stLabels={'sem-carro':'Livre','disponivel':'Disponivel','carregando':'Carregando','horario-bateu':'Concluida!','confirmada':'Confirmada','ponto-ocupado':'Ponto ocupado'};
-        return `<div style="border:2px solid ${st==='carregando'?'#E8A800':st.includes('conclu')||st==='confirmada'?'#27AE60':st==='disponivel'?'#378ADD':'#ddd'};border-radius:10px;padding:8px 12px;background:${stColors[st]||'#fff'};min-width:90px;cursor:${st==='sem-carro'?'default':'pointer'}" onclick="${st==='disponivel'?'showRecargaModal(\''+vagaId+'\')':st==='carregando'||st==='confirmada'?'showRecargaDetalhe(\''+vagaId+'\')':st==='horario-bateu'?'showRecargaFinalizar(\''+vagaId+'\')':st==='ponto-ocupado'?'showRecargaFila(\''+vagaId+'\')':''}">
-          <div style="font-weight:700;font-size:13px">⚡ ${vagaId}</div>
-          <div style="font-size:10px;color:#888">${vaga?.apt?'Apt. '+vaga.apt:stLabels[st]}</div>
-          <div style="font-size:10px;font-weight:700;color:${st==='carregando'?'#854F0B':st==='disponivel'?'#185FA5':st==='horario-bateu'?'#0F6E56':'#888'}">${stLabels[st]||''}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div style="font-weight:700;font-size:12px;color:#185FA5;margin-bottom:6px">Recargas ativas</div>
-    ${ativasHtml}${filaHtml}
-    <div style="font-weight:700;font-size:12px;color:#185FA5;margin:12px 0 6px">Historico recente</div>
-    ${histHtml}
-    <button onclick="showRecargaCfg()" style="margin-top:12px;width:100%;padding:8px;background:#f5f4f0;border:1px solid #e0ddd8;border-radius:7px;font-family:inherit;font-size:12px;cursor:pointer;color:#555">⚙ Configuracoes de Recarga</button>`;
+  // Histórico recente (até 6)
+  const hist=HISTORICO_RECARGAS.slice(-6).reverse();
+  const histHtml = hist.length===0
+    ? '<div style="color:#8892A6;font-size:12px;text-align:center;padding:14px;background:#fff;border-radius:10px">Sem histórico</div>'
+    : hist.map(function(h){
+        const dur = h.mins || 0;
+        const dataFmt = _fmtDM(h.inicio_ts)+' '+_fmtHM(h.inicio_ts)+' → '+_fmtHM(h.fim_ts);
+        return ''+
+          '<div class="rcp-hist">' +
+            '<div>' +
+              '<div class="rcp-hist-titulo">Vaga '+h.vagaId+' · Apt '+_vtEsc(h.apt||'')+'</div>' +
+              '<div class="rcp-hist-sub">'+dataFmt+' · '+_fmtDurRecarga(dur)+(h.usuario?' · '+_vtEsc(h.usuario):'')+'</div>' +
+            '</div>' +
+            '<div class="rcp-hist-valor">R$ '+(h.valor||0).toFixed(2).replace('.',',')+'</div>' +
+          '</div>';
+      }).join('');
+
+  // Subtítulo dinâmico do header
+  const numPontos = PONTOS_RECARGA.length;
+  const carregando = ativas.length;
+  const livres = Math.max(0, numPontos - carregando);
+  const subHeader = numPontos+' pontos · '+carregando+' carregando · '+livres+' livre · '+filaCount+' na fila';
+
+  rw.innerHTML = ''+
+    '<div class="rcp-header">' +
+      '<div class="rcp-titulo"><span class="rcp-titulo-icon">⚡</span>Recarga Veicular</div>' +
+      '<div class="rcp-sub">'+_vtEsc(subHeader)+'</div>' +
+    '</div>' +
+    '<div class="rcp-grid">' +
+      PONTOS_RECARGA.map(_renderPontoCard).join('') +
+    '</div>' +
+    '<div class="rcp-secao">' +
+      '<div class="rcp-secao-titulo">' +
+        '<div class="rcp-secao-text">⚡ Recargas Ativas <span class="rcp-badge">'+ativas.length+'</span></div>' +
+      '</div>' +
+      ativasHtml +
+    '</div>' +
+    '<div class="rcp-secao">' +
+      '<div class="rcp-secao-titulo">' +
+        '<div class="rcp-secao-text">⏳ Fila de Espera <span class="rcp-badge fila">'+filaCount+'</span></div>' +
+      '</div>' +
+      (filaCount>0 ? '<div class="rcp-banner-fila"><span>💡</span><span>Quando um ponto vagar, o app avisa para designar o próximo da fila.</span></div>' : '') +
+      filaHtml +
+      '<button class="rcp-btn-add-fila" onclick="_abrirAddFilaModal()"><span>➕</span> Adicionar carro à fila</button>' +
+    '</div>' +
+    '<div class="rcp-secao">' +
+      '<div class="rcp-secao-titulo"><div class="rcp-secao-text">🕐 Histórico recente</div></div>' +
+      histHtml +
+    '</div>';
 }
+
+// v1.9.4.3.2: helpers de formatação curta para o painel
+function _fmtHM(ts){ const d=new Date(ts); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function _fmtDM(ts){ const d=new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.3.2: Fluxo de iniciar recarga (Partes 4/5/6)
+// Entrada: _iniciarRecargaPonto(vagaId) — chamada pelo raio do mapa OU botão do card.
+// 1) Verifica disponibilidade do ponto
+// 2) Seleciona operador (confirmarUsuario)
+// 3) Lista priorizada de carros (vaga → fila → demais) + busca
+// 4) Remanejamento se necessário (move carro atual da vaga via executarMove)
+// 5) Modal de tempo (Quantidade de horas | Hora final), bidirecional
+// 6) Confirmação final → iniciarRecarga()
+// ════════════════════════════════════════════════════════════════════════
+
+window._iniciarRecargaPonto = function(vagaId){
+  if(!MODULOS.recarga){ showToast('Módulo Recarga desabilitado',2500); return; }
+  if(!VAGAS_RECARGA[vagaId]){ showToast('Vaga não tem ponto de recarga',2500); return; }
+  const st = getRecargaState(vagaId);
+  if(st === 'carregando' || st === 'horario-bateu' || st === 'confirmada'){
+    showRecargaDetalhe(vagaId); return;
+  }
+  if(st === 'ponto-ocupado'){
+    const par = VAGAS_RECARGA[vagaId] && VAGAS_RECARGA[vagaId].par;
+    showToast('Ponto compartilhado em uso pela vaga '+(par||'par'),2800);
+    return;
+  }
+  // Ponto livre — confirma operador e segue
+  confirmarUsuario('iniciando recarga', function(usuario){
+    if(typeof closeOv==='function') closeOv();
+    _rcEscolherCarro(vagaId, usuario);
+  });
+};
+
+function _rcColetarCarrosDisponiveis(vagaIdPonto){
+  // Carro na vaga do ponto (V) — máxima prioridade
+  const carros = [];
+  const vagaPonto = S[vagaIdPonto];
+  const carroDaVaga = (vagaPonto && vagaPonto.status==='occupied') ? {
+    fonte:'vaga', vagaId:vagaIdPonto, apt:vagaPonto.apt, model:vagaPonto.model||'', color:vagaPonto.color||'',
+    plate:vagaPonto.plate||'', guest:vagaPonto.guest||'', obs:vagaPonto.obs||'', hospedagem:vagaPonto.hospedagem||''
+  } : null;
+  if(carroDaVaga) carros.push(carroDaVaga);
+  // Carros na fila (não-duplicar com o da vaga)
+  FILA_RECARGA.forEach(function(f){
+    if(!f) return;
+    if(carroDaVaga && f.apt === carroDaVaga.apt && f.vagaId === carroDaVaga.vagaId) return;
+    const vagaSrc = S[f.vagaId];
+    carros.push({ fonte:'fila', vagaId:f.vagaId, apt:f.apt, hospedagem:f.hospedagem||'',
+      model:(vagaSrc&&vagaSrc.model)||'', color:(vagaSrc&&vagaSrc.color)||'',
+      plate:(vagaSrc&&vagaSrc.plate)||'', guest:(vagaSrc&&vagaSrc.guest)||'', ts_pedido:f.ts_pedido });
+  });
+  // Demais carros do hotel (outras vagas ocupadas, fora do ponto e fora da fila)
+  Object.keys(S).forEach(function(vid){
+    if(vid === vagaIdPonto) return;
+    const v = S[vid];
+    if(!v || v.status !== 'occupied' || v.mergedSlave) return;
+    // já está na fila?
+    const naFila = FILA_RECARGA.some(function(f){ return f && f.vagaId === vid; });
+    if(naFila) return;
+    carros.push({ fonte:'outro', vagaId:vid, apt:v.apt||'', model:v.model||'', color:v.color||'',
+      plate:v.plate||'', guest:v.guest||'', obs:v.obs||'', hospedagem:v.hospedagem||'' });
+  });
+  return carros;
+}
+
+function _rcRenderListaCarros(carros, vagaIdPonto, query){
+  const q = (query||'').toLowerCase().trim();
+  const filtrados = !q ? carros : carros.filter(function(c){
+    const blob = [c.apt, c.model, c.color, c.plate, c.guest, c.vagaId].join(' ').toLowerCase();
+    return blob.indexOf(q) >= 0;
+  });
+  if(filtrados.length === 0){
+    return '<div class="rcp-lista-vazia">🔍 Nenhum carro encontrado</div>';
+  }
+  return filtrados.map(function(c, idx){
+    const tag = c.fonte==='vaga' ? '<span class="rcp-carro-tag vaga">Carro na vaga '+c.vagaId+'</span>'
+              : c.fonte==='fila' ? '<span class="rcp-carro-tag fila">Da fila</span>'
+              :                    '<span class="rcp-carro-tag outro">Vaga '+c.vagaId+'</span>';
+    const veiculo = [c.model, c.color, c.plate].filter(Boolean).join(' · ');
+    const destaque = c.fonte==='vaga' ? 'destacado' : '';
+    return ''+
+      '<div class="rcp-carro-opcao '+destaque+'" data-idx="'+idx+'" onclick="_rcSelecionarCarro('+idx+')">' +
+        '<div>' +
+          '<div class="rcp-carro-info">Apt '+_vtEsc(c.apt||'—')+(veiculo?' · '+_vtEsc(veiculo):'')+'</div>' +
+          '<div class="rcp-carro-vaga">'+(c.guest?_vtEsc(c.guest)+' · ':'')+'Vaga '+c.vagaId+'</div>' +
+          tag +
+        '</div>' +
+        '<div class="rcp-carro-check"></div>' +
+      '</div>';
+  }).join('');
+}
+
+let _rcEstado = null; // estado do fluxo atual
+
+function _rcEscolherCarro(vagaIdPonto, usuario){
+  const carros = _rcColetarCarrosDisponiveis(vagaIdPonto);
+  _rcEstado = { vagaIdPonto, usuario, carros, escolhidoIdx: (carros.length>0 && carros[0].fonte==='vaga') ? 0 : -1, query:'' };
+  const mc = document.getElementById('mc');
+  const subtitulo = 'Ponto · Vaga '+vagaIdPonto;
+  mc.innerHTML = ''+
+    '<div class="mt">⚡ Iniciar Recarga</div>' +
+    '<div class="ms">'+_vtEsc(subtitulo)+'</div>' +
+    '<div class="rcp-busca-wrap">' +
+      '<span class="rcp-busca-ico">🔍</span>' +
+      '<input class="rcp-busca-input" id="rc-busca" placeholder="Buscar por apto, modelo, cor, placa, hóspede...">' +
+    '</div>' +
+    '<div id="rc-lista-carros" style="max-height:260px;overflow-y:auto;margin-bottom:8px">'+_rcRenderListaCarros(carros, vagaIdPonto, '')+'</div>' +
+    '<div class="b2">' +
+      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
+      '<button class="bsv" id="rc-prox" '+(_rcEstado.escolhidoIdx<0?'disabled style="opacity:.5;cursor:not-allowed"':'')+'>Próximo →</button>' +
+    '</div>';
+  document.getElementById('ov').classList.add('on');
+  // Marcar inicialmente o primeiro (se for da vaga)
+  setTimeout(function(){
+    if(_rcEstado.escolhidoIdx >= 0){
+      const it = document.querySelector('.rcp-carro-opcao[data-idx="'+_rcEstado.escolhidoIdx+'"]');
+      if(it){ it.classList.add('selecionado'); const ck=it.querySelector('.rcp-carro-check'); if(ck) ck.textContent='✓'; }
+    }
+    const inp = document.getElementById('rc-busca');
+    if(inp) inp.addEventListener('input', function(e){
+      _rcEstado.query = e.target.value;
+      _rcEstado.escolhidoIdx = -1;
+      const list = document.getElementById('rc-lista-carros');
+      if(list) list.innerHTML = _rcRenderListaCarros(_rcEstado.carros, vagaIdPonto, e.target.value);
+      const btn = document.getElementById('rc-prox');
+      if(btn){ btn.disabled = true; btn.style.opacity='.5'; btn.style.cursor='not-allowed'; }
+    });
+    document.getElementById('rc-prox')?.addEventListener('click', function(){
+      if(_rcEstado.escolhidoIdx < 0) return;
+      const carro = _rcEstado.carros[_rcEstado.escolhidoIdx];
+      if(!carro) return;
+      _rcAvaliarRemanejamento(carro);
+    });
+  }, 80);
+}
+
+window._rcSelecionarCarro = function(idx){
+  if(!_rcEstado) return;
+  // O idx é da lista filtrada — converter para idx original procurando pelo DOM
+  // Como _rcRenderListaCarros usa o idx da lista filtrada como data-idx, precisamos resolver.
+  // Estratégia simples: refiltrar para identificar e setar referência direta.
+  const q = (_rcEstado.query||'').toLowerCase().trim();
+  const filtrados = !q ? _rcEstado.carros : _rcEstado.carros.filter(function(c){
+    const blob = [c.apt, c.model, c.color, c.plate, c.guest, c.vagaId].join(' ').toLowerCase();
+    return blob.indexOf(q) >= 0;
+  });
+  const carro = filtrados[idx];
+  if(!carro) return;
+  // achar idx absoluto
+  _rcEstado.escolhidoIdx = _rcEstado.carros.indexOf(carro);
+  // Atualizar UI
+  document.querySelectorAll('.rcp-carro-opcao').forEach(function(el){
+    el.classList.remove('selecionado');
+    const ck = el.querySelector('.rcp-carro-check'); if(ck) ck.textContent='';
+  });
+  const el = document.querySelector('.rcp-carro-opcao[data-idx="'+idx+'"]');
+  if(el){ el.classList.add('selecionado'); const ck=el.querySelector('.rcp-carro-check'); if(ck) ck.textContent='✓'; }
+  const btn = document.getElementById('rc-prox');
+  if(btn){ btn.disabled = false; btn.style.opacity='1'; btn.style.cursor='pointer'; }
+};
+
+function _rcAvaliarRemanejamento(carro){
+  if(!_rcEstado) return;
+  const vp = _rcEstado.vagaIdPonto;
+  // Caso 1: o carro escolhido JÁ é o que está em vp → segue direto
+  if(carro.fonte === 'vaga' && carro.vagaId === vp){
+    _rcModalTempo(carro);
+    return;
+  }
+  // Caso 2: vp está vazia → traz o carro para vp (move)
+  const vpVaga = S[vp];
+  const vpVazia = !vpVaga || vpVaga.status !== 'occupied';
+  if(vpVazia){
+    // move o carro da fonte para vp
+    if(carro.fonte === 'outro' || carro.fonte === 'fila'){
+      _rcMoverCarroParaPonto(carro, vp, function(){
+        // remover da fila se estava
+        if(carro.fonte === 'fila'){
+          const idxF = FILA_RECARGA.findIndex(function(f){ return f && f.apt===carro.apt && f.vagaId===carro.vagaId; });
+          if(idxF >= 0) FILA_RECARGA.splice(idxF, 1);
+        }
+        const carroNoPonto = { fonte:'vaga', vagaId:vp, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
+        _rcModalTempo(carroNoPonto);
+      });
+      return;
+    }
+    _rcModalTempo(carro); return;
+  }
+  // Caso 3: vp tem OUTRO carro → precisa remanejar o atual
+  const carroAtualVp = { vagaId:vp, apt:vpVaga.apt, model:vpVaga.model||'', color:vpVaga.color||'', plate:vpVaga.plate||'', guest:vpVaga.guest||'' };
+  showModalAux({
+    titulo: 'Remanejar carro da vaga '+vp,
+    texto: 'A vaga '+vp+' está ocupada pelo Apt '+(carroAtualVp.apt||'?')+(carroAtualVp.model?' · '+carroAtualVp.model:'')+'. Para onde mover esse carro?',
+    botoes:[
+      {label:'Cancelar', action:'close'},
+      {label:'Escolher vaga no mapa', cls:'primary', action:function(){
+        _rcEscolherDestinoRemanejamento(carroAtualVp, carro);
+      }}
+    ]
+  });
+}
+
+// Modo "escolher destino do carro atual" — ativa um banner no mapa pedindo um tap em vaga livre
+function _rcEscolherDestinoRemanejamento(carroAtualVp, carroEscolhido){
+  if(typeof closeOv === 'function') closeOv();
+  if(typeof navTo === 'function') navTo('mapa');
+  // Banner sticky temporário
+  let b = document.getElementById('rc-remanejar-banner');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'rc-remanejar-banner';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:600;background:linear-gradient(135deg,#E68A2E,#C2691A);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.18);font-family:inherit';
+    b.innerHTML = ''+
+      '<span style="font-size:20px">🚗</span>' +
+      '<div style="flex:1;line-height:1.3"><div style="font-size:13px;font-weight:700">Mover carro da vaga '+carroAtualVp.vagaId+'</div><div style="font-size:11px;opacity:.92">Toque numa vaga livre para definir o destino</div></div>' +
+      '<button id="rc-rem-cancel" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:18px;width:34px;height:34px;border-radius:50%;cursor:pointer;line-height:1;font-family:inherit;padding:0">✕</button>';
+    document.body.appendChild(b);
+  }
+  // Estado: interceptar próximo tap em vaga livre
+  _rcEstado.modoRemanejamento = { carroAtualVp, carroEscolhido };
+  document.getElementById('rc-rem-cancel').onclick = function(){
+    _rcEstado.modoRemanejamento = null;
+    if(b.parentNode) b.parentNode.removeChild(b);
+    showToast('Remanejamento cancelado',2000);
+  };
+  showToast('Toque numa VAGA LIVRE para mover o carro da '+carroAtualVp.vagaId,4500);
+}
+
+// Hook chamado em clkV quando estamos em modo remanejamento (ver Parte 5 — patch em clkV)
+window._rcConsumirRemanejamento = function(vagaDestino){
+  const st = _rcEstado && _rcEstado.modoRemanejamento;
+  if(!st) return false;
+  const v = S[vagaDestino];
+  if(!v || v.status !== 'free'){ showToast('Escolha uma vaga LIVRE',2500); return true; }
+  if(vagaDestino === st.carroAtualVp.vagaId){ showToast('Escolha outra vaga',2000); return true; }
+  // Move o carro atual da vp para vagaDestino
+  const ms = {
+    id: st.carroAtualVp.vagaId,
+    apt: st.carroAtualVp.apt,
+    model: st.carroAtualVp.model,
+    color: st.carroAtualVp.color,
+    plate: st.carroAtualVp.plate,
+    guest: st.carroAtualVp.guest,
+    size: 'small'
+  };
+  try { executarMove(ms, vagaDestino, _rcEstado.usuario); } catch(e){ console.error('[rc-remanejar] executarMove erro:', e); showToast('Erro ao mover carro',3000); return true; }
+  // Limpar banner
+  const b = document.getElementById('rc-remanejar-banner');
+  if(b && b.parentNode) b.parentNode.removeChild(b);
+  _rcEstado.modoRemanejamento = null;
+  // Agora trazer o carro escolhido para a vp (que ficou livre)
+  const vp = _rcEstado.vagaIdPonto;
+  const carro = st.carroEscolhido;
+  if(carro.fonte === 'outro' || carro.fonte === 'fila'){
+    _rcMoverCarroParaPonto(carro, vp, function(){
+      if(carro.fonte === 'fila'){
+        const idxF = FILA_RECARGA.findIndex(function(f){ return f && f.apt===carro.apt && f.vagaId===carro.vagaId; });
+        if(idxF >= 0) FILA_RECARGA.splice(idxF, 1);
+      }
+      const carroNoPonto = { fonte:'vaga', vagaId:vp, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
+      _rcModalTempo(carroNoPonto);
+    });
+  } else {
+    _rcModalTempo(carro);
+  }
+  return true;
+};
+
+function _rcMoverCarroParaPonto(carro, vagaDestino, cb){
+  const v = S[carro.vagaId];
+  if(!v || v.status !== 'occupied'){ showToast('Carro de origem não encontrado',3000); return; }
+  const ms = { id: carro.vagaId, apt: v.apt, model: v.model, color: v.color, plate: v.plate, guest: v.guest, size: v.size||'small' };
+  try { executarMove(ms, vagaDestino, _rcEstado.usuario); } catch(e){ console.error('[rc-mover] executarMove erro:', e); showToast('Erro ao mover carro',3000); return; }
+  if(typeof cb === 'function') setTimeout(cb, 200);
+}
+
+// PARTE 4 — Modal de tempo com dois modos (bidirecionais)
+function _rcModalTempo(carro){
+  if(!_rcEstado) return;
+  const vp = _rcEstado.vagaIdPonto;
+  _rcEstado.carroNoPonto = carro;
+  const agora = new Date();
+  const hhAgora = String(agora.getHours()).padStart(2,'0')+':'+String(agora.getMinutes()).padStart(2,'0');
+  // Defaults: 3 horas → hora final calculada
+  let horas = 3;
+  let fimHHMM = _calcFimHHMM(Date.now(), horas*60);
+
+  function _renderResumo(){
+    const fimMs = _hhmmParaMs(fimHHMM);
+    const totalMin = Math.max(0, Math.round((fimMs - Date.now())/60000));
+    const {valor} = calcValorRecarga(Date.now(), fimMs);
+    return '<div class="rcp-modal-valor-info">' +
+      '<span class="rcp-modal-valor-info-label">'+_fmtDurRecarga(totalMin)+' × R$ '+RECARGA_CONFIG.valorHora.toFixed(2).replace('.',',')+'/h · arred. '+RECARGA_CONFIG.arredondamento+'min</span>' +
+      '<span class="rcp-modal-valor-info-valor">R$ '+valor.toFixed(2).replace('.',',')+'</span>' +
+    '</div>';
+  }
+
+  const mc = document.getElementById('mc');
+  const veic = [carro.model, carro.color, carro.plate].filter(Boolean).join(' · ');
+  mc.innerHTML = ''+
+    '<div class="mt">⚡ Definir tempo</div>' +
+    '<div class="ms">Ponto · Vaga '+vp+'</div>' +
+    '<div class="ms" style="background:#EEF6FF;border:1px solid #C7DAEC;border-radius:7px;padding:7px 10px;color:#1A2238;margin-bottom:10px"><strong>Apt '+_vtEsc(carro.apt||'')+'</strong>'+(veic?' · '+_vtEsc(veic):'')+'</div>' +
+    '<label class="fl">Modo de tempo</label>' +
+    '<div class="rcp-modal-toggle">' +
+      '<div class="rcp-modal-toggle-item ativo" data-modo="qtd">Quantidade de horas</div>' +
+      '<div class="rcp-modal-toggle-item" data-modo="fim">Hora final</div>' +
+    '</div>' +
+    '<div id="rc-tempo-campo">' +
+      '<label class="fl" id="rc-tempo-label">Horas (1 a 24)</label>' +
+      '<input class="fi" id="rc-tempo-input" type="number" step="0.5" min="0.5" max="24" value="'+horas+'">' +
+    '</div>' +
+    '<div id="rc-tempo-info" style="font-size:11px;color:#5A6478;margin-top:4px">Hora final calculada: <strong id="rc-tempo-fim">'+fimHHMM+'</strong></div>' +
+    '<div style="margin-top:10px" id="rc-tempo-resumo">'+_renderResumo()+'</div>' +
+    '<div class="b2" style="margin-top:14px">' +
+      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
+      '<button class="bsv" id="rc-confirma" style="background:#2BB673">⚡ Iniciar recarga</button>' +
+    '</div>';
+  document.getElementById('ov').classList.add('on');
+
+  let modoAtual = 'qtd';
+  function _aplicar(){
+    document.getElementById('rc-tempo-resumo').innerHTML = _renderResumo();
+    document.getElementById('rc-tempo-fim').textContent = fimHHMM;
+  }
+  function _setQtd(){
+    modoAtual = 'qtd';
+    document.querySelectorAll('.rcp-modal-toggle-item').forEach(function(el){ el.classList.toggle('ativo', el.dataset.modo==='qtd'); });
+    const campo = document.getElementById('rc-tempo-campo');
+    campo.innerHTML = '<label class="fl">Horas (0.5 a 24)</label><input class="fi" id="rc-tempo-input" type="number" step="0.5" min="0.5" max="24" value="'+horas+'">';
+    document.getElementById('rc-tempo-input').addEventListener('input', function(e){
+      const v = parseFloat(e.target.value)||0;
+      horas = Math.max(0.5, Math.min(24, v));
+      fimHHMM = _calcFimHHMM(Date.now(), Math.round(horas*60));
+      _aplicar();
+    });
+    _aplicar();
+  }
+  function _setFim(){
+    modoAtual = 'fim';
+    document.querySelectorAll('.rcp-modal-toggle-item').forEach(function(el){ el.classList.toggle('ativo', el.dataset.modo==='fim'); });
+    const campo = document.getElementById('rc-tempo-campo');
+    campo.innerHTML = '<label class="fl">Hora final (HH:MM)</label><input class="fi" id="rc-tempo-input" type="time" value="'+fimHHMM+'">';
+    document.getElementById('rc-tempo-input').addEventListener('input', function(e){
+      const v = e.target.value || fimHHMM;
+      const fimMs = _hhmmParaMs(v);
+      if(fimMs <= Date.now()){ /* trata virada de dia */ }
+      const dur = Math.max(30, Math.round((fimMs - Date.now())/60000));
+      horas = +(dur/60).toFixed(2);
+      fimHHMM = v;
+      _aplicar();
+    });
+    _aplicar();
+  }
+
+  setTimeout(function(){
+    document.querySelectorAll('.rcp-modal-toggle-item').forEach(function(el){
+      el.onclick = function(){ if(el.dataset.modo==='qtd') _setQtd(); else _setFim(); };
+    });
+    _setQtd();
+    document.getElementById('rc-confirma')?.addEventListener('click', function(){
+      const fimMs = _hhmmParaMs(fimHHMM);
+      if(fimMs <= Date.now()){ showToast('Hora final inválida — defina uma hora futura',3000); return; }
+      _rcConfirmacaoFinal(carro, fimMs);
+    });
+  }, 80);
+}
+
+function _calcFimHHMM(inicioMs, durMin){
+  const fim = new Date(inicioMs + durMin*60000);
+  return String(fim.getHours()).padStart(2,'0')+':'+String(fim.getMinutes()).padStart(2,'0');
+}
+function _hhmmParaMs(hhmm){
+  const [h,m] = String(hhmm||'').split(':').map(Number);
+  const d = new Date();
+  let ms = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h||0, m||0, 0, 0).getTime();
+  if(ms <= Date.now()) ms += 86400000; // virada de dia
+  return ms;
+}
+
+function _rcConfirmacaoFinal(carro, fimMs){
+  const vp = _rcEstado.vagaIdPonto;
+  const usuario = _rcEstado.usuario;
+  const totalMin = Math.max(0, Math.round((fimMs - Date.now())/60000));
+  const {valor} = calcValorRecarga(Date.now(), fimMs);
+  const veic = [carro.model, carro.color, carro.plate].filter(Boolean).join(' · ');
+  const mc = document.getElementById('mc');
+  mc.innerHTML = ''+
+    '<div class="mt">⚡ Confirmar início?</div>' +
+    '<div style="background:#F2FBF6;border:1px solid #C7EBD9;border-radius:8px;padding:11px 13px;margin-bottom:10px">' +
+      '<div style="font-size:13px;font-weight:700;color:#1A2238">Apt '+_vtEsc(carro.apt||'')+(veic?' · '+_vtEsc(veic):'')+'</div>' +
+      '<div style="font-size:12px;color:#5A6478;margin-top:2px">Vaga '+vp+' · '+_fmtDurRecarga(totalMin)+' · Término: '+_fmtHM(fimMs)+'</div>' +
+      '<div style="font-size:15px;font-weight:800;color:#1F9A5F;margin-top:8px">R$ '+valor.toFixed(2).replace('.',',')+'</div>' +
+    '</div>' +
+    '<div class="b2">' +
+      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
+      '<button class="bsv" id="rc-confirma-final" style="background:#2BB673">✓ Confirmar e iniciar</button>' +
+    '</div>';
+  setTimeout(function(){
+    document.getElementById('rc-confirma-final')?.addEventListener('click', function(){
+      iniciarRecarga(vp, carro.apt, carro.hospedagem||'', _fmtHM(fimMs), usuario);
+      _rcEstado = null;
+      if(typeof closeOv==='function') closeOv();
+    });
+  }, 60);
+}
+
+// PARTE 6 — Fila: adicionar / remover / designar o próximo
+window._removerDaFilaRecarga = function(idx){
+  if(idx < 0 || idx >= FILA_RECARGA.length) return;
+  const f = FILA_RECARGA[idx];
+  FILA_RECARGA.splice(idx, 1);
+  showToast('Apt '+(f && f.apt || '?')+' removido da fila',2200);
+  if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
+};
+
+window._abrirAddFilaModal = function(){
+  // Coleta todos os carros hospedados (status occupied, sem mergedSlave) que ainda não estão na fila
+  const carros = [];
+  Object.keys(S).forEach(function(vid){
+    const v = S[vid];
+    if(!v || v.status !== 'occupied' || v.mergedSlave) return;
+    const naFila = FILA_RECARGA.some(function(f){ return f && f.vagaId === vid; });
+    if(naFila) return;
+    carros.push({ vagaId:vid, apt:v.apt||'', model:v.model||'', color:v.color||'', plate:v.plate||'', guest:v.guest||'', hospedagem:v.hospedagem||'' });
+  });
+  if(carros.length === 0){ showToast('Nenhum carro disponível para adicionar à fila',3000); return; }
+  _rcAddFilaEstado = { carros, escolhidoIdx: -1, query:'' };
+  const mc = document.getElementById('mc');
+  mc.innerHTML = ''+
+    '<div class="mt">⏳ Adicionar à fila</div>' +
+    '<div class="ms">Selecione o carro que aguardará liberação de ponto</div>' +
+    '<div class="rcp-busca-wrap">' +
+      '<span class="rcp-busca-ico">🔍</span>' +
+      '<input class="rcp-busca-input" id="rc-fila-busca" placeholder="Buscar por apto, modelo, cor, placa, hóspede...">' +
+    '</div>' +
+    '<div id="rc-fila-lista" style="max-height:260px;overflow-y:auto;margin-bottom:8px">'+_rcAddFilaRender('')+'</div>' +
+    '<div class="b2">' +
+      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
+      '<button class="bsv" id="rc-fila-add" style="background:#E68A2E" disabled>Adicionar à fila</button>' +
+    '</div>';
+  document.getElementById('ov').classList.add('on');
+  setTimeout(function(){
+    document.getElementById('rc-fila-busca')?.addEventListener('input', function(e){
+      _rcAddFilaEstado.query = e.target.value;
+      _rcAddFilaEstado.escolhidoIdx = -1;
+      const list = document.getElementById('rc-fila-lista');
+      if(list) list.innerHTML = _rcAddFilaRender(e.target.value);
+      const btn = document.getElementById('rc-fila-add');
+      if(btn){ btn.disabled = true; btn.style.opacity='.5'; }
+    });
+    document.getElementById('rc-fila-add')?.addEventListener('click', function(){
+      if(_rcAddFilaEstado.escolhidoIdx < 0) return;
+      const carro = _rcAddFilaEstado.carros[_rcAddFilaEstado.escolhidoIdx];
+      if(!carro) return;
+      confirmarUsuario('entrando na fila de recarga', function(usuario){
+        const usuarioStr = usuario ? (usuario.nome+' · '+usuario.cargo) : '';
+        FILA_RECARGA.push({ apt:carro.apt, vagaId:carro.vagaId, hospedagem:carro.hospedagem, model:carro.model, color:carro.color, ts_pedido:Date.now(), usuario:usuarioStr });
+        if(typeof closeOv==='function') closeOv();
+        showToast('Apt '+carro.apt+' adicionado à fila',2500);
+        if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
+      });
+    });
+  }, 80);
+};
+
+let _rcAddFilaEstado = null;
+function _rcAddFilaRender(query){
+  if(!_rcAddFilaEstado) return '';
+  const q = (query||'').toLowerCase().trim();
+  const filtrados = !q ? _rcAddFilaEstado.carros : _rcAddFilaEstado.carros.filter(function(c){
+    const blob = [c.apt, c.model, c.color, c.plate, c.guest, c.vagaId].join(' ').toLowerCase();
+    return blob.indexOf(q) >= 0;
+  });
+  if(filtrados.length === 0) return '<div class="rcp-lista-vazia">🔍 Nenhum carro encontrado</div>';
+  return filtrados.map(function(c, idx){
+    const veiculo = [c.model, c.color, c.plate].filter(Boolean).join(' · ');
+    return ''+
+      '<div class="rcp-carro-opcao" data-idx="'+idx+'" onclick="_rcAddFilaSelecionar('+idx+')">' +
+        '<div>' +
+          '<div class="rcp-carro-info">Apt '+_vtEsc(c.apt||'—')+(veiculo?' · '+_vtEsc(veiculo):'')+'</div>' +
+          '<div class="rcp-carro-vaga">Vaga '+c.vagaId+(c.guest?' · '+_vtEsc(c.guest):'')+'</div>' +
+        '</div>' +
+        '<div class="rcp-carro-check"></div>' +
+      '</div>';
+  }).join('');
+}
+window._rcAddFilaSelecionar = function(idx){
+  if(!_rcAddFilaEstado) return;
+  const q = (_rcAddFilaEstado.query||'').toLowerCase().trim();
+  const filtrados = !q ? _rcAddFilaEstado.carros : _rcAddFilaEstado.carros.filter(function(c){
+    const blob = [c.apt, c.model, c.color, c.plate, c.guest, c.vagaId].join(' ').toLowerCase();
+    return blob.indexOf(q) >= 0;
+  });
+  const carro = filtrados[idx];
+  if(!carro) return;
+  _rcAddFilaEstado.escolhidoIdx = _rcAddFilaEstado.carros.indexOf(carro);
+  document.querySelectorAll('#rc-fila-lista .rcp-carro-opcao').forEach(function(el){
+    el.classList.remove('selecionado');
+    const ck = el.querySelector('.rcp-carro-check'); if(ck) ck.textContent='';
+  });
+  const el = document.querySelector('#rc-fila-lista .rcp-carro-opcao[data-idx="'+idx+'"]');
+  if(el){ el.classList.add('selecionado'); const ck=el.querySelector('.rcp-carro-check'); if(ck) ck.textContent='✓'; }
+  const btn = document.getElementById('rc-fila-add');
+  if(btn){ btn.disabled = false; btn.style.opacity='1'; }
+};
 
 function showRecargaCfg(){
   showM(`<div class="mt">⚙ Config. Recarga</div>
@@ -7969,11 +8714,14 @@ function buildRecargaDoc(entradas){
 }
 
 // Adicionar ⚡ ao ref() para vagas de recarga — chamado após ref() padrão
+// v1.9.4.3.2: wrapper agora é âncora full-cell (inset:0). Estilo controlado pelo CSS
+// .rc-icon-wrap — ícone fica responsivo ao tamanho da vaga e não transborda.
 function refRecarga(id){
   if(!VAGAS_RECARGA[id]) return;
   const td=getTd(id); if(!td) return;
+  td.style.position='relative';
   let icon=td.querySelector('.rc-icon-wrap');
-  if(!icon){ icon=document.createElement('div'); icon.className='rc-icon-wrap'; icon.style.cssText='position:absolute;top:2px;right:2px;z-index:5;pointer-events:auto;line-height:1'; td.style.position='relative'; td.appendChild(icon); }
+  if(!icon){ icon=document.createElement('div'); icon.className='rc-icon-wrap'; td.appendChild(icon); }
   icon.innerHTML=getRecargaIcon(id);
 }
 
