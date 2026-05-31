@@ -16,11 +16,13 @@ html.font-large{zoom:1.13}
 .page{display:flex;flex-direction:column;height:100dvh;padding:7px;gap:5px}
 
 /* ── TOPBAR UNIFICADA ── */
-.topbar{background:#fff;border:1px solid #ccc;border-radius:9px;padding:6px 12px;flex-shrink:0;display:flex;align-items:center;gap:0}
+/* Parte 3 v1.9.4.4: overflow:hidden garante que nada (ex.: o chevron) "saia" da
+   barra arredondada; min-width:0 permite o flex encolher os filhos. */
+.topbar{background:#fff;border:1px solid #ccc;border-radius:9px;padding:6px 12px;flex-shrink:0;display:flex;align-items:center;gap:0;overflow:hidden;min-width:0}
 /* Bloco nome */
-.tb-name{flex-shrink:0;padding-right:12px;border-right:1px solid #e0e0da}
-.an{font-size:14px;font-weight:700;color:#111;line-height:1.2}
-.as-dev{font-size:8px;color:#bbb;line-height:1.2}
+.tb-name{flex-shrink:1;min-width:0;padding-right:12px;border-right:1px solid #e0e0da;overflow:hidden}
+.an{font-size:14px;font-weight:700;color:#111;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-dev{font-size:8px;color:#bbb;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Bloco stats vagas */
 .tb-stats{display:flex;gap:0;flex-shrink:0;padding:0 12px;border-right:1px solid #e0e0da}
 .tb-stat{text-align:center;padding:0 8px;border-right:1px solid #eee}
@@ -35,9 +37,11 @@ html.font-large{zoom:1.13}
 .tb-ob{display:flex;gap:0;flex-shrink:0;padding:0 12px;border-right:1px solid #e0e0da}
 .tb-ob-lbl{font-size:8px;color:#A32D2D;font-weight:600;margin-bottom:2px;white-space:nowrap}
 /* Relógio + toggle passeio */
-.tb-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.tb-right{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0}
 .clk{font-size:10px;color:#888}
-.pt-arrow{font-size:10px;color:#888;cursor:pointer;user-select:none;padding:4px 6px;border-radius:5px;border:1px solid #e0e0da;background:#f5f4f0;line-height:1}
+/* Parte 3 v1.9.4.4: box-sizing:border-box + flex-shrink:0 + centralização para o
+   chevron ficar bem encaixado DENTRO da barra (celular e tablet), sem transbordar. */
+.pt-arrow{font-size:10px;color:#888;cursor:pointer;user-select:none;padding:4px 6px;border-radius:5px;border:1px solid #e0e0da;background:#f5f4f0;line-height:1;box-sizing:border-box;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:22px}
 .pt-arrow:active{background:#e0e0da}
 
 /* ── PAINEL PASSEIO SLIM ── */
@@ -59,7 +63,7 @@ html.font-large{zoom:1.13}
 
 /* PAINEL RETRÁTIL */
 .pt-left{display:flex;align-items:center;gap:8px}
-.pt-arrow{font-size:11px;color:#888;transition:transform .25s;display:inline-block}
+.pt-arrow{font-size:11px;color:#888;transition:transform .25s;display:inline-flex}
 .pt-arrow.open{transform:rotate(180deg)}
 .panel-body{overflow:hidden;flex-shrink:0}
 .panel-body.open{max-height:200px;opacity:1}
@@ -739,7 +743,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.3.3 -->
+<!-- GarageSpot v1.9.4.4 -->
 <body>
 <div class="page">
 
@@ -1275,10 +1279,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.3.3: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.3.3';
+// v1.9.4.4: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.4';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-05-30';
+const GS_BUILD_TS = '2026-05-31';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
@@ -1933,7 +1937,7 @@ function executarMove(ms, destId, usuario){
       if(hospedagem) S[destId].hospedagem=hospedagem;
       saveV(destId,ms.apt,ms.model,ms.color,ms.plate,ms.guest,ms.obs);
       addHistorico(ms.apt,'movimentacao_vaga',destId,'Movido de '+ms.id+' para '+destId,usuarioStr,hospedagem);
-      refByApt(ms.apt);upd();closeOv();setTimeout(positionPilares,150);
+      refByApt(ms.apt);upd();_refrescarRecargaTodos();closeOv();setTimeout(positionPilares,150);
     };
   } else {
     desfazOrigem();
@@ -1942,8 +1946,20 @@ function executarMove(ms, destId, usuario){
     if(hospedagem) S[destId].hospedagem=hospedagem;
     saveV(destId,ms.apt,ms.model,ms.color,ms.plate,ms.guest,ms.obs);
     addHistorico(ms.apt,'movimentacao_vaga',destId,'Movido de '+ms.id+' para '+destId,usuarioStr,hospedagem);
-    refByApt(ms.apt);upd();setTimeout(positionPilares,150);
+    refByApt(ms.apt);upd();_refrescarRecargaTodos();setTimeout(positionPilares,150);
   }
+}
+
+// Parte 2 v1.9.4.4: após qualquer movimentação (drag&drop) re-renderiza o ícone de
+// recarga (⚡/bateria) em TODOS os pontos. `ref()` só desenha o ícone em vagas
+// ocupadas, então mover um carro para FORA de uma vaga de recarga (ex.: 8C→outra)
+// deixava a vaga livre sem o raio. Espelha o que rebuildTable/applyModulos já fazem.
+function _refrescarRecargaTodos(){
+  try {
+    if(typeof VAGAS_RECARGA!=='undefined' && typeof refRecarga==='function'){
+      Object.keys(VAGAS_RECARGA).forEach(function(id){ refRecarga(id); });
+    }
+  } catch(e){ console.warn('[recarga] refresh pós-move falhou:', e); }
 }
 
 // Touch & Mouse events para arrastar
@@ -2127,19 +2143,15 @@ function clkV(id){
   // v1.9.4.3.2: se estamos em modo "escolher destino do remanejamento de recarga", consome o toque
   if(typeof _rcConsumirRemanejamento === 'function' && _rcConsumirRemanejamento(id)) return;
   cur=id;
-  // Bug T v1.9.4.1.8: se MODO_DESIGNACAO foi perdido (crash JS, garbage collection do
-  // webview Android, etc.) mas o banner ainda está visível, RESTAURAR do sessionStorage.
+  // Bug T v1.9.4.4: se MODO_DESIGNACAO foi perdido (reload/recriação do webview
+  // Android, GC, etc.), RESTAURAR do backup persistente — SEM depender do banner
+  // estar visível (depois de um reload o banner some, mas a designação continua
+  // pendente). _restaurarModoDesignacao é auto-validado pela hospedagem.
+  if(typeof MODO_DESIGNACAO==='undefined' || !MODO_DESIGNACAO){
+    _restaurarModoDesignacao();
+  }
   const _bannerEl=document.getElementById('banner-designar');
   const _bannerVis=_bannerEl && _bannerEl.style.display!=='none';
-  if((typeof MODO_DESIGNACAO==='undefined' || !MODO_DESIGNACAO) && _bannerVis){
-    try {
-      const bk=sessionStorage.getItem('_modoDesignacaoBackup');
-      if(bk){
-        MODO_DESIGNACAO=JSON.parse(bk);
-        console.warn('[BUG T] MODO_DESIGNACAO restaurado do backup sessionStorage:', JSON.stringify(MODO_DESIGNACAO));
-      }
-    } catch(e){ console.error('[BUG T] erro restaurando backup:', e); }
-  }
   // Bug T v1.9.4.1.7: log para rastrear MODO_DESIGNACAO no momento do toque
   console.log('[BUG T] clkV id=', id,
     'MODO_DESIGNACAO=', MODO_DESIGNACAO ? JSON.stringify({gs:MODO_DESIGNACAO.gs, origem:MODO_DESIGNACAO.origem, operador:MODO_DESIGNACAO.operador}) : 'null',
@@ -2163,6 +2175,15 @@ function clkV(id){
 let _clkVUsuario = null;
 
 function _clkVDesignar(id){
+  // Bug T v1.9.4.4: cinto-e-suspensórios. Antes de pedir o operador (fluxo legado
+  // de novo check-in pela vaga), verifica se na verdade há uma designação pendente
+  // cujo estado se perdeu. Se houver, reroteia para o fluxo de designação correto
+  // (que NÃO re-pergunta o operador no pos_checkin) — eliminando a janela
+  // "Confirma · operador · cargo".
+  if(!MODO_DESIGNACAO && _restaurarModoDesignacao()){
+    _clkVModoDesignacao(id);
+    return;
+  }
   confirmarUsuario('designando a vaga '+id, function(usuario){
     _clkVUsuario=usuario;
     _clkVPedirApt(id, usuario);
@@ -2895,23 +2916,36 @@ function showDet(id, fromPasseio){
   document.getElementById('btn-edit').onclick=()=>showEdit(id, fromPasseio);
 }
 
-// Edição de detalhes — formulário compacto
+// Parte 6 v1.9.4.4: EDIÇÃO COMPLETA DE DETALHES — formulário = check-in (mesmos campos),
+// pré-preenchido, tudo editável (apto, modelo, cor, placa, hóspede, observações, data de
+// saída prevista) SEM precisar de check-out + novo check-in. Registra auditoria de quem
+// mudou o quê (campo: 'de' → 'para') e mantém anexos/vistorias. Os PDFs gerados depois
+// usam os dados atualizados (inclusive o novo apto no nome do arquivo).
 function showEdit(id, fromPasseio){
   const d = fromPasseio ? PASSEIO[id] : S[id];
+  if(!d){ closeOv(); return; }
+  const aptAtual = fromPasseio ? id : (d.apt||'');
+  const hospNum  = d.hospedagem || '';
+  const hosp     = hospNum ? HOSPEDAGENS[hospNum] : null;
+  const saidaAtual = (hosp && hosp.saida_prevista) || '';
   const mc=document.getElementById('mc');
   mc.innerHTML=`
-    <div class="mt">✏️ Editar — ${fromPasseio?'Apt. '+id:id}</div>
-    <div class="ms" style="margin-bottom:10px">Campos opcionais</div>
+    <div class="mt">✏️ Editar — ${fromPasseio?'Apt. '+_vtEsc(id):_vtEsc(id)}${hospNum?' · '+_vtEsc(hospNum):''}</div>
+    <div class="ms" style="margin-bottom:10px">Atualize os dados do check-in. A vaga continua sendo alterada pelo Mapa.</div>
+    <label class="fl">Apartamento <span class="req">*</span></label>
+    <input class="fi" id="e-apt" value="${_vtEsc(aptAtual)}" inputmode="numeric" placeholder="Ex: 301" autocomplete="off">
     <label class="fl">Modelo</label>
-    <input class="fi" id="e-mod" value="${d.model||''}" placeholder="Ex: Civic, HB20...">
+    <input class="fi" id="e-mod" value="${_vtEsc(d.model||'')}" placeholder="Ex: Civic, HB20...">
     <label class="fl">Cor</label>
-    <input class="fi" id="e-cor" value="${d.color||''}" placeholder="Ex: Prata, Preto...">
+    <input class="fi" id="e-cor" value="${_vtEsc(d.color||'')}" placeholder="Ex: Prata, Preto...">
     <label class="fl">Placa</label>
-    <input class="fi" id="e-pla" value="${d.plate||''}" placeholder="ABC1D23" style="text-transform:uppercase">
+    <input class="fi" id="e-pla" value="${_vtEsc(d.plate||'')}" placeholder="ABC1D23" style="text-transform:uppercase">
     <label class="fl">Hóspede</label>
-    <input class="fi" id="e-gst" value="${d.guest||''}" placeholder="Nome completo">
+    <input class="fi" id="e-gst" value="${_vtEsc(d.guest||'')}" placeholder="Nome completo">
     <label class="fl">Observações</label>
-    <input class="fi" id="e-obs" value="${d.obs||''}" placeholder="Ex: chave na recepção...">
+    <input class="fi" id="e-obs" value="${_vtEsc(d.obs||'')}" placeholder="Ex: chave na recepção...">
+    <label class="fl">Data de saída prevista</label>
+    <input class="fi" id="e-saida" type="date" value="${_vtEsc(saidaAtual)}">
     <div class="b2">
       <button class="bcx" id="e-back">← Voltar</button>
       <button class="bsv" id="e-save">Salvar</button>
@@ -2919,35 +2953,82 @@ function showEdit(id, fromPasseio){
   document.getElementById('ov').classList.add('on');
   document.getElementById('e-back').onclick=()=>showDet(id, fromPasseio);
   document.getElementById('e-save').onclick=function(){
-    const model=document.getElementById('e-mod').value.trim();
-    const color=document.getElementById('e-cor').value.trim();
-    const plate=document.getElementById('e-pla').value.trim().toUpperCase();
-    const guest=document.getElementById('e-gst').value.trim();
-    const obs  =document.getElementById('e-obs').value.trim();
+    const novoApt=(document.getElementById('e-apt').value||'').trim();
+    const model=(document.getElementById('e-mod').value||'').trim();
+    const color=(document.getElementById('e-cor').value||'').trim();
+    const plate=(document.getElementById('e-pla').value||'').trim().toUpperCase();
+    const guest=(document.getElementById('e-gst').value||'').trim();
+    const obs  =(document.getElementById('e-obs').value||'').trim();
+    const saida=(document.getElementById('e-saida').value||'').trim();
+    // Apartamento é obrigatório (igual ao check-in)
+    if(!novoApt){ const e=document.getElementById('e-apt'); e.classList.add('err'); e.focus(); e.addEventListener('input',()=>e.classList.remove('err'),{once:true}); return; }
 
-    const campos=[['Modelo','model',model],['Cor','color',color],
-                  ['Placa','plate',plate],['Hóspede','guest',guest],['Obs','obs',obs]];
-    const apt = fromPasseio ? id : (S[id]?.apt||'');
-    const atual = fromPasseio ? PASSEIO[id] : S[id];
-    const alterados=campos.filter(([l,k,v])=>v!==(atual[k]||'')).map(([l,k,v])=>`${l}: ${v||'—'}`);
+    // Diffs (campo: 'de' → 'para') — inclui apartamento e data de saída
+    const fmtData=function(iso){ if(!iso) return '—'; const p=String(iso).split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:iso; };
+    const mudancas=[];
+    if(novoApt!==(aptAtual||'')) mudancas.push("Apartamento: '"+(aptAtual||'—')+"' → '"+novoApt+"'");
+    if(model!==(d.model||'')) mudancas.push("Modelo: '"+(d.model||'—')+"' → '"+(model||'—')+"'");
+    if(color!==(d.color||'')) mudancas.push("Cor: '"+(d.color||'—')+"' → '"+(color||'—')+"'");
+    if(plate!==(d.plate||'')) mudancas.push("Placa: '"+(d.plate||'—')+"' → '"+(plate||'—')+"'");
+    if(guest!==(d.guest||'')) mudancas.push("Hóspede: '"+(d.guest||'—')+"' → '"+(guest||'—')+"'");
+    if(obs!==(d.obs||'')) mudancas.push("Observações: '"+(d.obs||'—')+"' → '"+(obs||'—')+"'");
+    if(saida!==(saidaAtual||'')) mudancas.push("Data de saída: '"+fmtData(saidaAtual)+"' → '"+fmtData(saida)+"'");
+    if(mudancas.length===0){ showToast('Nenhuma alteração',2000); showDet(id, fromPasseio); return; }
 
     confirmarUsuario('editando os dados',function(usuario){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
-      const hospNum=(fromPasseio?PASSEIO[id]?.hospedagem:S[id]?.hospedagem)||'';
+      const aptMudou = novoApt!==(aptAtual||'');
+      // 1) Aplicar em S / PASSEIO (estado da vaga / passeio)
       if(fromPasseio){
-        PASSEIO[id].model=model;PASSEIO[id].color=color;PASSEIO[id].plate=plate;PASSEIO[id].guest=guest;PASSEIO[id].obs=obs;
-        if(alterados.length) addHistorico(id,'edicao','',`Editado: ${alterados.join(' · ')}`,usuarioStr,hospNum);
-        upd();
+        const obj=PASSEIO[id];
+        obj.model=model;obj.color=color;obj.plate=plate;obj.guest=guest;obj.obs=obs;
+        if(aptMudou){
+          PASSEIO[novoApt]=obj; if(novoApt!==id) delete PASSEIO[id];
+          // re-key anexos p_<apt>
+          const ko='p_'+id, kn='p_'+novoApt;
+          if(ANEXOS[ko]){ ANEXOS[kn]=(ANEXOS[kn]||[]).concat(ANEXOS[ko]); delete ANEXOS[ko]; saveAnexos(); }
+        }
       } else {
-        S[id].model=model;S[id].color=color;S[id].plate=plate;S[id].guest=guest;S[id].obs=obs;
+        const obj=S[id];
+        obj.apt=novoApt;obj.model=model;obj.color=color;obj.plate=plate;obj.guest=guest;obj.obs=obs;
         if(id.endsWith('B')&&S[id].mergedMaster){
           const aId=id.slice(0,-1)+'A';
-          if(S[aId]){S[aId].model=model;S[aId].color=color;S[aId].plate=plate;S[aId].guest=guest;S[aId].obs=obs;}
+          if(S[aId]){S[aId].apt=novoApt;S[aId].model=model;S[aId].color=color;S[aId].plate=plate;S[aId].guest=guest;S[aId].obs=obs;}
         }
-        if(alterados.length && apt) addHistorico(apt,'edicao',id,`Editado: ${alterados.join(' · ')}`,usuarioStr,hospNum);
-        saveData();
       }
-      showDet(id, fromPasseio);
+      // 2) Aplicar na HOSPEDAGEM (fonte de verdade do PDF/nome) + data de saída
+      if(hosp){
+        hosp.apt=novoApt; hosp.model=model; hosp.color=color; hosp.plate=plate; hosp.guest=guest; hosp.obs=obs;
+        hosp.saida_prevista=saida;
+        saveHospedagens();
+      }
+      // 3) Vistorias da hospedagem: refletir o novo apto (nome do arquivo coerente)
+      if(aptMudou && typeof VISTORIAS!=='undefined'){
+        for(const vid in VISTORIAS){
+          const v=VISTORIAS[vid]; if(!v) continue;
+          if((hospNum && (v.hospedagem===hospNum||v.hospedagem_gs===hospNum)) || (!hospNum && v.apt===aptAtual)){
+            v.apt=novoApt; if(v.dados) v.dados.apt=novoApt;
+          }
+        }
+        if(typeof saveVistorias==='function') saveVistorias();
+      }
+      // 4) Histórico: migrar eventos DESTA hospedagem do apto antigo p/ o novo (preserva o "ℹ️")
+      if(aptMudou && aptAtual && HISTORICO[aptAtual]){
+        const ficam=[], movem=[];
+        HISTORICO[aptAtual].forEach(function(e){ ((e && hospNum && e.hospedagem===hospNum) ? movem : ficam).push(e); });
+        if(movem.length){
+          HISTORICO[novoApt]=(HISTORICO[novoApt]||[]).concat(movem);
+          if(ficam.length) HISTORICO[aptAtual]=ficam; else delete HISTORICO[aptAtual];
+          saveHistorico();
+        }
+      }
+      // 5) Auditoria: registra o que mudou + por quem (aparece no painel e nos detalhes)
+      addHistorico(novoApt,'edicao', fromPasseio?'':id, 'Edição de detalhes — '+mudancas.join(' · '), usuarioStr, hospNum);
+      // 6) Persistir + atualizar UI
+      if(fromPasseio) upd(); else saveData();
+      try { if(typeof renderAgrupadoresPainel==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderAgrupadoresPainel(); } catch(e){}
+      showToast('✓ Dados atualizados',2500);
+      showDet(fromPasseio?novoApt:id, fromPasseio);
     });
   };
 }
@@ -3678,7 +3759,7 @@ function renderPainelDia(){
         <div class="grupo-tile laranja grupo-tile-full" onclick="event.stopPropagation();abrirExpansao('hospedados','passeio')"><div class="grupo-tile-num" id="hosp-passeio">0</div><div class="grupo-tile-label">A passeio</div></div>
       </div>
     </div>
-    <div class="grupo-card" id="grupo-recarga" data-grupo="recarga" onclick="abrirExpansao('recarga')">
+    <div class="grupo-card" id="grupo-recarga" data-grupo="recarga" onclick="navTo('recarga')">
       <div class="grupo-chevron">›</div>
       <div class="grupo-titulo">
         <div class="grupo-icon">⚡</div>
@@ -3843,10 +3924,11 @@ function abrirExpansao(grupo, filtroInicial){
       bindHandlersHospedados();
       break;
     case 'recarga':
-      titulo.textContent='⚡ Recarga';
-      sub.textContent='Em desenvolvimento';
-      corpo.innerHTML=renderExpansaoRecarga();
-      break;
+      // Parte 4 v1.9.4.4: módulo Recarga concluído — leva direto ao painel funcional
+      // de Recarga (sem mais a tela "Em desenvolvimento").
+      fecharExpansao();
+      if(typeof navTo==='function') navTo('recarga');
+      return;
     default: return;
   }
   overlay.classList.add('on');
@@ -4003,7 +4085,7 @@ function renderExpansaoHoje(filtro){
     if(outras.length===0){
       html+='<div class="exp-empty">Nenhuma outra movimentação hoje</div>';
     } else {
-      const tLabel={saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria Criada',vistoria_assinada:'Vistoria Assinada',vistoria_adicional_criada:'Vistoria Adicional'};
+      const tLabel={saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria Criada',vistoria_assinada:'Vistoria Assinada',vistoria_adicional_criada:'Vistoria Adicional',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada'};
       for(const e of outras){
         const hora=_fmtHrPainel(e.ts);
         const isDesignacao=e.tipo==='movimentacao_vaga'||(e.tipo==='checkin' && e.vaga);
@@ -4250,12 +4332,32 @@ function bindHandlersHospedados(){
   // onclick inline já lida com cliques — nada a fazer aqui
 }
 
+// Parte 4 v1.9.4.4: módulo Recarga concluído. Esta função deixou de exibir o
+// placeholder "Em breve" — mostra um resumo real (carregando/fila/pontos livres)
+// com atalho para o painel funcional. Mantida por compatibilidade; o agrupamento
+// do painel agora chama navTo('recarga') diretamente.
 function renderExpansaoRecarga(){
-  return '<div class="exp-em-breve">'+
-    '<div class="exp-em-breve-icon">⚡</div>'+
-    '<div class="exp-em-breve-titulo">Em breve</div>'+
-    '<div class="exp-em-breve-sub">Funcionalidade em desenvolvimento.<br>Disponível na próxima atualização.</div>'+
-    '</div>';
+  let carregando=0, fila=0, livres=0;
+  try {
+    if(typeof RECARGAS!=='undefined' && RECARGAS) carregando=Object.values(RECARGAS).filter(function(r){return r&&r.ativo;}).length;
+    if(typeof FILA_RECARGA!=='undefined' && Array.isArray(FILA_RECARGA)) fila=FILA_RECARGA.length;
+    if(typeof PONTOS_RECARGA!=='undefined' && Array.isArray(PONTOS_RECARGA)){
+      PONTOS_RECARGA.forEach(function(p){
+        const vagas=(p&&p.vagas)||[];
+        const algumOcupado=vagas.some(function(v){ return S[v]&&S[v].status==='occupied'; });
+        if(!algumOcupado) livres++;
+      });
+    } else if(typeof VAGAS_RECARGA!=='undefined'){
+      Object.keys(VAGAS_RECARGA).forEach(function(v){ if(!(S[v]&&S[v].status==='occupied')) livres++; });
+    }
+  } catch(e){}
+  return ''+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+      '<div class="grupo-tile amarelo"><div class="grupo-tile-num">'+carregando+'</div><div class="grupo-tile-label">Carregando</div></div>'+
+      '<div class="grupo-tile cinza"><div class="grupo-tile-num">'+fila+'</div><div class="grupo-tile-label">Na fila</div></div>'+
+      '<div class="grupo-tile"><div class="grupo-tile-num">'+livres+'</div><div class="grupo-tile-label">Pontos livres</div></div>'+
+    '</div>'+
+    '<button class="bsv" style="width:100%" onclick="fecharExpansao();navTo(\'recarga\')">⚡ Abrir painel de Recarga</button>';
 }
 
 // ── GESTÃO COM PIN ────────────────────────────────────────────────────────
@@ -5353,6 +5455,51 @@ let _nciSigDpr = 1;
 let _nciSigCtx = null;
 let _nciSigBackup = null;         // backup base64 da assinatura para visibilitychange
 let _nciDebugTimer = null;        // timer para esconder marcador verde de debug
+
+// ════════════════════════════════════════════════════════════════════════
+// Bug T (v1.9.4.4) — CAUSA-RAIZ DEFINITIVA: o estado transitório MODO_DESIGNACAO
+// é PERDIDO entre "Designar agora" e o toque na vaga quando o WebView Android é
+// recarregado/recriado (memória, troca de app, re-checagem de licença no
+// visibilitychange). Como `let MODO_DESIGNACAO` volta a null e o banner some, o
+// toque numa vaga livre caía no fluxo LEGADO `_clkVDesignar` → `confirmarUsuario`
+// → "Confirma · operador · cargo". As correções v1.9.4.1.1/.3.1 (anti-clique
+// fantasma) nunca cobriram isso. Solução: persistir MODO_DESIGNACAO no
+// localStorage (sobrevive ao process-kill, ao contrário do sessionStorage) e
+// restaurar de forma auto-validada (só se a hospedagem ainda existe e está
+// 'aguardando_designacao'), sem depender do banner estar visível.
+const MODO_DESIGNACAO_LS = 'garagespot_modo_designacao';
+const MODO_DESIGNACAO_TTL = 6 * 3600 * 1000; // 6h
+function _persistirModoDesignacao(){
+  try {
+    if(!MODO_DESIGNACAO){ _limparBackupDesignacao(); return; }
+    const payload = JSON.stringify(Object.assign({}, MODO_DESIGNACAO, {_bkTs:Date.now()}));
+    sessionStorage.setItem('_modoDesignacaoBackup', payload);
+    localStorage.setItem(MODO_DESIGNACAO_LS, payload);
+  } catch(e){}
+}
+function _limparBackupDesignacao(){
+  try { sessionStorage.removeItem('_modoDesignacaoBackup'); } catch(e){}
+  try { localStorage.removeItem(MODO_DESIGNACAO_LS); } catch(e){}
+}
+// Restaura MODO_DESIGNACAO se foi perdido. Retorna true se restaurou.
+// Auto-validação: só restaura se a hospedagem referenciada ainda existe e
+// continua 'aguardando_designacao' (se já foi designada→'ativa', descarta o backup).
+function _restaurarModoDesignacao(){
+  if(MODO_DESIGNACAO) return true;
+  let bk=null;
+  try { bk = localStorage.getItem(MODO_DESIGNACAO_LS) || sessionStorage.getItem('_modoDesignacaoBackup'); } catch(e){}
+  if(!bk) return false;
+  let m=null; try { m=JSON.parse(bk); } catch(e){ _limparBackupDesignacao(); return false; }
+  if(!m || !m.gs){ _limparBackupDesignacao(); return false; }
+  // TTL
+  if(m._bkTs && (Date.now()-m._bkTs) > MODO_DESIGNACAO_TTL){ _limparBackupDesignacao(); return false; }
+  // Hospedagem ainda aguardando vaga?
+  const h = (typeof HOSPEDAGENS!=='undefined') ? HOSPEDAGENS[m.gs] : null;
+  if(!h || h.status!=='aguardando_designacao'){ _limparBackupDesignacao(); return false; }
+  MODO_DESIGNACAO = m;
+  console.warn('[BUG T v1.9.4.4] MODO_DESIGNACAO restaurado do backup persistente:', m.gs, m.origem);
+  return true;
+}
 
 // ════════════════════════════════════════════════════════════════════════
 // Abertura do NCI
@@ -7165,9 +7312,10 @@ function _nciStep5DesignarAgora(ev){
     operador:operadorPreFilled,
     timestamp:Date.now()
   };
-  // Bug T v1.9.4.1.8: backup defensivo do estado de designação (caso algo zere MODO_DESIGNACAO no Android)
-  try { sessionStorage.setItem('_modoDesignacaoBackup', JSON.stringify(MODO_DESIGNACAO)); } catch(e){}
-  console.log('[BUG T] MODO_DESIGNACAO setado e backup salvo:', JSON.stringify(MODO_DESIGNACAO));
+  // Bug T v1.9.4.4: backup PERSISTENTE (localStorage + sessionStorage) — sobrevive
+  // ao reload/recriação do webview Android, ao contrário do sessionStorage isolado.
+  _persistirModoDesignacao();
+  console.log('[BUG T] MODO_DESIGNACAO setado e backup persistente salvo:', JSON.stringify(MODO_DESIGNACAO));
   // Fechar NCI sem confirmação (commit já feito)
   const ov=document.getElementById('nci-overlay');
   // Bug T v1.9.4.3.1: armar escudo ANTES de remover o overlay (absorve click sintético do toque)
@@ -7242,8 +7390,8 @@ function _atualizarBannerDesignacao(){
 
 function cancelarDesignacao(){
   MODO_DESIGNACAO=null;
-  // Bug T v1.9.4.1.8: limpar backup
-  try { sessionStorage.removeItem('_modoDesignacaoBackup'); } catch(e){}
+  // Bug T v1.9.4.4: limpar backup persistente (local + session)
+  _limparBackupDesignacao();
   _atualizarBannerDesignacao();
   if(typeof showToast==='function') showToast('Designação cancelada — disponível em "Aguardando vaga"',3000);
   if(typeof renderPainelDia==='function') renderPainelDia();
@@ -7265,8 +7413,8 @@ function ativarDesignacaoHosp(gs){
     operador:null,   // Bug E: vai perguntar ao confirmar (origem painel)
     timestamp:Date.now()
   };
-  // Bug T v1.9.4.1.8: backup defensivo
-  try { sessionStorage.setItem('_modoDesignacaoBackup', JSON.stringify(MODO_DESIGNACAO)); } catch(e){}
+  // Bug T v1.9.4.4: backup persistente (local + session)
+  _persistirModoDesignacao();
   if(typeof navTo==='function') navTo('mapa');
   _atualizarBannerDesignacao();
   if(typeof showToast==='function') showToast('Toque numa vaga livre para guardar o veículo',3500);
@@ -7398,8 +7546,8 @@ function _aplicarDesignacaoExec(vagaId){
   _vtHaptic();
   // Limpar MODO_DESIGNACAO
   MODO_DESIGNACAO=null;
-  // Bug T v1.9.4.1.8: limpar backup de sessionStorage
-  try { sessionStorage.removeItem('_modoDesignacaoBackup'); } catch(e){}
+  // Bug T v1.9.4.4: limpar backup persistente (local + session)
+  _limparBackupDesignacao();
   _atualizarBannerDesignacao();
   // Mover anexo h_<gs> para v_<vagaId> (junta vistoria com a vaga)
   // Bug L v1.9.4.1.5: validar migração com logs
@@ -7902,6 +8050,11 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   saveRecargas();
   agendarAlertaRecarga(vagaId);
   if(typeof ref==='function') ref(vagaId);
+  // Parte 5 v1.9.4.4: registrar como movimentação (aparece no painel e nos detalhes "i")
+  if(apt && typeof addHistorico==='function'){
+    const fimHr=new Date(fim).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    addHistorico(apt,'recarga_iniciada',vagaId,'Recarga iniciada · término previsto '+fimHr,usuarioStr,hospedagem);
+  }
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   showToast('⚡ Recarga iniciada — Vaga '+vagaId);
 }
@@ -8142,6 +8295,12 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   };
   if(typeof HISTORICO_RECARGAS !== 'undefined' && Array.isArray(HISTORICO_RECARGAS)) HISTORICO_RECARGAS.push(entrada);
   if(typeof saveRecargaHist === 'function') saveRecargaHist();
+  // Parte 5 v1.9.4.4: registrar como movimentação (painel + detalhes "i")
+  if(r.apt && typeof addHistorico==='function'){
+    const valTxt = entrada.cortesia ? 'Cortesia' : ('R$ '+valor.toFixed(2).replace('.',','));
+    const durTxt = (typeof _fmtDurRecarga==='function') ? _fmtDurRecarga(mins) : (mins+'min');
+    addHistorico(r.apt,'recarga_encerrada',vagaId,'Recarga encerrada · '+durTxt+' · '+valTxt,usuarioStr,r.hospedagem);
+  }
   // Liberar ponto: encerrar recarga
   RECARGAS[vagaId].ativo = false;
   RECARGAS[vagaId].confirmada = true;
@@ -9863,9 +10022,10 @@ function showToast(msg,duration){
 
 // ── MODAL HISTÓRICO ───────────────────────────────────────────────────────
 function showHistoricoModal(apt, hospedagem, detId, detFp){
-  const hist=getHistorico(apt);
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída'};
-  const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D'};
+  // Parte 5 v1.9.4.4: ordenar da mais recente → mais antiga (antes era ordem de inserção)
+  const hist=getHistorico(apt).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada'};
+  const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D',recarga_iniciada:'#BA7517',recarga_encerrada:'#1F9A5F'};
   const titulo=hospedagem?`ℹ️ Apt. ${apt} · ${hospedagem}`:`ℹ️ Apt. ${apt}`;
   const cardsHTML=hist.length===0
     ?'<span style="font-size:12px;color:#bbb;font-style:italic">Sem eventos registrados</span>'
@@ -11322,6 +11482,15 @@ checkLicense().then(async (ativo)=>{
       if(restored) Object.keys(S).forEach(id=>ref(id));
       attachDrag();
       applyModulos();
+      // Bug T v1.9.4.4: se o webview recarregou no meio de uma designação pendente,
+      // restaura MODO_DESIGNACAO do backup persistente (auto-validado pela hospedagem)
+      // para que o toque na vaga continue o fluxo correto, sem re-perguntar operador.
+      try {
+        if(_restaurarModoDesignacao()){
+          _atualizarBannerDesignacao();
+          if(typeof showToast==='function') showToast('Há um carro aguardando vaga — toque numa vaga livre no Mapa',3500);
+        }
+      } catch(e){ console.warn('[BUG T v1.9.4.4] restore init falhou:', e); }
       navTo('painel');
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
