@@ -21,10 +21,16 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - **Repo principal de edição:** `garagespot-app` (master)
 
 ## Estado atual
-- **Versão atual: v1.9.4.4** (Mapa + correções + **edição completa dos detalhes**).
+- **Versão atual: v1.9.4.5** (integridade de anexos/vistorias + correções de Recarga).
 - versionCode: **22** (sem APK desde v1.9.4.1.8)
 - Em produção (hotel): versão estável anterior à v1.8 — não atualizada nesta sequência.
-- **Próxima: v1.9.4.5** — Gestão + bugs gerais (qualidade de vida).
+- **Próxima: v1.9.4.6** — Detalhes/Mapa/Gestão menores + **Escalas** (plantão editável, turnos, funcionários).
+
+## Regra de integridade de anexos/vistorias (v1.9.4.5 — IMPORTANTE)
+- Anexos e vistorias são **sempre atados ao ID estável da hospedagem** (`h_<GSxxx>`), **nunca** à vaga nem ao apto, e **isolados por hospedagem**.
+- Permanecem juntos em **mudança de vaga** (drag&drop), **mudança de apto** (edição) e **passeio** (sair/voltar). Um **novo check-in nunca herda/sobrescreve** anexos de outra hospedagem (buffer do NCI commitado ao `gs` correto).
+- A **edição de apto NÃO re-chaveia mais anexos**; o **nome do PDF lê o apto atual da hospedagem**.
+- Resolver central: `getAnexoKey` → `h_<gs>` (com migração não destrutiva de chaves legadas `v_`/`p_`).
 
 ## Roadmap
 
@@ -35,11 +41,16 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 
 ### Pós-Recarga
 - ✅ **v1.9.4.4 — Mapa + correções + edição completa**: (1) **Bug T** eliminado — causa-raiz: `MODO_DESIGNACAO` era perdido no reload/recriação do webview Android e o toque na vaga caía no fluxo legado `_clkVDesignar`→`confirmarUsuario` ("Confirma · operador"); corrigido com backup PERSISTENTE em localStorage + restauração auto-validada pela hospedagem (em `clkV`, `_clkVDesignar` e no init), mantendo o escudo anti-clique-fantasma; (2) **ícone de recarga preservado no drag&drop** (`_refrescarRecargaTodos` após `executarMove`); (3) **chevron dentro da barra** do header (overflow/flex/box-sizing); (4) **agrupamento Recarga do dashboard** leva ao painel funcional (sem "Em desenvolvimento"); (5) **recargas registradas como movimentação** (início/encerramento) no painel e nos detalhes, **ordem mais recente → mais antiga**; (6) **EDIÇÃO COMPLETA DOS DETALHES**: formulário = check-in pré-preenchido, edita apto, modelo, cor, placa, hóspede, observações e **DATA DE SAÍDA** sem check-out + novo check-in; **toda alteração REGISTRADA** (campo: 'de' → 'para' + por quem); apto re-chaveado em S/HOSPEDAGENS/VISTORIAS/HISTORICO/anexos; **PDF gerado depois usa o novo apto** no nome.
-- ⏳ **v1.9.4.5 — Gestão + bugs gerais** (qualidade de vida): incluir/excluir funcionários do plantão; **botão "Voltar para Gestão"** nas opções (hoje só tem "Fechar"); **cadastro de apartamentos** (opcional — reconhece apto inexistente e pede correção; funciona com ou sem lista; serve para hotel **e** estacionamento comum).
-- ⏳ **v1.9.4.6 — Tema** (temas em Gestão) + **Relatórios** + **Histórico**.
-- ⏳ **v1.9.4.7 — Backup no Google Drive**.
+- ✅ **v1.9.4.5 — Integridade de anexos/vistorias + correções de Recarga**: (A1) anexos/vistorias atados ao **ID estável da hospedagem** (`h_<gs>`) — persistem em mudança de vaga/apto/passeio; (A2) **isolamento** por hospedagem (corrigido vazamento 0707→1234; buffer NCI commitado ao gs certo); (B3) **documento de recarga** salvo em anexos + incluído no **PDF de check-out**; (B4) **ícones de recarga somem ao excluir o ponto** (`_refrescarRecargaTodos` remove órfãos); (B5) **arredondamento por fração mais próxima** (gestor escolhe 15/30; sem direção); (B6) **alerta** liga/desliga + **vibração** liga/desliga (toque/som = futuro, requer APK); (B7) **remanejamento** do ponto compartilhado considera **as duas vagas** (8C **e** 9C) e pergunta qual mover.
+- ⏳ **v1.9.4.6 — Detalhes/Mapa/Gestão menores + Escalas** (merge dos antigos 7+8): editar = formulário "Dados" do check-in pré-preenchido (mesmos campos/obrigatoriedades; **não** inicia novo check-in; registra o que mudou + por quem); **lupa de busca visível só na aba Mapa**; botão **"Voltar para Gestão"** em cada opção. **+ Escalas (feature grande):** **plantão editável** (incluir/remover pessoas no plantão atual sem mudar horários cadastrados; some na virada do plantão); **Cadastro de Turnos** com escala **Padrão** (4 turnos manhã/tarde/noite/madrugada, cada um habilitável + início/fim) e **12x36** (Dia A: dia+noite; Dia B: dia+noite; alterna dia sim/dia não); **Cadastro de Funcionários** com escolha de escala por funcionário.
+- ⏳ **v1.9.4.7 — Tema** (em Gestão) + **Relatórios** + **Histórico**.
+- ⏳ **v1.9.4.8 — Backup no Google Drive**.
+- 🅿️ **A decidir** ("vamos ver depois"): cadastro de apartamentos opcional (reconhece apto inexistente e pede correção; hotel e estacionamento comum).
 - 🟢 **Atualização do hotel** — deploy em produção (`garagespot-hotelgumz`).
 - ⏳ (pós-hotel) Patches de correção + novas ideias de qualidade de vida do uso real.
+
+### Verificação pendente
+- Confirmar que **designar a partir das pendências** (card "Aguardando vaga" → painel) ainda **pergunta o operador** (origem `painel`). Se o fix do Bug T (v1.9.4.4) tiver suprimido, recolocar.
 
 ### Iniciativas maiores (futuro)
 - ⏳ **Módulo Reservas / 3 apps:** GarageSpot (operação) + Reserva de Garagem (reservas futuras) + Combinado (as reservas migram para o GarageSpot; manobristas veem chegadas do dia e futuras). Inclui reestruturação do painel ("Hoje" → "Movimentações"; novo "Programação de Reservas").
@@ -63,10 +74,14 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - **Modos de tempo ao iniciar:** quantidade de horas OU hora final (um ajusta o outro).
 - **Lista de carros priorizada:** 1º carro(s) da(s) vaga(s) do ponto (compartilhado = os dois separados); 2º fila; 3º demais. **Remanejamento** só quando necessário e pedido (banner sticky no mapa pedindo tap em vaga livre + `executarMove`).
 - **Encerramento com cobrança:** até programado / até agora / outro horário; R$ = horas × valor/hora com arredondamento; **cortesia (valor 0) = R$ 0,00**.
-- **Configuração em Gestão:** módulo on/off, pontos (compartilhado/individual), valor/hora, arredondamento (15/30, cima/baixo), cortesia, alertas.
+- **Configuração em Gestão:** módulo on/off, pontos (compartilhado/individual), valor/hora, **fração de cobrança (15/30 min — arredonda para o múltiplo MAIS PRÓXIMO, sem direção)** *(v1.9.4.5)*, cortesia, **alerta (liga/desliga) + vibração (liga/desliga)** *(toque/som = futuro, requer APK)*.
+- **Arredondamento (v1.9.4.5):** fração mais próxima — ex. (15min) 1h05→1h00, 1h10→1h15. (Antes era "cima/baixo" — removido.)
+- **Documento de recarga (v1.9.4.5):** comprovante PNG salvo nos **anexos da hospedagem** (`tipo:'recarga'`, `h_<gs>`) e incluído no **PDF de check-out**.
+- **Remanejamento (v1.9.4.5):** no ponto compartilhado com **as duas vagas ocupadas**, informa ambas (8C e 9C) e pergunta **qual carro mover**; individual (1D) oferece mover o carro ocupante.
+- **Ícones (v1.9.4.5):** **somem ao excluir o ponto** (`_refrescarRecargaTodos` remove órfãos).
 - **Tempo exibido** em horas quando > 60 min ("3h 51min"); minutos quando < 60 min ("45min").
 - **Fila:** botão "+ Adicionar carro à fila" no painel; ✕ para remover; quando ponto vagar, `_verificarFilaRecarga` oferece designar o próximo via `showModalAux`.
-- **Após encerramento:** PDF (com operador + duração em horas + cortesia se aplicável) + entrada no histórico.
+- **Após encerramento:** PDF (com operador + duração em horas + cortesia se aplicável) + entrada no histórico + comprovante anexado.
 
 ## Gestão (princípio geral)
 - Gestão **habilita/desabilita módulos E configura cada um** — completo e bem feito.
@@ -104,4 +119,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - Estratégia de preço e venda (folder, pitch, valores, prospecção em Balneário Camboriú e região) — em documento de material de vendas separado.
 
 ## Última atualização deste handoff
-v1.9.4.4 — 2026-05-31
+v1.9.4.5 — 2026-05-31

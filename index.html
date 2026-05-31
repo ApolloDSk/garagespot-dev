@@ -743,7 +743,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.4 -->
+<!-- GarageSpot v1.9.4.5 -->
 <body>
 <div class="page">
 
@@ -1279,8 +1279,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.4: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.4';
+// v1.9.4.5: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.5';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-05-31';
 
@@ -1956,10 +1956,18 @@ function executarMove(ms, destId, usuario){
 // deixava a vaga livre sem o raio. Espelha o que rebuildTable/applyModulos já fazem.
 function _refrescarRecargaTodos(){
   try {
-    if(typeof VAGAS_RECARGA!=='undefined' && typeof refRecarga==='function'){
+    if(typeof VAGAS_RECARGA==='undefined') return;
+    // Parte 4 v1.9.4.5: REMOVE ícones órfãos de vagas que não são mais ponto de recarga
+    // (ex.: ponto excluído em Gestão). refRecarga só adiciona; aqui limpamos os órfãos.
+    document.querySelectorAll('.rc-icon-wrap').forEach(function(el){
+      const td=el.closest('[data-id]');
+      const vid=td && td.getAttribute('data-id');
+      if(!vid || !VAGAS_RECARGA[vid]) el.remove();
+    });
+    if(typeof refRecarga==='function'){
       Object.keys(VAGAS_RECARGA).forEach(function(id){ refRecarga(id); });
     }
-  } catch(e){ console.warn('[recarga] refresh pós-move falhou:', e); }
+  } catch(e){ console.warn('[recarga] refresh falhou:', e); }
 }
 
 // Touch & Mouse events para arrastar
@@ -2231,9 +2239,10 @@ function _clkVRotear(id, apt, usuario){
       </div>`;
     document.getElementById('cv-ret-sim').onclick=function(){
       const dd=PASSEIO[apt];
+      // v1.9.4.5: carrega o ID da hospedagem de volta na vaga ANTES de apagar o passeio,
+      // para o vínculo dos anexos (h_<gs>) seguir o carro no retorno.
+      if(dd && dd.hospedagem && S[id]) S[id].hospedagem=dd.hospedagem;
       delete PASSEIO[apt];
-      const keyP='p_'+apt, keyV='v_'+id;
-      if(ANEXOS[keyP]&&ANEXOS[keyP].length){ ANEXOS[keyV]=[...ANEXOS[keyP]]; delete ANEXOS[keyP]; saveAnexos(); }
       saveV(id,apt,dd.model,dd.color,dd.plate,dd.guest,dd.obs||'',false,usuario);
       closeOv();
     };
@@ -2377,13 +2386,10 @@ function showOcc(id){
       document.getElementById('f-sim').onclick=function(){
         confirmarUsuario('registrando retorno do passeio',function(usuario){
           const dd=PASSEIO[apt];
+          // v1.9.4.5: carrega o ID da hospedagem de volta na vaga ANTES de apagar o
+          // passeio, para o vínculo dos anexos (h_<gs>) seguir o carro no retorno.
+          if(dd && dd.hospedagem && S[cur]) S[cur].hospedagem=dd.hospedagem;
           delete PASSEIO[apt];
-          const keyP='p_'+apt, keyV='v_'+cur;
-          if(ANEXOS[keyP]&&ANEXOS[keyP].length){
-            ANEXOS[keyV]=[...ANEXOS[keyP]];
-            delete ANEXOS[keyP];
-            saveAnexos();
-          }
           saveV(cur,apt,dd.model,dd.color,dd.plate,dd.guest,dd.obs||'',false,usuario);
         });
       };
@@ -2721,11 +2727,8 @@ function doOut(id){
     const hospNum=d.hospedagem||'';
     PASSEIO[aptKey]={model:d.model,color:d.color,plate:d.plate,guest:d.guest,obs:d.obs||'',lastVaga:id,size:d.size||'small',hospedagem:hospNum,saida_ts:Date.now()};
     addHistorico(aptKey,'saida_passeio',id,'',usuarioStr,hospNum);
-    const keyV='v_'+id, keyP='p_'+aptKey;
-    if(ANEXOS[keyV]&&ANEXOS[keyV].length){
-      ANEXOS[keyP]=[...ANEXOS[keyV]];
-      saveAnexos();
-    }
+    // v1.9.4.5: anexos ficam em h_<gs> (estável). PASSEIO[apt].hospedagem preserva o
+    // vínculo; nada a migrar — os anexos viajam com a hospedagem.
     if(d.hmergeWith) desfazHMerge(id);
     if(id.endsWith('B')&&d.mergedMaster){
       const aId=id.slice(0,-1)+'A';
@@ -2786,8 +2789,9 @@ function doChk(id){
       const anexosChk=getAnexos(id,false);
       // Bug Q v1.9.4.1.7: snapshot de TODAS as fotos ANTES de liberar vaga + deletar anexos.
       // Sem isto, buildRegistroDoc rodaria depois da deleção e encontraria ANEXOS vazio.
-      const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[] };
+      const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[], recargas:[] };
       (function(){
+        // v1.9.4.5: tudo no ID estável da hospedagem (h_<gs>); ainda dobra v_<id> legado.
         const keyV='v_'+id;
         const keyH='h_'+(hospNum||'');
         const todos=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]||[]);
@@ -2799,7 +2803,11 @@ function doChk(id){
         _snapshotAnexosCheckout.vistorias=todos.filter(function(a){
           return a && a.tipo==='vistoria' && !!(a.data||a.base64Original);
         });
-        console.log('[BUG Q] snapshot capturado:', _snapshotAnexosCheckout.fotos.length, 'fotos +', _snapshotAnexosCheckout.vistorias.length, 'vistorias ANTES de deletar');
+        // Parte 3 v1.9.4.5: documentos de recarga também entram no PDF de check-out
+        _snapshotAnexosCheckout.recargas=todos.filter(function(a){
+          return a && a.tipo==='recarga' && !!(a.data||a.base64Original);
+        });
+        console.log('[BUG Q] snapshot:', _snapshotAnexosCheckout.fotos.length, 'fotos +', _snapshotAnexosCheckout.vistorias.length, 'vistorias +', _snapshotAnexosCheckout.recargas.length, 'recargas ANTES de deletar');
       })();
 
       if(aptKey&&PASSEIO[aptKey])delete PASSEIO[aptKey];
@@ -2819,9 +2827,14 @@ function doChk(id){
       d.status='free';d.apt='';d.model='';d.color='';d.plate='';d.guest='';d.obs='';d.hospedagem='';
       d.mergedMaster=false;d.mergedSlave=false;
       ref(id);refByApt(aptKey);upd();saveData();
-      const keyV='v_'+id, keyP='p_'+aptKey;
-      if(ANEXOS[keyV]){delete ANEXOS[keyV];saveAnexos();}
-      if(ANEXOS[keyP]){delete ANEXOS[keyP];saveAnexos();}
+      // v1.9.4.5: anexos atados ao ID da hospedagem — limpar h_<gs> no check-out
+      // (+ chaves legadas v_/p_ por segurança).
+      const keyH2='h_'+(hospNum||''), keyV='v_'+id, keyP='p_'+aptKey;
+      let _limpou=false;
+      if(hospNum && ANEXOS[keyH2]){ delete ANEXOS[keyH2]; _limpou=true; }
+      if(ANEXOS[keyV]){ delete ANEXOS[keyV]; _limpou=true; }
+      if(ANEXOS[keyP]){ delete ANEXOS[keyP]; _limpou=true; }
+      if(_limpou) saveAnexos();
       // Pergunta se quer compartilhar o registro
       showM(`<div class="mt">✅ Check-out realizado!</div>
         <div class="ms">Hospedagem ${hospNum||'s/n'} · Apt. ${aptKey}<br>${dvChk.guest||'Hóspede não identificado'}</div>
@@ -2984,9 +2997,8 @@ function showEdit(id, fromPasseio){
         obj.model=model;obj.color=color;obj.plate=plate;obj.guest=guest;obj.obs=obs;
         if(aptMudou){
           PASSEIO[novoApt]=obj; if(novoApt!==id) delete PASSEIO[id];
-          // re-key anexos p_<apt>
-          const ko='p_'+id, kn='p_'+novoApt;
-          if(ANEXOS[ko]){ ANEXOS[kn]=(ANEXOS[kn]||[]).concat(ANEXOS[ko]); delete ANEXOS[ko]; saveAnexos(); }
+          // v1.9.4.5: anexos atados ao ID da hospedagem (h_<gs>) — NÃO re-chavear por apto.
+          // O vínculo segue por PASSEIO[novoApt].hospedagem; o nome do PDF lê o apto atual.
         }
       } else {
         const obj=S[id];
@@ -4554,8 +4566,10 @@ let VAGAS_RECARGA = {'8C':{par:'9C'},'9C':{par:'8C'},'1D':{par:null}};
 let RECARGAS = {};        // {vagaId: {apt,hospedagem,inicio_ts,fim_ts,ativo,confirmada,usuario}}
 let FILA_RECARGA = [];    // [{apt,vagaId,hospedagem,ts_pedido,usuario}]
 let HISTORICO_RECARGAS = [];
-// v1.9.4.3.3: novos campos: arredondamento_dir ('cima'/'baixo'), alertas (bool)
-let RECARGA_CONFIG = {valorHora:10, arredondamento:15, arredondamento_dir:'cima', alertas:true};
+// v1.9.4.5: arredondamento agora é por FRAÇÃO MAIS PRÓXIMA (sem direção). Campos:
+// arredondamento (15/30 min; ≤1 = exato), alertas (bool), vibracao (bool).
+// arredondamento_dir mantido apenas por retrocompat (ignorado no cálculo).
+let RECARGA_CONFIG = {valorHora:10, arredondamento:15, alertas:true, vibracao:true};
 const _recTimers = {};
 const RECARGA_LS = 'garagespot_recargas';
 const RECARGA_HIST_LS = 'garagespot_historico_recargas';
@@ -6978,21 +6992,10 @@ async function _nciFotosSalvarESegue(){
   }
   const gs=_nciD.gs;
   if(_nciFotos.length>0 && gs){
-    // Bug Crítico #1 Causa B v1.9.4.1.7: descobrir a chave CORRETA de anexo
-    // (carro JÁ hospedado → v_<vagaId>; aguardando designação → h_<gs>)
-    let chaveAnexo='h_'+gs;
-    const hosp=HOSPEDAGENS[gs];
-    if(hosp && hosp.vaga_inicial){
-      const vagaId=hosp.vaga_inicial;
-      if(S[vagaId] && S[vagaId].hospedagem===gs){
-        chaveAnexo='v_'+vagaId;
-        console.log('[BUG #1] carro já hospedado, salvando anexo em', chaveAnexo);
-      } else {
-        console.log('[BUG #1] vaga_inicial '+vagaId+' não bate com S, usando', chaveAnexo);
-      }
-    } else {
-      console.log('[BUG #1] check-in novo aguardando designação, salvando em', chaveAnexo);
-    }
+    // v1.9.4.5: anexos SEMPRE no ID estável da hospedagem (h_<gs>) — isolado por
+    // hospedagem, viaja com mudança de vaga/apto/passeio. Sem mais chave por vaga
+    // (que causava sumiço ao mover e vazamento entre check-ins).
+    const chaveAnexo='h_'+gs;
     if(!ANEXOS[chaveAnexo]) ANEXOS[chaveAnexo]=[];
     const dd=new Date();
     const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
@@ -7192,10 +7195,9 @@ function _nciCommitNovaVistoriaAdicional(){
       numero+' — '+(d.model||'')+' '+(d.color||'')+((d.avarias||d.danos||[]).length?' · '+(d.avarias||d.danos||[]).length+' avaria(s)':''),
       nomeUsr,gs);
   }
-  // Anexar PNG composto à chave apropriada (v_<vagaId> se já há vaga, senão h_<gs>)
+  // v1.9.4.5: anexar PNG composto SEMPRE em h_<gs> (ID estável da hospedagem)
   if(d.documento_final_b64){
-    const vagaKey=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; });
-    const anexoKey = vagaKey ? 'v_'+vagaKey : 'h_'+gs;
+    const anexoKey = 'h_'+gs;
     if(!ANEXOS[anexoKey]) ANEXOS[anexoKey]=[];
     const dd=new Date(d.ts_inicio||Date.now());
     const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
@@ -7549,22 +7551,9 @@ function _aplicarDesignacaoExec(vagaId){
   // Bug T v1.9.4.4: limpar backup persistente (local + session)
   _limparBackupDesignacao();
   _atualizarBannerDesignacao();
-  // Mover anexo h_<gs> para v_<vagaId> (junta vistoria com a vaga)
-  // Bug L v1.9.4.1.5: validar migração com logs
-  const keyH='h_'+m.gs, keyV='v_'+vagaId;
-  if(ANEXOS[keyH]&&ANEXOS[keyH].length){
-    const totalH=ANEXOS[keyH].length;
-    const totalVAntes=(ANEXOS[keyV]||[]).length;
-    ANEXOS[keyV]=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]);
-    const totalVDepois=ANEXOS[keyV].length;
-    if(totalVDepois!==(totalVAntes+totalH)){
-      console.error('[BUG L] Migração anexos falhou! antes=',totalVAntes,'h=',totalH,'depois=',totalVDepois);
-    } else {
-      console.log('[BUG L] Anexos migrados',keyH,'→',keyV,':',totalH,'itens (total',totalVDepois,')');
-    }
-    delete ANEXOS[keyH];
-    saveAnexos();
-  }
+  // v1.9.4.5: anexos permanecem em h_<gs> (ID estável da hospedagem). NÃO migrar
+  // para v_<vaga> — era a causa do sumiço ao mover/designar. A vaga só passa a
+  // referenciar a hospedagem via S[vagaId].hospedagem; os anexos viajam com ela.
   // Toast + pulse
   showToast('✓ Carro guardado na vaga '+vagaId+' · Apt '+m.apt,3500);
   setTimeout(function(){
@@ -7753,7 +7742,10 @@ function _vtComporPNG(d,opcoes){
 // Anexar/atualizar PNG da vistoria nos ANEXOS apropriados (entra no PDF do checkout)
 function _vtAnexarDocumento(vagaId,v){
   if(!v||!v.documento_final_b64) return;
-  const key='v_'+vagaId;
+  // v1.9.4.5: vistoria atada ao ID estável da hospedagem (h_<gs>), não à vaga.
+  const gs=(v.hospedagem||v.hospedagem_gs||(vagaId&&S[vagaId]&&S[vagaId].hospedagem))||'';
+  if(!gs){ console.warn('[anexo vist] sem hospedagem para', v.numero); return; }
+  const key='h_'+gs;
   if(!ANEXOS[key]) ANEXOS[key]=[];
   const dd=new Date(v.ts_criada||v.ts_finalizacao||Date.now());
   const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
@@ -7774,22 +7766,8 @@ function _vtRecomporVistoria(id){
            assinatura_pendente:!!v.assinatura_pendente,ts_inicio:v.ts_criacao||v.ts_criada||Date.now()};
   return _vtComporPNG(d).then(function(png){
     v.documento_final_b64=png; v.ts_finalizacao=Date.now(); saveVistorias();
-    const vagaId=Object.keys(S).find(function(k){return S[k].apt===v.apt&&S[k].status==='occupied';});
-    if(vagaId){
-      _vtAnexarDocumento(vagaId,v);
-    } else if(v.hospedagem){
-      // anexar em h_<gs>
-      const key='h_'+v.hospedagem;
-      if(!ANEXOS[key]) ANEXOS[key]=[];
-      const dd=new Date(v.ts_criada||Date.now());
-      const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
-      const limpa=function(s){return (s||'').replace(/[^a-zA-Z0-9À-ú]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');};
-      const nome=`${v.apt||'000'}_${ds}_${limpa(v.modelo)}-${limpa(v.cor)}_${v.numero}.png`;
-      const item={name:nome,type:'image/png',data:v.documento_final_b64,isImg:true,vistoria:v.numero,tipo:'vistoria'};
-      const ix=ANEXOS[key].findIndex(function(a){return a.vistoria===v.numero;});
-      if(ix>=0) ANEXOS[key][ix]=item; else ANEXOS[key].push(item);
-      saveAnexos();
-    }
+    // v1.9.4.5: _vtAnexarDocumento já resolve h_<gs> a partir de v.hospedagem
+    _vtAnexarDocumento(null,v);
   }).catch(function(){});
 }
 
@@ -8012,16 +7990,56 @@ function _fmtDurRecarga(min){
   return m === 0 ? (h + 'h') : (h + 'h ' + m + 'min');
 }
 
-// v1.9.4.3.3: respeita arredondamento_dir ('cima' = ceil, 'baixo' = floor); cortesia (valorHora=0) → R$ 0,00
+// v1.9.4.5: arredonda a duração cobrada para o múltiplo MAIS PRÓXIMO da fração
+// escolhida (15 ou 30 min) — pra cima ou pra baixo, o que estiver mais perto.
+// Ex. (15min): 1h05→1h00, 1h10→1h15, 1h07→1h00, 1h08→1h15. Sem "direção".
+// fração ≤ 1 → exato (por minuto). Cortesia (valorHora=0) → R$ 0,00.
 function calcValorRecarga(inicio_ts, fim_ts){
   const mins = Math.max(0, (fim_ts - inicio_ts) / 60000);
   const arr  = RECARGA_CONFIG.arredondamento || 15;
-  const dir  = RECARGA_CONFIG.arredondamento_dir || 'cima';
-  const minsArr = dir === 'baixo' ? Math.floor(mins/arr)*arr : Math.ceil(mins/arr)*arr;
+  const minsArr = (arr <= 1) ? Math.round(mins) : Math.round(mins/arr)*arr;
   const horas = minsArr / 60;
   const vh = (typeof RECARGA_CONFIG.valorHora === 'number') ? RECARGA_CONFIG.valorHora : 10;
   const valor = vh === 0 ? 0 : Math.round(horas * vh * 100) / 100;
   return { mins: minsArr, horas, valor };
+}
+
+// Parte 3 v1.9.4.5: comprovante de recarga em PNG (canvas) para anexar à hospedagem
+// e entrar no PDF de check-out (junto com vistorias e fotos).
+function _rcComprovantePNG(e){
+  try{
+    const cv=document.createElement('canvas'); cv.width=600; cv.height=820;
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,600,820);
+    ctx.fillStyle='#185FA5'; ctx.fillRect(0,0,600,8);
+    ctx.fillStyle='#1A2238'; ctx.font='bold 30px sans-serif';
+    ctx.fillText('Comprovante de Recarga', 36, 70);
+    ctx.fillStyle='#185FA5'; ctx.fillRect(36,90,528,3);
+    const fmt=function(ts){ return ts? new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'; };
+    const dur=(typeof _fmtDurRecarga==='function')?_fmtDurRecarga(e.mins):(e.mins+'min');
+    const valTxt=e.cortesia?'Cortesia (R$ 0,00)':('R$ '+(Number(e.valor)||0).toFixed(2).replace('.',','));
+    const linhas=[
+      ['Hospedagem', e.hospedagem||'—'],
+      ['Apartamento', e.apt||'—'],
+      ['Vaga', e.vagaId||'—'],
+      ['Veículo', [e.model,e.color].filter(Boolean).join(' ')||'—'],
+      ['Início', fmt(e.inicio_ts)],
+      ['Fim', fmt(e.fim_ts)],
+      ['Duração cobrada', dur],
+      ['Valor', valTxt],
+      ['Operador', e.usuario||'—'],
+    ];
+    let y=150;
+    linhas.forEach(function(l){
+      ctx.fillStyle='#5A6478'; ctx.font='15px sans-serif'; ctx.fillText(l[0], 36, y);
+      ctx.fillStyle='#1A2238'; ctx.font='bold 20px sans-serif'; ctx.fillText(String(l[1]), 36, y+26);
+      ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(36,y+44); ctx.lineTo(564,y+44); ctx.stroke();
+      y+=70;
+    });
+    ctx.fillStyle='#aaa'; ctx.font='12px sans-serif';
+    ctx.fillText('GarageSpot · gerado em '+fmt(e.ts||Date.now()), 36, 800);
+    return cv.toDataURL('image/png');
+  }catch(err){ console.error('[Parte3] _rcComprovantePNG falhou:', err); return null; }
 }
 
 function agendarAlertaRecarga(vagaId){
@@ -8034,10 +8052,23 @@ function agendarAlertaRecarga(vagaId){
 
 function _onRecargaBateu(vagaId){
   if(!RECARGAS[vagaId]||!RECARGAS[vagaId].ativo) return;
-  showToast('⚡ Recarga concluida! Vaga '+vagaId+' — Apt. '+RECARGAS[vagaId].apt,5000);
+  // Parte 6 v1.9.4.5: alerta configurável (liga/desliga) + vibração (liga/desliga).
+  const cfg = (typeof RECARGA_CONFIG!=='undefined') ? RECARGA_CONFIG : {};
+  const alertasOn = (cfg.alertas !== false); // default ligado
+  if(alertasOn){
+    showToast('⚡ Recarga concluida! Vaga '+vagaId+' — Apt. '+RECARGAS[vagaId].apt,5000);
+    if(cfg.vibracao){ _rcVibrar([200,100,200]); }
+  }
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   // Re-render vaga
   if(typeof ref==='function') ref(vagaId);
+}
+
+// Parte 6 v1.9.4.5: vibração com fallback gracioso (toque/som = futuro, requer APK).
+function _rcVibrar(padrao){
+  try{
+    if(navigator && typeof navigator.vibrate === 'function'){ navigator.vibrate(padrao||200); }
+  }catch(e){ /* dispositivo sem suporte — ignora */ }
 }
 
 function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
@@ -8295,6 +8326,22 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   };
   if(typeof HISTORICO_RECARGAS !== 'undefined' && Array.isArray(HISTORICO_RECARGAS)) HISTORICO_RECARGAS.push(entrada);
   if(typeof saveRecargaHist === 'function') saveRecargaHist();
+  // Parte 3 v1.9.4.5: salvar comprovante de recarga nos anexos da hospedagem (h_<gs>)
+  // para aparecer junto com fotos/vistorias e entrar no PDF de check-out.
+  if(r.hospedagem){
+    try{
+      const png=_rcComprovantePNG(entrada);
+      if(png){
+        const dd=new Date(entrada.ts||Date.now());
+        const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
+        const nomeAnx=(r.apt||'000')+'_'+ds+'_Recarga_'+vagaId+'.png';
+        const kh='h_'+r.hospedagem;
+        if(!ANEXOS[kh]) ANEXOS[kh]=[];
+        ANEXOS[kh].push({name:nomeAnx,type:'image/png',data:png,isImg:true,tipo:'recarga',recarga_ts:entrada.ts});
+        saveAnexos();
+      }
+    }catch(e){ console.error('[Parte3] anexo recarga falhou:', e); }
+  }
   // Parte 5 v1.9.4.4: registrar como movimentação (painel + detalhes "i")
   if(r.apt && typeof addHistorico==='function'){
     const valTxt = entrada.cortesia ? 'Cortesia' : ('R$ '+valor.toFixed(2).replace('.',','));
@@ -8750,19 +8797,38 @@ function _rcAvaliarRemanejamento(carro){
     _rcModalTempo(carro);
     return;
   }
-  // Caso 3: TODAS as vagas do ponto ocupadas → remaneja uma (a primeira que NÃO seja o carro escolhido)
-  const vagaParaRemanejar = vagasDoPonto[0]; // se compartilhado, escolhe a 1ª (8C)
-  const vpVaga = S[vagaParaRemanejar];
-  const carroAtualVp = { vagaId:vagaParaRemanejar, apt:vpVaga.apt, model:vpVaga.model||'', color:vpVaga.color||'', plate:vpVaga.plate||'', guest:vpVaga.guest||'' };
+  // Caso 3: TODAS as vagas do ponto ocupadas → informar TODAS e perguntar QUAL mover.
+  // Parte 7 v1.9.4.5: antes só mencionava a 1ª vaga (8C). Agora lista cada vaga ocupada
+  // do ponto (8C E 9C no compartilhado) e deixa o operador escolher qual liberar.
+  const ocupadas = vagasDoPonto.filter(function(vid){ return S[vid] && S[vid].status==='occupied'; });
+  function _remanejarVaga(vp){
+    const v=S[vp];
+    const carroAtualVp = { vagaId:vp, apt:v.apt, model:v.model||'', color:v.color||'', plate:v.plate||'', guest:v.guest||'' };
+    _rcEscolherDestinoRemanejamento(carroAtualVp, carro);
+  }
+  if(ocupadas.length <= 1){
+    const vp = ocupadas[0] || vagasDoPonto[0];
+    const v = S[vp] || {};
+    showModalAux({
+      titulo: 'Remanejar carro da vaga '+vp,
+      texto: 'A vaga '+vp+' está ocupada pelo Apt '+(v.apt||'?')+(v.model?' · '+v.model:'')+'. Para onde mover esse carro?',
+      botoes:[
+        {label:'Cancelar', action:'close'},
+        {label:'Escolher vaga no mapa', cls:'primary', action:function(){ _remanejarVaga(vp); }}
+      ]
+    });
+    return;
+  }
+  // Ponto compartilhado com as DUAS (ou mais) vagas ocupadas
+  const botoes = ocupadas.map(function(vp){
+    const v=S[vp];
+    return { label:'Mover '+vp+' · Apt '+(v.apt||'?')+(v.model?' · '+v.model:''), cls:'primary', action:function(){ _remanejarVaga(vp); } };
+  });
+  botoes.push({label:'Cancelar', action:'close'});
   showModalAux({
-    titulo: 'Remanejar carro da vaga '+vagaParaRemanejar,
-    texto: 'A vaga '+vagaParaRemanejar+' está ocupada pelo Apt '+(carroAtualVp.apt||'?')+(carroAtualVp.model?' · '+carroAtualVp.model:'')+'. Para onde mover esse carro?',
-    botoes:[
-      {label:'Cancelar', action:'close'},
-      {label:'Escolher vaga no mapa', cls:'primary', action:function(){
-        _rcEscolherDestinoRemanejamento(carroAtualVp, carro);
-      }}
-    ]
+    titulo: 'Ponto ocupado — qual carro mover?',
+    texto: 'As vagas '+ocupadas.join(' e ')+' estão ocupadas. Escolha qual carro mover para liberar espaço para o Apt '+(carro.apt||'?')+'.',
+    botoes: botoes
   });
 }
 
@@ -9106,17 +9172,15 @@ function _rcCfgRender(){
     '<div class="gestao-menu-sep">Cobrança</div>' +
     '<label class="fl">Valor por hora (R$) <span style="color:#888;font-weight:400;font-size:11px">— 0 = cortesia (gratuito)</span></label>' +
     '<input class="fi" id="rc-cfg-valor" type="number" step="0.5" min="0" value="'+cfg.valorHora+'">' +
-    '<label class="fl">Arredondamento (minutos)</label>' +
+    '<label class="fl">Fração de cobrança <span style="color:#888;font-weight:400;font-size:11px">— arredonda para o múltiplo mais próximo</span></label>' +
     '<select class="fi" id="rc-cfg-arr">' +
-      [5,10,15,30,60].map(function(v){ return '<option value="'+v+'" '+(cfg.arredondamento===v?'selected':'')+'>'+v+' min</option>'; }).join('') +
-    '</select>' +
-    '<label class="fl">Direção do arredondamento</label>' +
-    '<select class="fi" id="rc-cfg-dir">' +
-      '<option value="cima" '+(cfg.arredondamento_dir==='cima'?'selected':'')+'>↑ Pra cima (ceil)</option>' +
-      '<option value="baixo" '+(cfg.arredondamento_dir==='baixo'?'selected':'')+'>↓ Pra baixo (floor)</option>' +
+      '<option value="1" '+(cfg.arredondamento<=1?'selected':'')+'>Exato (por minuto)</option>' +
+      [15,30].map(function(v){ return '<option value="'+v+'" '+(cfg.arredondamento===v?'selected':'')+'>'+v+' min</option>'; }).join('') +
     '</select>' +
     '<div class="gestao-menu-sep">Alertas</div>' +
-    '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" id="rc-cfg-alertas" '+(cfg.alertas?'checked':'')+' style="width:18px;height:18px"> Alertas quando recarga concluir</label>' +
+    '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" id="rc-cfg-alertas" '+(cfg.alertas?'checked':'')+' style="width:18px;height:18px"> Alerta quando a recarga concluir</label>' +
+    '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" id="rc-cfg-vibracao" '+(cfg.vibracao?'checked':'')+' style="width:18px;height:18px"> Vibração no alerta</label>' +
+    '<div style="font-size:10px;color:#888;padding:2px 0 4px">Toque/som do dispositivo: futuro (requer APK).</div>' +
     '<div class="ag">' +
       '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
       '<button class="bsv" id="rc-cfg-ok">Salvar</button>' +
@@ -9126,14 +9190,16 @@ function _rcCfgRender(){
       RECARGA_CONFIG.valorHora       = parseFloat(document.getElementById('rc-cfg-valor').value);
       if(isNaN(RECARGA_CONFIG.valorHora)) RECARGA_CONFIG.valorHora = 10;
       RECARGA_CONFIG.arredondamento  = parseInt(document.getElementById('rc-cfg-arr').value) || 15;
-      RECARGA_CONFIG.arredondamento_dir = document.getElementById('rc-cfg-dir').value || 'cima';
       RECARGA_CONFIG.alertas         = !!document.getElementById('rc-cfg-alertas').checked;
+      RECARGA_CONFIG.vibracao        = !!document.getElementById('rc-cfg-vibracao').checked;
       saveRecargaCfg();
       _aplicarConfigPontos(_rcCfgEstado.pontos);
       saveConfigPontos(_rcCfgEstado.pontos);
       closeOv();
       showToast('Configurações salvas');
       if(typeof applyModulos==='function') applyModulos();
+      // Parte 4 v1.9.4.5: remove ícones de pontos excluídos + redesenha os atuais
+      if(typeof _refrescarRecargaTodos==='function') _refrescarRecargaTodos();
       if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
     });
   },80);
@@ -10514,6 +10580,25 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
     });
     console.log('[BUG C] fotos avulsas no fim:', fotosAvulsas.length);
     for(const f of fotosAvulsas){ _emitirFoto(f); }
+
+    // Parte 3 v1.9.4.5: comprovantes de recarga (tipo:'recarga') ao final
+    let recargas;
+    if(snapshotCheckout && Array.isArray(snapshotCheckout.recargas)){
+      recargas = snapshotCheckout.recargas;
+    } else {
+      recargas = (ANEXOS['h_'+hospNum]||[]).filter(function(a){ return a && a.tipo==='recarga' && !!(a.data||a.base64Original); });
+    }
+    for(const rc of recargas){
+      try{
+        const imgData=rc.data||rc.base64Original; if(!imgData) continue;
+        doc.addPage();
+        let yR=_pdfHeader(doc,'Recarga', rc.name||'Comprovante de recarga');
+        const fmt=(rc.type||'').includes('png')?'PNG':'JPEG';
+        doc.addImage(imgData,fmt,10,yR,190,240);
+        _pdfFooter(doc);
+      }catch(e){ console.error('[recarga PDF] erro', rc&&rc.name, e); }
+    }
+    console.log('[Parte3] comprovantes de recarga no PDF:', recargas.length);
   }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
 
   _pdfFooter(doc);
@@ -10647,7 +10732,40 @@ async function salvarPDF(apt,dv,hist,anexos){
 const ANEXOS = {};
 const MAX_ANEXOS = 20;
 
-function getAnexoKey(id, fromPasseio){ return fromPasseio ? 'p_'+id : 'v_'+id; }
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.5 — ANEXOS atados ao ID ESTÁVEL da hospedagem (h_<gs>), nunca à vaga
+// nem ao apto. Assim, anexos/vistorias viajam com a hospedagem em: mudança de
+// vaga (drag&drop), mudança de apartamento (edição) e passeio (sair/voltar).
+// ════════════════════════════════════════════════════════════════════════
+function _gsDaVaga(id, fromPasseio){
+  if(fromPasseio) return (PASSEIO[id] && PASSEIO[id].hospedagem) || '';
+  return (S[id] && S[id].hospedagem) || '';
+}
+// Migração NÃO destrutiva: dobra chaves legadas (v_<vaga>/p_<apto>) para h_<gs>.
+function _migrarAnexosParaHosp(gs, legadoKeys){
+  if(!gs) return null;
+  const kh='h_'+gs;
+  let mudou=false;
+  (legadoKeys||[]).forEach(function(k){
+    if(k && k!==kh && Array.isArray(ANEXOS[k]) && ANEXOS[k].length){
+      ANEXOS[kh]=(ANEXOS[kh]||[]).concat(ANEXOS[k]);
+      delete ANEXOS[k];
+      mudou=true;
+    }
+  });
+  if(mudou) saveAnexos();
+  return kh;
+}
+function getAnexoKey(id, fromPasseio){
+  const gs=_gsDaVaga(id, fromPasseio);
+  if(gs){
+    // dobra qualquer chave legada desta vaga/apto para o id da hospedagem
+    _migrarAnexosParaHosp(gs, [fromPasseio?('p_'+id):('v_'+id)]);
+    return 'h_'+gs;
+  }
+  // Sem hospedagem resolvível (estado legado): mantém a chave antiga como fallback.
+  return fromPasseio ? 'p_'+id : 'v_'+id;
+}
 
 function getAnexos(id, fromPasseio){
   return ANEXOS[getAnexoKey(id, fromPasseio)] || [];
