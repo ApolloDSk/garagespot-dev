@@ -743,7 +743,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.5 -->
+<!-- GarageSpot v1.9.4.6 -->
 <body>
 <div class="page">
 
@@ -771,7 +771,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
     </div>
     <div class="tb-right">
       <span class="plantao-ind zero" id="plantao-ind" onclick="showPlantaoTooltip()" title="Usuários no plantão">👤0</span>
-      <button class="busca-btn" onclick="toggleBusca()" title="Busca rápida">🔍</button>
+      <button class="busca-btn" id="busca-btn" onclick="toggleBusca()" title="Busca rápida">🔍</button>
       <span class="clk" id="clk"></span>
       <span class="pt-arrow" id="pt-arrow" onclick="togglePanel()" title="Carros a passeio">▾</span>
     </div>
@@ -1279,10 +1279,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.5: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.5';
+// v1.9.4.6: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.6';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-05-31';
+const GS_BUILD_TS = '2026-06-01';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
@@ -2943,22 +2943,22 @@ function showEdit(id, fromPasseio){
   const saidaAtual = (hosp && hosp.saida_prevista) || '';
   const mc=document.getElementById('mc');
   mc.innerHTML=`
-    <div class="mt">✏️ Editar — ${fromPasseio?'Apt. '+_vtEsc(id):_vtEsc(id)}${hospNum?' · '+_vtEsc(hospNum):''}</div>
+    <div class="mt">✏️ Editar dados — ${fromPasseio?'Apt. '+_vtEsc(id):_vtEsc(id)}${hospNum?' · '+_vtEsc(hospNum):''}</div>
     <div class="ms" style="margin-bottom:10px">Atualize os dados do check-in. A vaga continua sendo alterada pelo Mapa.</div>
     <label class="fl">Apartamento <span class="req">*</span></label>
     <input class="fi" id="e-apt" value="${_vtEsc(aptAtual)}" inputmode="numeric" placeholder="Ex: 301" autocomplete="off">
-    <label class="fl">Modelo</label>
+    <label class="fl">Modelo <span class="req">*</span></label>
     <input class="fi" id="e-mod" value="${_vtEsc(d.model||'')}" placeholder="Ex: Civic, HB20...">
-    <label class="fl">Cor</label>
+    <label class="fl">Cor <span class="req">*</span></label>
     <input class="fi" id="e-cor" value="${_vtEsc(d.color||'')}" placeholder="Ex: Prata, Preto...">
+    <label class="fl">Data de saída prevista <span class="req">*</span></label>
+    <input class="fi" id="e-saida" type="date" value="${_vtEsc(saidaAtual)}">
     <label class="fl">Placa</label>
     <input class="fi" id="e-pla" value="${_vtEsc(d.plate||'')}" placeholder="ABC1D23" style="text-transform:uppercase">
-    <label class="fl">Hóspede</label>
+    <label class="fl">Nome do hóspede</label>
     <input class="fi" id="e-gst" value="${_vtEsc(d.guest||'')}" placeholder="Nome completo">
     <label class="fl">Observações</label>
     <input class="fi" id="e-obs" value="${_vtEsc(d.obs||'')}" placeholder="Ex: chave na recepção...">
-    <label class="fl">Data de saída prevista</label>
-    <input class="fi" id="e-saida" type="date" value="${_vtEsc(saidaAtual)}">
     <div class="b2">
       <button class="bcx" id="e-back">← Voltar</button>
       <button class="bsv" id="e-save">Salvar</button>
@@ -2973,8 +2973,17 @@ function showEdit(id, fromPasseio){
     const guest=(document.getElementById('e-gst').value||'').trim();
     const obs  =(document.getElementById('e-obs').value||'').trim();
     const saida=(document.getElementById('e-saida').value||'').trim();
-    // Apartamento é obrigatório (igual ao check-in)
-    if(!novoApt){ const e=document.getElementById('e-apt'); e.classList.add('err'); e.focus(); e.addEventListener('input',()=>e.classList.remove('err'),{once:true}); return; }
+    // Validação igual ao passo "Dados" do check-in: Apartamento, Modelo, Cor e Data de saída obrigatórios.
+    const _reqErr=function(elid){ const e=document.getElementById(elid); if(e){ e.classList.add('err'); e.focus(); e.addEventListener('input',()=>e.classList.remove('err'),{once:true}); } };
+    if(!novoApt){ _reqErr('e-apt'); return; }
+    if(!model){ _reqErr('e-mod'); showToast('Modelo é obrigatório',2000); return; }
+    if(!color){ _reqErr('e-cor'); showToast('Cor é obrigatória',2000); return; }
+    if(!saida){ _reqErr('e-saida'); showToast('Data de saída prevista é obrigatória',2000); return; }
+    // Aviso de duplicidade/overbooking (como no check-in): apto já com hospedagem ativa em outra vaga
+    if(novoApt!==(aptAtual||'')){
+      const dupAtiva=Object.keys(HOSPEDAGENS||{}).some(function(g){ const h=HOSPEDAGENS[g]; return h && g!==hospNum && h.apt===novoApt && (h.checkout_ts==null); });
+      if(dupAtiva){ showToast('⚠️ Já existe hospedagem ativa para o Apt '+novoApt+' (possível duplicidade/overbooking)',3500); }
+    }
 
     // Diffs (campo: 'de' → 'para') — inclui apartamento e data de saída
     const fmtData=function(iso){ if(!iso) return '—'; const p=String(iso).split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:iso; };
@@ -3191,7 +3200,31 @@ function executarRestore(){
 }
 
 function showM(h){document.getElementById('mc').innerHTML=h;document.getElementById('ov').classList.add('on');}
-window.closeOv=function(){document.getElementById('ov').classList.remove('on');document.getElementById('mc').innerHTML='';};
+window.closeOv=function(){document.getElementById('ov').classList.remove('on');document.getElementById('mc').innerHTML='';if(typeof _gestaoEsconderBack==='function')_gestaoEsconderBack();};
+
+// Parte 4 v1.9.4.6: botão flutuante "← Gestão" persistente (sobrevive a re-renders do #mc)
+// mostrado enquanto uma opção de Gestão está aberta; retorna ao menu principal de Gestão.
+function _gestaoAbrir(fnName){
+  const fn = window[fnName];
+  if(typeof fn !== 'function'){ console.warn('[gestao] opção inexistente:', fnName); return; }
+  try { fn(); } catch(e){ console.error('[gestao] erro abrindo', fnName, e); }
+  _gestaoMostrarBack();
+}
+function _gestaoMostrarBack(){
+  let b=document.getElementById('gestao-back-fab');
+  if(!b){
+    b=document.createElement('button');
+    b.id='gestao-back-fab';
+    b.textContent='← Gestão';
+    b.style.cssText='position:fixed;top:10px;left:10px;z-index:600;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+    b.onclick=function(){ if(typeof _mostrarMenuGestao==='function') _mostrarMenuGestao(); };
+    document.body.appendChild(b);
+  }
+  b.style.display='block';
+}
+function _gestaoEsconderBack(){
+  const b=document.getElementById('gestao-back-fab'); if(b) b.style.display='none';
+}
 function tick(){
   document.getElementById('clk').textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   atualizarPlantao();
@@ -3338,30 +3371,68 @@ function showModalUsuarios(){
   function mostrarForm(u){
     const mc=document.getElementById('mc'); const isNovo=!u;
     const delBtn=!isNovo?`<button onclick="window._excluirUsr('${u.id}')" style="width:100%;background:none;border:1px solid #E24B4A;color:#A32D2D;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">🗑 Excluir usuário</button>`:'';
+    const esc=(u&&u.escala)||'padrao';
+    const diaAB=(u&&u.diaAB)||'A';
+    const turno12=(u&&u.turno12)||'dia';
     mc.innerHTML=`<div class="mt">${isNovo?'+ Novo usuário':'✏️ Editar usuário'}</div>
       <label class="fl">Nome completo <span class="req">*</span></label>
-      <input class="fi" id="uf-nome" value="${u?u.nome:''}" placeholder="Nome completo">
+      <input class="fi" id="uf-nome" value="${u?_vtEsc(u.nome):''}" placeholder="Nome completo">
       <label class="fl">Cargo</label>
-      <input class="fi" id="uf-cargo" value="${u?u.cargo:''}" placeholder="Ex: Recepcionista, Porteiro...">
+      <input class="fi" id="uf-cargo" value="${u?_vtEsc(u.cargo||''):''}" placeholder="Ex: Recepcionista, Porteiro...">
+      <label class="fl">Escala</label>
+      <select class="fi" id="uf-escala">
+        <option value="padrao" ${esc==='padrao'?'selected':''}>Escala Padrão</option>
+        <option value="12x36" ${esc==='12x36'?'selected':''}>Escala 12x36</option>
+      </select>
+      <div id="uf-12-extra" style="display:${esc==='12x36'?'block':'none'}">
+        <div style="display:flex;gap:8px">
+          <div style="flex:1"><label class="fl">Dia</label>
+            <select class="fi" id="uf-diaAB" style="margin-bottom:0">
+              <option value="A" ${diaAB==='A'?'selected':''}>Dia A</option>
+              <option value="B" ${diaAB==='B'?'selected':''}>Dia B</option>
+            </select></div>
+          <div style="flex:1"><label class="fl">Turno</label>
+            <select class="fi" id="uf-turno12" style="margin-bottom:0">
+              <option value="dia" ${turno12==='dia'?'selected':''}>Dia</option>
+              <option value="noite" ${turno12==='noite'?'selected':''}>Noite</option>
+            </select></div>
+        </div>
+      </div>
       <label class="fl">Início do expediente</label>
-      <input type="time" class="fi" id="uf-inicio" value="${u?u.horaInicio:''}">
+      <input type="time" class="fi" id="uf-inicio" value="${u?(u.horaInicio||''):''}">
       <label class="fl">Fim do expediente</label>
-      <input type="time" class="fi" id="uf-fim" value="${u?u.horaFim:''}">
+      <input type="time" class="fi" id="uf-fim" value="${u?(u.horaFim||''):''}">
       ${delBtn}
       <div class="b2">
         <button class="bcx" id="uf-back">← Voltar</button>
         <button class="bsv" id="uf-save">Salvar</button>
       </div>`;
     document.getElementById('ov').classList.add('on');
+    const escSel=document.getElementById('uf-escala');
+    const extra=document.getElementById('uf-12-extra');
+    function _prefill12(){
+      // sugere início/fim a partir do turno configurado (Parte 5), editável
+      try{
+        const t=document.getElementById('uf-turno12').value==='noite'?ESCALA_CONFIG.doze36.noite:ESCALA_CONFIG.doze36.dia;
+        const ii=document.getElementById('uf-inicio'), ff=document.getElementById('uf-fim');
+        if(t){ if(!ii.value) ii.value=t.inicio; if(!ff.value) ff.value=t.fim; }
+      }catch(e){}
+    }
+    escSel.onchange=function(){ extra.style.display=this.value==='12x36'?'block':'none'; if(this.value==='12x36') _prefill12(); };
+    const t12=document.getElementById('uf-turno12'); if(t12) t12.onchange=_prefill12;
     document.getElementById('uf-back').onclick=renderLista;
     document.getElementById('uf-save').onclick=function(){
       const nome=document.getElementById('uf-nome').value.trim();
       const cargo=document.getElementById('uf-cargo').value.trim();
+      const escala=document.getElementById('uf-escala').value;
       const horaInicio=document.getElementById('uf-inicio').value;
       const horaFim=document.getElementById('uf-fim').value;
+      const dAB=document.getElementById('uf-diaAB').value;
+      const t12v=document.getElementById('uf-turno12').value;
       if(!nome){ const el=document.getElementById('uf-nome'); el.classList.add('err'); el.addEventListener('input',()=>el.classList.remove('err'),{once:true}); return; }
-      if(isNovo){ USUARIOS.push({id:'u'+Date.now(),nome,cargo,horaInicio,horaFim}); }
-      else{ const idx=USUARIOS.findIndex(x=>x.id===u.id); if(idx>=0) USUARIOS[idx]={...USUARIOS[idx],nome,cargo,horaInicio,horaFim}; }
+      const extra12 = escala==='12x36' ? { diaAB:dAB, turno12:t12v } : { diaAB:null, turno12:null };
+      if(isNovo){ USUARIOS.push(Object.assign({id:'u'+Date.now(),nome,cargo,horaInicio,horaFim,escala},extra12)); }
+      else{ const idx=USUARIOS.findIndex(x=>x.id===u.id); if(idx>=0) USUARIOS[idx]={...USUARIOS[idx],nome,cargo,horaInicio,horaFim,escala,...extra12}; }
       saveUsuarios(); renderLista();
     };
     window._excluirUsr=(uid)=>{ USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios(); renderLista(); };
@@ -3385,6 +3456,127 @@ function loadPlantaoManual(){ try{ const r=localStorage.getItem('garagespot_plan
 function agendarLimparPlantao(){
   const agora=new Date(), amanha=new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()+1,0,0,5);
   setTimeout(()=>{ PLANTAO_MANUAL=[]; savePlantaoManual(); atualizarPlantao(); agendarLimparPlantao(); }, amanha-agora);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// ESCALAS (v1.9.4.6) — Cadastro de Turnos (Padrão / 12x36) + Plantão por escala
+// ════════════════════════════════════════════════════════════════════════
+const ESCALA_LS='garagespot_escala';
+let ESCALA_CONFIG={
+  tipo:'padrao',  // 'padrao' | '12x36'
+  padrao:{
+    manha:    {ativo:true,  inicio:'06:00', fim:'12:00'},
+    tarde:    {ativo:true,  inicio:'12:00', fim:'18:00'},
+    noite:    {ativo:true,  inicio:'18:00', fim:'00:00'},
+    madrugada:{ativo:false, inicio:'00:00', fim:'06:00'},
+  },
+  doze36:{ dia:{inicio:'07:00',fim:'19:00'}, noite:{inicio:'19:00',fim:'07:00'}, ancora:null }
+};
+const _PADRAO_KEYS=['manha','tarde','noite','madrugada'];
+const _PADRAO_LABELS={manha:'Manhã',tarde:'Tarde',noite:'Noite',madrugada:'Madrugada'};
+function saveEscala(){ try{ localStorage.setItem(ESCALA_LS, JSON.stringify(ESCALA_CONFIG)); }catch(e){} }
+function loadEscala(){
+  try{
+    const r=localStorage.getItem(ESCALA_LS); if(!r) return;
+    const o=JSON.parse(r); if(!o||!o.tipo) return;
+    ESCALA_CONFIG.tipo=o.tipo;
+    if(o.padrao){ _PADRAO_KEYS.forEach(function(k){ if(o.padrao[k]) ESCALA_CONFIG.padrao[k]=Object.assign({},ESCALA_CONFIG.padrao[k],o.padrao[k]); }); }
+    if(o.doze36){ ESCALA_CONFIG.doze36=Object.assign({dia:{},noite:{}},ESCALA_CONFIG.doze36,o.doze36); }
+  }catch(e){}
+}
+function _hmMin(s){ const p=String(s||'0:0').split(':'); return (parseInt(p[0])||0)*60+(parseInt(p[1])||0); }
+// inclusão por horário do funcionário relativo a um instante `now` (testável); sem horas → sempre inclui
+function _incluiAgora(u, now){
+  if(!u || !u.horaInicio || !u.horaFim) return true;
+  const nowMin=now.getHours()*60+now.getMinutes();
+  return _dentroJanela(nowMin, _hmMin(u.horaInicio), _hmMin(u.horaFim));
+}
+function _dentroJanela(nowMin, ini, fim){
+  if(ini===fim) return false;
+  if(ini<fim) return nowMin>=ini && nowMin<fim;
+  return nowMin>=ini || nowMin<fim; // cruza meia-noite
+}
+function _diasDesdeAncora(ancoraISO, d){
+  if(!ancoraISO) return 0;
+  const a=new Date(ancoraISO+'T00:00:00');
+  const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  return Math.round((x-a)/86400000);
+}
+// Dia A = âncora (par); Dia B = ímpar. Alterna A,B,A,B...
+function _tipoDoDia(d){
+  const dias=_diasDesdeAncora(ESCALA_CONFIG.doze36.ancora, d);
+  return ((((dias%2)+2)%2)===0)?'A':'B';
+}
+// Instância do plantão AGORA: {instanteId, turnoLabel, membros[]}
+function _plantaoInstante(now){
+  now=now||new Date();
+  const nowMin=now.getHours()*60+now.getMinutes();
+  if(ESCALA_CONFIG.tipo==='12x36'){
+    const d36=ESCALA_CONFIG.doze36;
+    const diaIni=_hmMin(d36.dia.inicio), diaFim=_hmMin(d36.dia.fim);
+    const noiteIni=_hmMin(d36.noite.inicio), noiteFim=_hmMin(d36.noite.fim);
+    let turno=null, tipoDia=null;
+    if(_dentroJanela(nowMin, diaIni, diaFim)){
+      turno='dia'; tipoDia=_tipoDoDia(now);
+    } else if(_dentroJanela(nowMin, noiteIni, noiteFim)){
+      turno='noite';
+      if(noiteIni>noiteFim && nowMin<noiteFim){
+        // madrugada (após 00:00, antes do fim) → equipe que começou ONTEM
+        tipoDia=_tipoDoDia(new Date(now.getTime()-86400000));
+      } else {
+        tipoDia=_tipoDoDia(now);
+      }
+    }
+    if(!turno) return { instanteId:'12x36|nenhum', turnoLabel:'Fora de turno', membros:[] };
+    const membros=USUARIOS.filter(function(u){ return u && u.escala==='12x36' && u.diaAB===tipoDia && u.turno12===turno && _incluiAgora(u, now); });
+    return { instanteId:'12x36|'+tipoDia+'-'+turno, turnoLabel:'Dia '+tipoDia+' · '+(turno==='dia'?'Dia':'Noite'), membros:membros };
+  }
+  // Padrão: turno ativo pelos 4 turnos habilitados; membros = funcionários Padrão no expediente agora
+  const p=ESCALA_CONFIG.padrao||{};
+  let key='';
+  for(const k of _PADRAO_KEYS){ const t=p[k]; if(t && t.ativo && _dentroJanela(nowMin,_hmMin(t.inicio),_hmMin(t.fim))){ key=k; break; } }
+  const membros=USUARIOS.filter(function(u){ return u && (u.escala==='padrao'||!u.escala) && _incluiAgora(u, now); });
+  return { instanteId:'padrao|'+(key||'nenhum'), turnoLabel:(key?_PADRAO_LABELS[key]:'Fora de turno'), membros:membros };
+}
+// Override temporário do plantão atual (incluir/remover por id), amarrado à instância
+let PLANTAO_OVERRIDE={ instanteId:null, incluir:[], remover:[] };
+const PLANTAO_OVERRIDE_LS='garagespot_plantao_override';
+function savePlantaoOverride(){ try{ localStorage.setItem(PLANTAO_OVERRIDE_LS, JSON.stringify(PLANTAO_OVERRIDE)); }catch(e){} }
+function loadPlantaoOverride(){ try{ const r=localStorage.getItem(PLANTAO_OVERRIDE_LS); if(r) PLANTAO_OVERRIDE=Object.assign({instanteId:null,incluir:[],remover:[]},JSON.parse(r)||{}); }catch(e){} }
+function _plantaoOverrideDaInstancia(instanteId){
+  if(PLANTAO_OVERRIDE.instanteId!==instanteId){
+    // virada do plantão → descarta override anterior
+    PLANTAO_OVERRIDE={ instanteId:instanteId, incluir:[], remover:[] };
+    savePlantaoOverride();
+  }
+  return PLANTAO_OVERRIDE;
+}
+// Lista FINAL do plantão atual (base da escala ± override). {instanteId,turnoLabel,membros[]}
+function plantaoAtualUsuarios(now){
+  const inst=_plantaoInstante(now);
+  const ov=_plantaoOverrideDaInstancia(inst.instanteId);
+  const ids=new Set(inst.membros.map(function(u){return u.id;}));
+  (ov.remover||[]).forEach(function(id){ ids.delete(id); });
+  (ov.incluir||[]).forEach(function(id){ ids.add(id); });
+  return { instanteId:inst.instanteId, turnoLabel:inst.turnoLabel, membros:USUARIOS.filter(function(u){ return ids.has(u.id); }) };
+}
+function plantaoIncluir(id){
+  const inst=_plantaoInstante();
+  const ov=_plantaoOverrideDaInstancia(inst.instanteId);
+  ov.remover=(ov.remover||[]).filter(function(x){return x!==id;});
+  if((ov.incluir||[]).indexOf(id)<0) ov.incluir.push(id);
+  savePlantaoOverride();
+  if(typeof renderPainelDia==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
+  if(typeof atualizarPlantao==='function') atualizarPlantao();
+}
+function plantaoRemover(id){
+  const inst=_plantaoInstante();
+  const ov=_plantaoOverrideDaInstancia(inst.instanteId);
+  ov.incluir=(ov.incluir||[]).filter(function(x){return x!==id;});
+  if((ov.remover||[]).indexOf(id)<0) ov.remover.push(id);
+  savePlantaoOverride();
+  if(typeof renderPainelDia==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
+  if(typeof atualizarPlantao==='function') atualizarPlantao();
 }
 
 function getTurnoDoEvento(ts){
@@ -3456,42 +3648,125 @@ function showHistoricoUsuario(userId){
 }
 
 function showModalTurnos(){
+  // estado de edição local (não persiste até Salvar)
+  let _tipoSel = ESCALA_CONFIG.tipo || 'padrao';
+  function hojeISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function fmtBR(iso){ if(!iso) return ''; const p=iso.split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:iso; }
   function render(){
     const mc=document.getElementById('mc');
-    mc.innerHTML=`<div class="mt">🕒 Cadastro de Turnos</div>
-      <div class="ms" style="margin-bottom:8px">Defina os 3 turnos do hotel</div>
-      ${TURNOS.map((t,i)=>`
-        <div style="border:1px solid #eee;border-radius:8px;padding:9px 12px;margin-bottom:6px">
-          <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px">Turno ${i+1} — ${t.nome}</div>
-          <label class="fl">Nome</label>
-          <input class="fi" id="tn-nome-${i}" value="${t.nome}" style="margin-bottom:5px">
-          <div style="display:flex;gap:8px">
-            <div style="flex:1"><label class="fl">Início</label><input type="time" class="fi" id="tn-ini-${i}" value="${t.inicio}" style="margin-bottom:0"></div>
-            <div style="flex:1"><label class="fl">Fim</label><input type="time" class="fi" id="tn-fim-${i}" value="${t.fim}" style="margin-bottom:0"></div>
-          </div>
-        </div>`).join('')}
-      <div class="b2" style="margin-top:8px">
-        <button class="bcx" onclick="closeOv()">Cancelar</button>
-        <button class="bsv" id="tn-save">Salvar</button>
-      </div>`;
+    const p=ESCALA_CONFIG.padrao, d36=ESCALA_CONFIG.doze36;
+    const padraoHTML=_PADRAO_KEYS.map(function(k){
+      const t=p[k];
+      return ''+
+      '<div style="border:1px solid #eee;border-radius:8px;padding:9px 12px;margin-bottom:6px">'+
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#111;margin-bottom:6px">'+
+          '<input type="checkbox" id="esc-pad-'+k+'-ativo" '+(t.ativo?'checked':'')+' style="width:18px;height:18px"> '+_PADRAO_LABELS[k]+'</label>'+
+        '<div style="display:flex;gap:8px">'+
+          '<div style="flex:1"><label class="fl">Início</label><input type="time" class="fi" id="esc-pad-'+k+'-ini" value="'+t.inicio+'" style="margin-bottom:0"></div>'+
+          '<div style="flex:1"><label class="fl">Fim</label><input type="time" class="fi" id="esc-pad-'+k+'-fim" value="'+t.fim+'" style="margin-bottom:0"></div>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+    const ancoraInfo = (d36.ancora?('Dia A = '+fmtBR(d36.ancora)):('Dia A começa HOJE, '+fmtBR(hojeISO())));
+    const doze36HTML=''+
+      '<div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:8px;padding:8px 11px;font-size:11px;color:#185FA5;margin-bottom:8px">'+
+        '📅 <strong>'+ancoraInfo+'.</strong> A escala alterna a cada dia: A, B, A, B… Os horários valem para os dois dias (muda só a equipe).'+
+      '</div>'+
+      '<div style="border:1px solid #eee;border-radius:8px;padding:9px 12px;margin-bottom:6px">'+
+        '<div style="font-size:13px;font-weight:700;color:#111;margin-bottom:6px">☀️ Turno Dia</div>'+
+        '<div style="display:flex;gap:8px">'+
+          '<div style="flex:1"><label class="fl">Início</label><input type="time" class="fi" id="esc-d36-dia-ini" value="'+d36.dia.inicio+'" style="margin-bottom:0"></div>'+
+          '<div style="flex:1"><label class="fl">Fim</label><input type="time" class="fi" id="esc-d36-dia-fim" value="'+d36.dia.fim+'" style="margin-bottom:0"></div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="border:1px solid #eee;border-radius:8px;padding:9px 12px;margin-bottom:6px">'+
+        '<div style="font-size:13px;font-weight:700;color:#111;margin-bottom:6px">🌙 Turno Noite <span style="font-weight:400;color:#888;font-size:11px">(pode cruzar a meia-noite)</span></div>'+
+        '<div style="display:flex;gap:8px">'+
+          '<div style="flex:1"><label class="fl">Início</label><input type="time" class="fi" id="esc-d36-noite-ini" value="'+d36.noite.inicio+'" style="margin-bottom:0"></div>'+
+          '<div style="flex:1"><label class="fl">Fim</label><input type="time" class="fi" id="esc-d36-noite-fim" value="'+d36.noite.fim+'" style="margin-bottom:0"></div>'+
+        '</div>'+
+      '</div>';
+    mc.innerHTML='<div class="mt">🕒 Cadastro de Turnos</div>'+
+      '<label class="fl">Escala de operação</label>'+
+      '<select class="fi" id="esc-tipo">'+
+        '<option value="padrao" '+(_tipoSel==='padrao'?'selected':'')+'>Padrão (4 turnos)</option>'+
+        '<option value="12x36" '+(_tipoSel==='12x36'?'selected':'')+'>12x36 (Dia A / Dia B)</option>'+
+      '</select>'+
+      '<div class="ms" style="margin:6px 0 8px">'+(_tipoSel==='padrao'?'Habilite os turnos usados e ajuste os horários.':'Configure os horários de dia e noite (iguais para A e B).')+'</div>'+
+      (_tipoSel==='padrao'?padraoHTML:doze36HTML)+
+      '<div class="b2" style="margin-top:8px">'+
+        '<button class="bcx" onclick="closeOv()">Cancelar</button>'+
+        '<button class="bsv" id="tn-save">Salvar</button>'+
+      '</div>';
     document.getElementById('ov').classList.add('on');
+    document.getElementById('esc-tipo').onchange=function(){ _tipoSel=this.value; render(); };
     document.getElementById('tn-save').onclick=function(){
-      TURNOS=TURNOS.map((t,i)=>({
-        id:t.id,
-        nome:document.getElementById('tn-nome-'+i).value.trim()||t.nome,
-        inicio:document.getElementById('tn-ini-'+i).value||t.inicio,
-        fim:document.getElementById('tn-fim-'+i).value||t.fim,
-      }));
-      saveTurnos(); closeOv(); showToast('Turnos salvos');
+      ESCALA_CONFIG.tipo=_tipoSel;
+      if(_tipoSel==='padrao'){
+        _PADRAO_KEYS.forEach(function(k){
+          ESCALA_CONFIG.padrao[k]={
+            ativo: !!document.getElementById('esc-pad-'+k+'-ativo').checked,
+            inicio: document.getElementById('esc-pad-'+k+'-ini').value||ESCALA_CONFIG.padrao[k].inicio,
+            fim: document.getElementById('esc-pad-'+k+'-fim').value||ESCALA_CONFIG.padrao[k].fim,
+          };
+        });
+        // sincroniza TURNOS (legado/relatórios) com os turnos habilitados
+        TURNOS=_PADRAO_KEYS.filter(function(k){return ESCALA_CONFIG.padrao[k].ativo;}).map(function(k){
+          return { id:'t_'+k, nome:_PADRAO_LABELS[k], inicio:ESCALA_CONFIG.padrao[k].inicio, fim:ESCALA_CONFIG.padrao[k].fim };
+        });
+        if(TURNOS.length) saveTurnos();
+      } else {
+        ESCALA_CONFIG.doze36.dia={ inicio:document.getElementById('esc-d36-dia-ini').value||'07:00', fim:document.getElementById('esc-d36-dia-fim').value||'19:00' };
+        ESCALA_CONFIG.doze36.noite={ inicio:document.getElementById('esc-d36-noite-ini').value||'19:00', fim:document.getElementById('esc-d36-noite-fim').value||'07:00' };
+        // Dia A = dia da configuração (âncora atualiza ao reconfigurar)
+        ESCALA_CONFIG.doze36.ancora=hojeISO();
+      }
+      saveEscala();
+      closeOv();
+      showToast('Escala salva');
+      if(typeof renderPainelDia==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
+      if(typeof atualizarPlantao==='function') atualizarPlantao();
     };
   }
+  render();
+}
+
+// Parte 7 v1.9.4.6: editor do plantão ATUAL (override temporário, some na virada)
+function showEditarPlantao(){
+  function render(){
+    const pl=plantaoAtualUsuarios();
+    const ativos=new Set(pl.membros.map(function(u){return u.id;}));
+    const lista=[...USUARIOS].sort(function(a,b){return a.nome.localeCompare(b.nome);});
+    const itens=lista.length===0?'<span style="font-size:12px;color:#bbb">Nenhum usuário cadastrado</span>':
+      lista.map(function(u){
+        const on=ativos.has(u.id);
+        const escTxt=u.escala==='12x36'?(' · 12x36 '+(u.diaAB||'')+'/'+(u.turno12||'')):'';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#111">'+_vtEsc(u.nome)+'</div>'+
+          '<div style="font-size:11px;color:#888">'+_vtEsc(u.cargo||'')+escTxt+'</div></div>'+
+          '<button onclick="'+(on?'plantaoRemover':'plantaoIncluir')+'(\''+u.id+'\');_editarPlantaoRerender()" '+
+          'style="font-size:11px;font-weight:700;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;'+
+          (on?'border:1px solid #A32D2D;color:#A32D2D;background:#fff':'border:1px solid #0F6E56;color:#fff;background:#0F6E56')+'">'+(on?'Remover':'Incluir')+'</button>'+
+          '</div>';
+      }).join('');
+    const mc=document.getElementById('mc');
+    mc.innerHTML='<div class="mt">👥 Editar plantão atual</div>'+
+      '<div class="ms" style="margin-bottom:8px">'+_vtEsc(pl.turnoLabel)+' · inclusões/remoções são só deste plantão e somem na virada.</div>'+
+      '<div style="max-height:46vh;overflow-y:auto">'+itens+'</div>'+
+      '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>';
+    document.getElementById('ov').classList.add('on');
+  }
+  window._editarPlantaoRerender=render;
   render();
 }
 
 // ── PLANTÃO ───────────────────────────────────────────────────────────────
 function atualizarPlantao(){
   const el=document.getElementById('plantao-ind'); if(!el) return;
-  const n=USUARIOS.filter(u=>estaNoExpediente(u)).length + PLANTAO_MANUAL.length;
+  // Parte 7 v1.9.4.6: contagem ciente da escala (+ overrides + manual legado)
+  let base=0;
+  try{ base=(plantaoAtualUsuarios().membros||[]).length; }catch(e){ base=USUARIOS.filter(u=>estaNoExpediente(u)).length; }
+  const n=base + (PLANTAO_MANUAL?PLANTAO_MANUAL.length:0);
   el.textContent='👤'+n;
   el.classList.toggle('zero',n===0);
 }
@@ -3652,6 +3927,8 @@ function buscaNav(dir){
 function navTo(v){
   // v1.9.4.1.3: fechar overlay de expansão ao trocar de tab
   if(typeof fecharExpansao==='function') fecharExpansao();
+  // Parte 3 v1.9.4.6: lupa de busca só aparece na aba Mapa (função de mapa)
+  const _bb=document.getElementById('busca-btn'); if(_bb) _bb.style.display = (v==='mapa') ? '' : 'none';
   if(v==='gestao'){ showGestaoMenu(); return; }
   ['mapa','painel','recarga'].forEach(n=>{
     const btn=document.getElementById('nav-'+n); if(btn) btn.classList.toggle('nav-active',n===v);
@@ -3788,11 +4065,18 @@ function renderPainelDia(){
   <div class="painel-sec" style="border-top:1px solid #eee;padding-top:10px;margin-top:4px">
     <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
       <div style="flex:1;min-width:120px">
-        <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">👥 Plantão${turnoAtual?' — '+turnoAtual:''}</div>
-        ${(noExp.length===0&&(!PLANTAO_MANUAL||PLANTAO_MANUAL.length===0))
-          ?'<span style="font-size:11px;color:#bbb">Nenhum no plantão</span>'
-          :[...noExp.map(u=>`<div style="font-size:12px;font-weight:700">${u.nome} <span style="font-weight:400;color:#888">${u.cargo||''}</span></div>`),
-            ...(PLANTAO_MANUAL||[]).map(e=>`<div style="font-size:12px;font-weight:700">${e.nome}</div>`)].join('')}
+        ${(function(){
+          const pl=plantaoAtualUsuarios();
+          const lbl=(pl.turnoLabel&&pl.turnoLabel!=='Fora de turno')?(' — '+pl.turnoLabel):'';
+          const membros=pl.membros||[];
+          const manual=(PLANTAO_MANUAL||[]);
+          const lista=(membros.length===0&&manual.length===0)
+            ?'<span style="font-size:11px;color:#bbb">Nenhum no plantão</span>'
+            :[...membros.map(u=>`<div style="font-size:12px;font-weight:700">${_vtEsc(u.nome)} <span style="font-weight:400;color:#888">${_vtEsc(u.cargo||'')}</span></div>`),
+              ...manual.map(e=>`<div style="font-size:12px;font-weight:700">${_vtEsc(e.nome)}</div>`)].join('');
+          return '<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">👥 Plantão'+lbl+'</div>'+lista+
+            '<button onclick="showEditarPlantao()" style="margin-top:6px;font-size:10px;font-weight:700;color:#185FA5;background:#fff;border:1px solid #185FA5;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">✏️ Editar plantão</button>';
+        })()}
       </div>
       <div style="flex:1;min-width:100px;text-align:right">
         <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">☁️ Backup</div>
@@ -4382,23 +4666,24 @@ function showGestaoMenu(){
 }
 
 function _mostrarMenuGestao(){
+  if(typeof _gestaoEsconderBack==='function') _gestaoEsconderBack();
   const mc=document.getElementById('mc');
   mc.innerHTML=`<div class="mt">⚙ Gestão</div>
     <div class="gestao-menu-sep">Cadastros</div>
-    <div class="gestao-menu-item" onclick="closeOv();showModalUsuarios()">👥 <span>Cadastro de usuários</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();showModalTurnos()">🕒 <span>Cadastro de turnos</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showModalUsuarios')">👥 <span>Cadastro de usuários</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showModalTurnos')">🕒 <span>Cadastro de turnos</span></div>
     <div class="gestao-menu-sep">Relatórios e análises</div>
-    <div class="gestao-menu-item" onclick="closeOv();showRelatorios()">📊 <span>Relatórios</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();showGestaoVistorias()">📋 <span>Vistorias</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showRelatorios')">📊 <span>Relatórios</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showGestaoVistorias')">📋 <span>Vistorias</span></div>
     <div class="gestao-menu-sep">Configurações</div>
-    <div class="gestao-menu-item" onclick="closeOv();showConfiguracoesSistema()">⚙ <span>Configurações do Sistema</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();showConexoes()">🔗 <span>Backup e Conexões</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showConfiguracoesSistema')">⚙ <span>Configurações do Sistema</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showConexoes')">🔗 <span>Backup e Conexões</span></div>
     <div class="gestao-menu-sep">Exibição</div>
-    <div class="gestao-menu-item" onclick="closeOv();showExibicao()">🔤 <span>Tamanho de fonte</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showExibicao')">🔤 <span>Tamanho de fonte</span></div>
     <div class="gestao-menu-sep">Dados do mapa</div>
     <div class="gestao-menu-item" onclick="closeOv();exportarZip()">📦 <span>Exportar todos os dados</span></div>
     <div class="gestao-menu-item" onclick="closeOv();confirmReset()" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();showLogSistema()" style="color:#555">📋 <span>Log do sistema</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
     <div class="gestao-menu-item" onclick="closeOv();alterarPIN()" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
@@ -5598,6 +5883,12 @@ function _armarEscudoNCI(ms){
 }
 
 function _nciAbrir(){
+  // Bug T v1.9.4.6 (CAUSA-RAIZ REAL): o modal de seleção de operador (#ov, z-index 500)
+  // aberto no INÍCIO do NCI (confirmarUsuario 'iniciando novo check-in') nunca era fechado;
+  // ficava por trás do #nci-overlay (z-index 9000) e era REVELADO quando o NCI fechava no
+  // fim ("designar agora"/"designar depois"), reaparecendo como "Confirma · operador".
+  // O operador já está salvo em _nciD.usuario — então basta fechar o modal residual.
+  if(typeof closeOv==='function') closeOv();
   const ov=document.getElementById('nci-overlay');
   ov.classList.add('on');
   _nciRenderPagina();
@@ -7098,13 +7389,7 @@ function _aplicarDesignacaoAutomatica(vagaId,gs){
   if(typeof refVistoria==='function') refVistoria(vagaId);
   if(typeof upd==='function') upd();
   _vtHaptic();
-  // Mover anexos h_<gs> → v_<vagaId>
-  const keyH='h_'+gs, keyV='v_'+vagaId;
-  if(ANEXOS[keyH]&&ANEXOS[keyH].length){
-    ANEXOS[keyV]=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]);
-    delete ANEXOS[keyH];
-    saveAnexos();
-  }
+  // v1.9.4.5/.6: anexos permanecem em h_<gs> (ID estável da hospedagem) — NÃO migrar para v_.
   // Limpar estado e fechar NCI
   vagaInicialNCI=null;
   _nciD=null; MODO_VISTORIA_ATIVO=null; _nciSigCtx=null; _nciSigBackup=null;
@@ -11586,7 +11871,9 @@ checkLicense().then(async (ativo)=>{
       loadUsuarios();
       loadHospedagens();
       loadTurnos();
+      loadEscala();
       loadPlantaoManual();
+      loadPlantaoOverride();
       loadRecargas();
       // v1.9.4.2: VISTORIAS_LIXEIRA continua no localStorage (pequena, sem documento_final_b64)
       try{const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS);if(d)VISTORIAS_LIXEIRA=JSON.parse(d)||{};}catch(e){}

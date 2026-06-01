@@ -21,10 +21,14 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - **Repo principal de edição:** `garagespot-app` (master)
 
 ## Estado atual
-- **Versão atual: v1.9.4.5** (integridade de anexos/vistorias + correções de Recarga).
+- **Versão atual: v1.9.4.6** (Bug T resolvido + Detalhes/Mapa/Gestão + Escalas).
 - versionCode: **22** (sem APK desde v1.9.4.1.8)
 - Em produção (hotel): versão estável anterior à v1.8 — não atualizada nesta sequência.
-- **Próxima: v1.9.4.6** — Detalhes/Mapa/Gestão menores + **Escalas** (plantão editável, turnos, funcionários).
+- **Próxima: v1.9.4.7** — Tema (em Gestão) + Relatórios + Histórico (inclui melhorar a clareza do PDF de check-out).
+
+## Bug T — STATUS CORRIGIDO (v1.9.4.6)
+- O Bug T **NÃO** havia sido resolvido pelo v1.9.4.4. A abordagem `MODO_DESIGNACAO` estava errada: a janela "Confirma · operador" aparecia em "designar agora" **e** "designar depois" (sem tocar vaga) mesmo após reabrir o app, e o teste do v1.9.4.4 era **falso positivo** (não passava pelo `confirmarUsuario` real).
+- **Causa-raiz real:** o modal de seleção de operador (`#ov`, z-index 500), aberto no **início** do NCI, **nunca era fechado**; ficava atrás do `#nci-overlay` (z-index 9000) e era **revelado** quando o NCI fechava no fim. **Resolvido** fechando o `#ov` em `_nciAbrir()` (o operador já está em `_nciD.usuario`, reutilizado). Teste fiel ao fluxo real (`bugT-nci-fluxo-real.spec.js`) falhava antes e passa depois. Designação a partir das **pendências** continua pedindo o operador (origem painel). Confirmar no uso real do dispositivo.
 
 ## Regra de integridade de anexos/vistorias (v1.9.4.5 — IMPORTANTE)
 - Anexos e vistorias são **sempre atados ao ID estável da hospedagem** (`h_<GSxxx>`), **nunca** à vaga nem ao apto, e **isolados por hospedagem**.
@@ -42,15 +46,16 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 ### Pós-Recarga
 - ✅ **v1.9.4.4 — Mapa + correções + edição completa**: (1) **Bug T** eliminado — causa-raiz: `MODO_DESIGNACAO` era perdido no reload/recriação do webview Android e o toque na vaga caía no fluxo legado `_clkVDesignar`→`confirmarUsuario` ("Confirma · operador"); corrigido com backup PERSISTENTE em localStorage + restauração auto-validada pela hospedagem (em `clkV`, `_clkVDesignar` e no init), mantendo o escudo anti-clique-fantasma; (2) **ícone de recarga preservado no drag&drop** (`_refrescarRecargaTodos` após `executarMove`); (3) **chevron dentro da barra** do header (overflow/flex/box-sizing); (4) **agrupamento Recarga do dashboard** leva ao painel funcional (sem "Em desenvolvimento"); (5) **recargas registradas como movimentação** (início/encerramento) no painel e nos detalhes, **ordem mais recente → mais antiga**; (6) **EDIÇÃO COMPLETA DOS DETALHES**: formulário = check-in pré-preenchido, edita apto, modelo, cor, placa, hóspede, observações e **DATA DE SAÍDA** sem check-out + novo check-in; **toda alteração REGISTRADA** (campo: 'de' → 'para' + por quem); apto re-chaveado em S/HOSPEDAGENS/VISTORIAS/HISTORICO/anexos; **PDF gerado depois usa o novo apto** no nome.
 - ✅ **v1.9.4.5 — Integridade de anexos/vistorias + correções de Recarga**: (A1) anexos/vistorias atados ao **ID estável da hospedagem** (`h_<gs>`) — persistem em mudança de vaga/apto/passeio; (A2) **isolamento** por hospedagem (corrigido vazamento 0707→1234; buffer NCI commitado ao gs certo); (B3) **documento de recarga** salvo em anexos + incluído no **PDF de check-out**; (B4) **ícones de recarga somem ao excluir o ponto** (`_refrescarRecargaTodos` remove órfãos); (B5) **arredondamento por fração mais próxima** (gestor escolhe 15/30; sem direção); (B6) **alerta** liga/desliga + **vibração** liga/desliga (toque/som = futuro, requer APK); (B7) **remanejamento** do ponto compartilhado considera **as duas vagas** (8C **e** 9C) e pergunta qual mover.
-- ⏳ **v1.9.4.6 — Detalhes/Mapa/Gestão menores + Escalas** (merge dos antigos 7+8): editar = formulário "Dados" do check-in pré-preenchido (mesmos campos/obrigatoriedades; **não** inicia novo check-in; registra o que mudou + por quem); **lupa de busca visível só na aba Mapa**; botão **"Voltar para Gestão"** em cada opção. **+ Escalas (feature grande):** **plantão editável** (incluir/remover pessoas no plantão atual sem mudar horários cadastrados; some na virada do plantão); **Cadastro de Turnos** com escala **Padrão** (4 turnos manhã/tarde/noite/madrugada, cada um habilitável + início/fim) e **12x36** (Dia A: dia+noite; Dia B: dia+noite; alterna dia sim/dia não); **Cadastro de Funcionários** com escolha de escala por funcionário.
-- ⏳ **v1.9.4.7 — Tema** (em Gestão) + **Relatórios** + **Histórico**.
+- ✅ **v1.9.4.6 — Bug T + Detalhes/Mapa/Gestão + Escalas**: **Bug T resolvido** (modal de operador `#ov` residual fechado em `_nciAbrir`); **Editar** = passo "Dados" pré-preenchido (Apto*, Modelo*, Cor*, Data de saída*; Placa/Hóspede/Obs opcionais; pede operador ao salvar; registra 'de'→'para' + por quem; sem vistoria; sem vaga; aviso de duplicidade); **lupa só na aba Mapa**; **"Voltar para Gestão"** (FAB persistente). **Escalas:** Cadastro de Turnos com **Padrão** (4 turnos habilitáveis + início/fim) e **12x36** (Dia A/B; dia+noite com horários iguais para A/B; **Dia A = dia da configuração**, informado na tela, âncora salva; noite pode cruzar a meia-noite); Cadastro de Funcionários com **escala por funcionário** (Padrão → início/fim; 12x36 → Dia A/B + turno + horário); **Plantão** ciente da escala (quem está agora; **noite na madrugada = equipe do dia anterior**) e **editável** (override do plantão atual via `plantaoIncluir`/`plantaoRemover`, some na virada da instância). Migração não destrutiva (turnos/funcionários antigos = Padrão).
+- ⏳ **v1.9.4.7 — Tema** (em Gestão) + **Relatórios** + **Histórico**. Inclui melhorar a **clareza do PDF de check-out**.
 - ⏳ **v1.9.4.8 — Backup no Google Drive**.
 - 🅿️ **A decidir** ("vamos ver depois"): cadastro de apartamentos opcional (reconhece apto inexistente e pede correção; hotel e estacionamento comum).
 - 🟢 **Atualização do hotel** — deploy em produção (`garagespot-hotelgumz`).
 - ⏳ (pós-hotel) Patches de correção + novas ideias de qualidade de vida do uso real.
 
 ### Verificação pendente
-- Confirmar que **designar a partir das pendências** (card "Aguardando vaga" → painel) ainda **pergunta o operador** (origem `painel`). Se o fix do Bug T (v1.9.4.4) tiver suprimido, recolocar.
+- ✅ Designar a partir das **pendências** continua pedindo o operador (origem `painel`) — confirmado por teste no v1.9.4.6. Validar também no dispositivo.
+- Confirmar no dispositivo real que o **Bug T** (modal residual de operador) não reaparece em "designar agora"/"designar depois".
 
 ### Iniciativas maiores (futuro)
 - ⏳ **Módulo Reservas / 3 apps:** GarageSpot (operação) + Reserva de Garagem (reservas futuras) + Combinado (as reservas migram para o GarageSpot; manobristas veem chegadas do dia e futuras). Inclui reestruturação do painel ("Hoje" → "Movimentações"; novo "Programação de Reservas").
@@ -119,4 +124,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - Estratégia de preço e venda (folder, pitch, valores, prospecção em Balneário Camboriú e região) — em documento de material de vendas separado.
 
 ## Última atualização deste handoff
-v1.9.4.5 — 2026-05-31
+v1.9.4.6 — 2026-06-01
