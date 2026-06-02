@@ -743,7 +743,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.6 -->
+<!-- GarageSpot v1.9.4.7 -->
 <body>
 <div class="page">
 
@@ -753,16 +753,15 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
       <div class="an">🅿 GarageSpot</div>
       <div class="as-dev">Developed by Douglas Nascimento</div>
     </div>
+    <!-- v1.9.4.7 (Parte 6): indicadores padronizados — Livres · Na garagem · A passeio · Overbooking -->
     <div class="tb-stats">
-      <div class="tb-stat"><div class="tb-val tv-total" id="st">–</div><div class="tb-lbl">Total</div></div>
-      <div class="tb-stat"><div class="tb-val tv-free" id="sf">–</div><div class="tb-lbl">Disponíveis</div></div>
-      <div class="tb-stat"><div class="tb-val tv-occ" id="so">0</div><div class="tb-lbl">Ocupadas</div></div>
+      <div class="tb-stat"><div class="tb-val tv-free" id="sf">–</div><div class="tb-lbl">Livres</div></div>
+      <div class="tb-stat"><div class="tb-val tv-occ" id="so">0</div><div class="tb-lbl">Na garagem</div></div>
       <div class="tb-stat"><div class="tb-val tv-out" id="sp">0</div><div class="tb-lbl">A passeio</div></div>
+      <div class="tb-stat"><div class="tb-val" style="color:#A32D2D" id="sob">0</div><div class="tb-lbl" style="color:#A32D2D">Overbooking</div></div>
     </div>
-    <div class="tb-ob">
-      <div class="tb-stat"><div class="tb-val" style="color:#0F6E56" id="sob-free">–</div><div class="tb-lbl" style="color:#A32D2D">OB livre</div></div>
-      <div class="tb-stat"><div class="tb-val" style="color:#A32D2D" id="sob">0</div><div class="tb-lbl" style="color:#A32D2D">OB ocup.</div></div>
-    </div>
+    <!-- elementos legados mantidos ocultos (ainda escritos por initState/upd) -->
+    <span id="st" style="display:none">–</span><span id="sob-free" style="display:none">–</span>
     <!-- Lista inline de passeio -->
     <div class="tb-passeio" id="tb-passeio">
       <span class="tb-out-lbl">Passeio:</span>
@@ -1279,10 +1278,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.6: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.6';
+// v1.9.4.7: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
+const GS_VERSION = 'v1.9.4.7';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-06-01';
+const GS_BUILD_TS = '2026-06-02';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
@@ -1444,6 +1443,10 @@ function initState(){
 
 function buildTable(){
   const tbl=document.getElementById('gtable');
+  // v1.9.4.7 (Parte 2): render IDEMPOTENTE — limpa o container antes de montar.
+  // Mata a duplicação do mapa caso buildTable seja chamado mais de uma vez
+  // (ex.: re-render ao voltar do background), sem depender do gatilho exato.
+  tbl.innerHTML='';
 
   // colgroup com larguras proporcionais em %
   const totalFr=COL_FR.reduce((a,b)=>a+b,0);
@@ -1593,6 +1596,10 @@ function positionPilares(){
 
   // Tamanho do pilar proporcional à tabela
   const tblRect = tbl.getBoundingClientRect();
+  // Parte 3 v1.9.4.7: não reposicionar quando o mapa está oculto (ex.: aba Painel) —
+  // medir com a tabela em display:none dava rects 0 e deixava os pilares (inclusive os
+  // inferiores) "presos" em coordenadas inválidas até o próximo render. Pula nesse caso.
+  if(tblRect.width < 5 || tblRect.height < 5) return;
   const pw = Math.max(8, Math.round(tblRect.width * 0.013));
   const ph = Math.max(8, Math.round(pw * 0.9));
 
@@ -1673,36 +1680,36 @@ function _atualizarBarraPasseio(v){
   }
 }
 
-function upd(){
-  let occ=0, free=0, ob_occ=0, ob_free=0;
+// v1.9.4.7 (Parte 6): cálculo ÚNICO dos indicadores, usado pelo cabeçalho E pelos cards.
+// Na garagem = vagas padrão ocupadas (não a passeio). A passeio = carros fora.
+// Livres = total de vagas padrão − na garagem − a passeio. Overbooking à parte.
+function _calcIndicadores(){
+  let naGaragem=0, livresBrutas=0, obOcup=0, obLivre=0;
   Object.entries(S).forEach(([id,d])=>{
     if(d.mergedSlave) return;
     if(d.overbook){
-      if(d.status==='occupied') ob_occ++;
-      else ob_free++;
+      if(d.status==='occupied') obOcup++; else obLivre++;
     } else {
-      if(d.status==='occupied') occ++;
-      else free++;
+      if(d.status==='occupied') naGaragem++; else livresBrutas++;
     }
   });
-  const out=Object.keys(PASSEIO).length;
+  const aPasseio=Object.keys(PASSEIO).length;
+  const totalPadrao=naGaragem+livresBrutas;
+  const livres=Math.max(0, totalPadrao - naGaragem - aPasseio); // = livresBrutas − aPasseio
+  const ocupPct = totalPadrao>0 ? Math.round(((naGaragem+aPasseio)/totalPadrao)*100) : 0;
+  return { totalPadrao, naGaragem, aPasseio, livres, overbooking:obOcup, obLivre, ocupPct };
+}
 
-  // Calcula o "peso" dos carros a passeio nas vagas disponíveis
-  // Carro grande (size='large') vale 2 vagas, pequeno vale 1
-  let passeioWeight=0;
-  Object.values(PASSEIO).forEach(d=>{
-    passeioWeight += (d.size==='large') ? 2 : 1;
-  });
-
-  const disponiveis = Math.max(0, free - passeioWeight);
-
-  // Topbar stats
-  document.getElementById('sf').textContent      = disponiveis;
-  document.getElementById('so').textContent      = occ;
-  document.getElementById('sp').textContent      = out;
-  document.getElementById('sob').textContent     = ob_occ;
-  document.getElementById('sob-free').textContent= ob_free;
-  document.getElementById('oc2').textContent     = out;
+function upd(){
+  const ind=_calcIndicadores();
+  // Topbar stats padronizados
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('sf', ind.livres);
+  set('so', ind.naGaragem);
+  set('sp', ind.aPasseio);
+  set('sob', ind.overbooking);
+  set('sob-free', ind.obLivre);
+  set('oc2', ind.aPasseio);
   renderP();
 }
 
@@ -3732,30 +3739,54 @@ function showModalTurnos(){
 }
 
 // Parte 7 v1.9.4.6: editor do plantão ATUAL (override temporário, some na virada)
+// Parte 5 v1.9.4.7: modal com (1) lista do plantão atual c/ Remover e (2) botão
+// "Incluir" que abre a lista de funcionários cadastrados (escolher um ou vários).
+let _plantaoModoIncluir=false;
 function showEditarPlantao(){
   function render(){
     const pl=plantaoAtualUsuarios();
     const ativos=new Set(pl.membros.map(function(u){return u.id;}));
-    const lista=[...USUARIOS].sort(function(a,b){return a.nome.localeCompare(b.nome);});
-    const itens=lista.length===0?'<span style="font-size:12px;color:#bbb">Nenhum usuário cadastrado</span>':
-      lista.map(function(u){
-        const on=ativos.has(u.id);
-        const escTxt=u.escala==='12x36'?(' · 12x36 '+(u.diaAB||'')+'/'+(u.turno12||'')):'';
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">'+
-          '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#111">'+_vtEsc(u.nome)+'</div>'+
-          '<div style="font-size:11px;color:#888">'+_vtEsc(u.cargo||'')+escTxt+'</div></div>'+
-          '<button onclick="'+(on?'plantaoRemover':'plantaoIncluir')+'(\''+u.id+'\');_editarPlantaoRerender()" '+
-          'style="font-size:11px;font-weight:700;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;'+
-          (on?'border:1px solid #A32D2D;color:#A32D2D;background:#fff':'border:1px solid #0F6E56;color:#fff;background:#0F6E56')+'">'+(on?'Remover':'Incluir')+'</button>'+
-          '</div>';
-      }).join('');
+    const escTxt=function(u){ return u.escala==='12x36'?(' · 12x36 '+(u.diaAB||'')+'/'+(u.turno12||'')):''; };
+    // (1) No plantão agora — cada um com Remover
+    const noPlantao=pl.membros.slice().sort(function(a,b){return a.nome.localeCompare(b.nome);});
+    const plantaoHTML = noPlantao.length===0
+      ? '<span style="font-size:12px;color:#bbb;font-style:italic">Ninguém no plantão agora</span>'
+      : noPlantao.map(function(u){
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">'+
+            '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#111">'+_vtEsc(u.nome)+'</div>'+
+            '<div style="font-size:11px;color:#888">'+_vtEsc(u.cargo||'')+escTxt(u)+'</div></div>'+
+            '<button onclick="plantaoRemover(\''+u.id+'\');_editarPlantaoRerender()" style="font-size:11px;font-weight:700;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;border:1px solid #A32D2D;color:#A32D2D;background:#fff">Remover</button>'+
+            '</div>';
+        }).join('');
+    // (2) Lista de cadastrados para incluir (só os que NÃO estão no plantão)
+    let incluirBloco='';
+    if(_plantaoModoIncluir){
+      const candidatos=[...USUARIOS].filter(function(u){return !ativos.has(u.id);}).sort(function(a,b){return a.nome.localeCompare(b.nome);});
+      const candHTML = candidatos.length===0
+        ? '<span style="font-size:12px;color:#bbb;font-style:italic">Todos os cadastrados já estão no plantão</span>'
+        : candidatos.map(function(u){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">'+
+              '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#111">'+_vtEsc(u.nome)+'</div>'+
+              '<div style="font-size:11px;color:#888">'+_vtEsc(u.cargo||'')+escTxt(u)+'</div></div>'+
+              '<button onclick="plantaoIncluir(\''+u.id+'\');_editarPlantaoRerender()" style="font-size:11px;font-weight:700;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;border:1px solid #0F6E56;color:#fff;background:#0F6E56">Incluir</button>'+
+              '</div>';
+          }).join('');
+      incluirBloco='<div class="gestao-menu-sep" style="margin-top:8px">Incluir funcionário</div>'+
+        '<div style="max-height:30vh;overflow-y:auto">'+candHTML+'</div>'+
+        '<button class="bcx" onclick="_plantaoModoIncluir=false;_editarPlantaoRerender()" style="width:100%;margin-top:6px">✓ Concluir inclusões</button>';
+    } else {
+      incluirBloco='<button class="bsv" onclick="_plantaoModoIncluir=true;_editarPlantaoRerender()" style="width:100%;margin-top:8px">+ Incluir funcionário</button>';
+    }
     const mc=document.getElementById('mc');
     mc.innerHTML='<div class="mt">👥 Editar plantão atual</div>'+
       '<div class="ms" style="margin-bottom:8px">'+_vtEsc(pl.turnoLabel)+' · inclusões/remoções são só deste plantão e somem na virada.</div>'+
-      '<div style="max-height:46vh;overflow-y:auto">'+itens+'</div>'+
+      '<div class="gestao-menu-sep" style="margin-top:0">No plantão agora</div>'+
+      '<div style="max-height:36vh;overflow-y:auto">'+plantaoHTML+'</div>'+
+      incluirBloco+
       '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>';
     document.getElementById('ov').classList.add('on');
   }
+  _plantaoModoIncluir=false;
   window._editarPlantaoRerender=render;
   render();
 }
@@ -3956,15 +3987,10 @@ function renderPainelDia(){
 
   // v1.9.4.1.3: estatísticas básicas (Garagem Agora). Movimentações/Hospedados/Pendências
   // são calculadas em renderAgrupadoresPainel() abaixo.
-  let occ=0,free=0,tot=0,obOcc=0;
-  Object.entries(S).forEach(([,d])=>{
-    if(d.mergedSlave) return;
-    if(d.overbook){ if(d.status==='occupied') obOcc++; return; }
-    tot++;
-    d.status==='occupied'?occ++:free++;
-  });
-  const out=Object.keys(PASSEIO).length;
-  const pct=tot>0?Math.round((occ+out)/tot*100):0;
+  // v1.9.4.7 (Parte 6): mesmos números do cabeçalho (cálculo unificado)
+  const _ind=_calcIndicadores();
+  const out=_ind.aPasseio;
+  const pct=_ind.ocupPct;
 
   const noExp=USUARIOS.filter(u=>estaNoExpediente(u));
   const turnoAtual=getTurnoAtual();
@@ -3980,17 +4006,21 @@ function renderPainelDia(){
   <div class="painel-sec" style="margin-bottom:10px">
     <div class="painel-sec-title">🏢 Garagem agora — ${now.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})}</div>
     <div class="painel-stat-row" style="gap:6px">
-      <div class="painel-stat-card" style="background:#EEF6FF;border:1.5px solid #378ADD;flex:1.3">
-        <div class="painel-stat-val" style="color:#185FA5">${occ+out}</div>
+      <div class="painel-stat-card" style="background:#EEF9F2;border:1.5px solid #b0dbc0;flex:1">
+        <div class="painel-stat-val" style="color:#0F6E56" id="g-livres">${_ind.livres}</div>
+        <div class="painel-stat-lbl" style="color:#0F6E56">Livres</div>
+      </div>
+      <div class="painel-stat-card" style="background:#EEF6FF;border:1.5px solid #378ADD;flex:1">
+        <div class="painel-stat-val" style="color:#185FA5" id="g-garagem">${_ind.naGaragem}</div>
         <div class="painel-stat-lbl" style="color:#185FA5">Na garagem</div>
       </div>
       <div class="painel-stat-card" style="background:#FAEEDA;border:1.5px solid #E8C97A;flex:1">
-        <div class="painel-stat-val" style="color:#854F0B">${out}</div>
+        <div class="painel-stat-val" style="color:#854F0B" id="g-passeio">${_ind.aPasseio}</div>
         <div class="painel-stat-lbl" style="color:#854F0B">A passeio</div>
       </div>
-      <div class="painel-stat-card" style="background:#EEF9F2;border:1.5px solid #b0dbc0;flex:1">
-        <div class="painel-stat-val" style="color:#0F6E56">${free}</div>
-        <div class="painel-stat-lbl" style="color:#0F6E56">Livres</div>
+      <div class="painel-stat-card" style="background:#FCEBEB;border:1.5px solid #E8A8A8;flex:1">
+        <div class="painel-stat-val" style="color:#A32D2D" id="g-ob">${_ind.overbooking}</div>
+        <div class="painel-stat-lbl" style="color:#A32D2D">Overbooking</div>
       </div>
       <div class="painel-stat-card" style="background:#f5f4f0;border:1.5px solid #ddd;flex:0.9">
         <div class="painel-stat-val" style="color:#555">${pct}%</div>
@@ -4074,7 +4104,9 @@ function renderPainelDia(){
             ?'<span style="font-size:11px;color:#bbb">Nenhum no plantão</span>'
             :[...membros.map(u=>`<div style="font-size:12px;font-weight:700">${_vtEsc(u.nome)} <span style="font-weight:400;color:#888">${_vtEsc(u.cargo||'')}</span></div>`),
               ...manual.map(e=>`<div style="font-size:12px;font-weight:700">${_vtEsc(e.nome)}</div>`)].join('');
-          return '<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">👥 Plantão'+lbl+'</div>'+lista+
+          // Parte 5 v1.9.4.7: clicar nos nomes abre o mesmo modal de Editar plantão
+          return '<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">👥 Plantão'+lbl+'</div>'+
+            '<div onclick="showEditarPlantao()" style="cursor:pointer" title="Editar plantão">'+lista+'</div>'+
             '<button onclick="showEditarPlantao()" style="margin-top:6px;font-size:10px;font-weight:700;color:#185FA5;background:#fff;border:1px solid #185FA5;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">✏️ Editar plantão</button>';
         })()}
       </div>
@@ -4340,7 +4372,7 @@ function renderExpansaoHoje(filtro){
           const vagaLbl=vagaId?('Vaga '+vagaId):(h.vaga_inicial?'Vaga '+h.vaga_inicial:'—');
           const veic=[h.model,h.color].filter(Boolean).join(' ')||'—';
           const click=vagaId
-            ?('onclick="fecharExpansao();_iniciarCheckout(\''+_vtEsc(vagaId)+'\')"')
+            ?('onclick="fecharExpansao();_iniciarCheckout(\''+_vtEsc(vagaId)+'\',true)"')
             :('onclick="fecharExpansao();abrirDetalhesAguardando(\''+_vtEsc(h._gs||'')+'\')"');
           html+='<div class="exp-item clicavel" '+click+'>'+
             '<div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
@@ -4402,7 +4434,11 @@ function bindHandlersHoje(){
 }
 
 // v1.9.4.1.5: Iniciar checkout de uma vaga via expansão Hoje
-window._iniciarCheckout = function(vagaId){
+window._iniciarCheckout = function(vagaId, direto){
+  // Parte 8 v1.9.4.7: vindo do painel (Hoje → Check-outs / atrasado), ir DIRETO à
+  // confirmação de check-out (doChk), pulando o menu de opções da vaga. O menu de
+  // opções continua ao tocar numa vaga normalmente (clkV → showMenu).
+  if(direto && typeof doChk==='function'){ doChk(vagaId); return; }
   if(typeof showMenu==='function'){ showMenu(vagaId); }
   else if(typeof showDet==='function'){ showDet(vagaId,0); }
 };
@@ -4418,7 +4454,7 @@ window._modalCheckoutAtrasado = function(gs){
       {label:'Dar check-out agora',cls:'primary',action:function(){
         fecharExpansao();
         const vagaId=_vagaIdDoGs(gs);
-        if(vagaId) _iniciarCheckout(vagaId);
+        if(vagaId) _iniciarCheckout(vagaId, true);
         else abrirDetalhesAguardando(gs);
       }},
       {label:'Alterar data de check-out',action:function(){
@@ -8621,8 +8657,11 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
         const ds=String(dd.getDate()).padStart(2,'0')+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getFullYear()).slice(-2);
         const nomeAnx=(r.apt||'000')+'_'+ds+'_Recarga_'+vagaId+'.png';
         const kh='h_'+r.hospedagem;
-        if(!ANEXOS[kh]) ANEXOS[kh]=[];
-        ANEXOS[kh].push({name:nomeAnx,type:'image/png',data:png,isImg:true,tipo:'recarga',recarga_ts:entrada.ts});
+        // v1.9.4.7: garante que eventuais anexos legados da vaga sejam dobrados em h_<gs>
+        // ANTES de somar o comprovante — e SEMPRE soma (push), nunca sobrescreve.
+        if(typeof _migrarAnexosParaHosp==='function') _migrarAnexosParaHosp(r.hospedagem, ['v_'+vagaId]);
+        if(!Array.isArray(ANEXOS[kh])) ANEXOS[kh]=[];
+        ANEXOS[kh]=[...ANEXOS[kh], {name:nomeAnx,type:'image/png',data:png,isImg:true,tipo:'recarga',recarga_ts:entrada.ts}];
         saveAnexos();
       }
     }catch(e){ console.error('[Parte3] anexo recarga falhou:', e); }
@@ -11734,11 +11773,14 @@ document.addEventListener('visibilitychange', ()=>{
     forceCleanDrag();
     if(typeof _nciD!=='undefined'&&_nciD) _nciSalvarRascunho();
   } else {
-    // App voltou ao foco — força verificação de licença ignorando cache
-    try{ localStorage.removeItem(LICENSE_CACHE_KEY); }catch(e){}
-    checkLicense().then(ativo=>{
-      if(!ativo) showLicenseBlocked(false);
-    });
+    // v1.9.4.7 (Parte 7): re-checagem SUAVE ao voltar do background.
+    // NÃO apaga o cache (apagar + falha de rede gerava falso "inativo") e NÃO bloqueia
+    // por falha transitória — só em desativação CONFIRMADA (kill real). Dev nunca bloqueia.
+    if(!_isDevEnv()){
+      checkLicense().then(ativo=>{
+        if(ativo===false) showLicenseBlocked(false);
+      }).catch(()=>{});
+    }
   }
 });
 
@@ -11780,6 +11822,17 @@ const LICENSE_URL = 'https://gist.githubusercontent.com/ApolloDSk/a9b3a7937b71c3
 // Cache de 5 minutos — verifica com frequência mas não a cada clique
 const LICENSE_CACHE_MS  = 5 * 60 * 1000;
 const LICENSE_CACHE_KEY = 'garagespot_license_cache';
+// v1.9.4.7 (Parte 7): ambiente DEV não tem kill switch (sempre ativo). Detecta por
+// localhost (testes/preview) ou pelo Pages de desenvolvimento (garagespot-dev).
+function _isDevEnv(){
+  try{
+    const h=(location.hostname||'').toLowerCase();
+    const href=(location.href||'').toLowerCase();
+    if(h==='localhost'||h==='127.0.0.1'||h==='') return true;
+    if(href.indexOf('garagespot-dev')>=0) return true;
+  }catch(e){}
+  return false;
+}
 
 function showLicenseBlocked(semInternet){
   document.body.innerHTML = `
@@ -11804,6 +11857,8 @@ function showLicenseBlocked(semInternet){
 }
 
 async function checkLicense(){
+  // v1.9.4.7: DEV nunca tem kill switch.
+  if(_isDevEnv()) return true;
   // Verifica cache local primeiro
   try{
     const cached = localStorage.getItem(LICENSE_CACHE_KEY);
@@ -11832,19 +11887,17 @@ async function checkLicense(){
     return ativo;
 
   }catch(e){
-    // Erro de rede — usa cache mesmo expirado se houver
+    // v1.9.4.7 (Parte 7): falha transitória NUNCA gera falso "inativo".
+    // Usa o último estado VÁLIDO conhecido (cache de qualquer idade); se nunca houve
+    // checagem bem-sucedida, FAIL-OPEN (ativo) — só bloqueamos em kill CONFIRMADO.
     try{
       const cached = localStorage.getItem(LICENSE_CACHE_KEY);
       if(cached){
-        const {ativo, ts} = JSON.parse(cached);
-        // Cache de até 24h aceito em modo offline
-        if((Date.now() - ts) < 24 * 60 * 60 * 1000){
-          return ativo;
-        }
+        const {ativo} = JSON.parse(cached);
+        return ativo; // mantém o último estado válido (ativo ou inativo confirmado antes)
       }
     }catch(e2){}
-    // Sem cache nenhum e sem internet → bloqueia por segurança
-    return false;
+    return true; // sem histórico + offline/erro → não bloquear por falha transitória
   }
 }
 

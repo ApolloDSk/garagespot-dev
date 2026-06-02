@@ -21,10 +21,12 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - **Repo principal de edição:** `garagespot-app` (master)
 
 ## Estado atual
-- **Versão atual: v1.9.4.6** (Bug T resolvido + Detalhes/Mapa/Gestão + Escalas).
+- **Versão atual: v1.9.4.7** — estabilização, **no DEV E no HOTEL (produção atualizada nesta rodada)**.
 - versionCode: **22** (sem APK desde v1.9.4.1.8)
-- Em produção (hotel): versão estável anterior à v1.8 — não atualizada nesta sequência.
-- **Próxima: v1.9.4.7** — Tema (em Gestão) + Relatórios + Histórico (inclui melhorar a clareza do PDF de check-out).
+- **Próxima: Google Drive** (backup/restauração, exige APK/versionCode 23) → depois **v2.0** (servidor/multi-dispositivo).
+
+## Princípio de documentação (SAGRADO — v1.9.4.7)
+- Nada se perde; tudo vinculado à hospedagem (`h_<gs>`). **Anexos sempre SOMADOS, nunca sobrescritos.** Movimentações completas no "i". **PDF de check-out completo** (movimentações + vistorias + fotos + recargas).
 
 ## Bug T — STATUS CORRIGIDO (v1.9.4.6)
 - O Bug T **NÃO** havia sido resolvido pelo v1.9.4.4. A abordagem `MODO_DESIGNACAO` estava errada: a janela "Confirma · operador" aparecia em "designar agora" **e** "designar depois" (sem tocar vaga) mesmo após reabrir o app, e o teste do v1.9.4.4 era **falso positivo** (não passava pelo `confirmarUsuario` real).
@@ -47,10 +49,9 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - ✅ **v1.9.4.4 — Mapa + correções + edição completa**: (1) **Bug T** eliminado — causa-raiz: `MODO_DESIGNACAO` era perdido no reload/recriação do webview Android e o toque na vaga caía no fluxo legado `_clkVDesignar`→`confirmarUsuario` ("Confirma · operador"); corrigido com backup PERSISTENTE em localStorage + restauração auto-validada pela hospedagem (em `clkV`, `_clkVDesignar` e no init), mantendo o escudo anti-clique-fantasma; (2) **ícone de recarga preservado no drag&drop** (`_refrescarRecargaTodos` após `executarMove`); (3) **chevron dentro da barra** do header (overflow/flex/box-sizing); (4) **agrupamento Recarga do dashboard** leva ao painel funcional (sem "Em desenvolvimento"); (5) **recargas registradas como movimentação** (início/encerramento) no painel e nos detalhes, **ordem mais recente → mais antiga**; (6) **EDIÇÃO COMPLETA DOS DETALHES**: formulário = check-in pré-preenchido, edita apto, modelo, cor, placa, hóspede, observações e **DATA DE SAÍDA** sem check-out + novo check-in; **toda alteração REGISTRADA** (campo: 'de' → 'para' + por quem); apto re-chaveado em S/HOSPEDAGENS/VISTORIAS/HISTORICO/anexos; **PDF gerado depois usa o novo apto** no nome.
 - ✅ **v1.9.4.5 — Integridade de anexos/vistorias + correções de Recarga**: (A1) anexos/vistorias atados ao **ID estável da hospedagem** (`h_<gs>`) — persistem em mudança de vaga/apto/passeio; (A2) **isolamento** por hospedagem (corrigido vazamento 0707→1234; buffer NCI commitado ao gs certo); (B3) **documento de recarga** salvo em anexos + incluído no **PDF de check-out**; (B4) **ícones de recarga somem ao excluir o ponto** (`_refrescarRecargaTodos` remove órfãos); (B5) **arredondamento por fração mais próxima** (gestor escolhe 15/30; sem direção); (B6) **alerta** liga/desliga + **vibração** liga/desliga (toque/som = futuro, requer APK); (B7) **remanejamento** do ponto compartilhado considera **as duas vagas** (8C **e** 9C) e pergunta qual mover.
 - ✅ **v1.9.4.6 — Bug T + Detalhes/Mapa/Gestão + Escalas**: **Bug T resolvido** (modal de operador `#ov` residual fechado em `_nciAbrir`); **Editar** = passo "Dados" pré-preenchido (Apto*, Modelo*, Cor*, Data de saída*; Placa/Hóspede/Obs opcionais; pede operador ao salvar; registra 'de'→'para' + por quem; sem vistoria; sem vaga; aviso de duplicidade); **lupa só na aba Mapa**; **"Voltar para Gestão"** (FAB persistente). **Escalas:** Cadastro de Turnos com **Padrão** (4 turnos habilitáveis + início/fim) e **12x36** (Dia A/B; dia+noite com horários iguais para A/B; **Dia A = dia da configuração**, informado na tela, âncora salva; noite pode cruzar a meia-noite); Cadastro de Funcionários com **escala por funcionário** (Padrão → início/fim; 12x36 → Dia A/B + turno + horário); **Plantão** ciente da escala (quem está agora; **noite na madrugada = equipe do dia anterior**) e **editável** (override do plantão atual via `plantaoIncluir`/`plantaoRemover`, some na virada da instância). Migração não destrutiva (turnos/funcionários antigos = Padrão).
-- ⏳ **v1.9.4.7 — Tema** (em Gestão) + **Relatórios** + **Histórico**. Inclui melhorar a **clareza do PDF de check-out**.
-- ⏳ **v1.9.4.8 — Backup no Google Drive**.
+- ✅ **v1.9.4.7 — Estabilização (DEV + HOTEL)**: anexo de recarga **somado** (nunca sobrescreve) + varredura de integridade; **mapa render idempotente** (`buildTable` limpa o container — fim da duplicação); **pilares** com guarda anti-render-oculto; **ponto compartilhado cinza** (teste); **plantão** com botão **"Incluir"** que abre lista de cadastrados + clique nos nomes do dashboard; **indicadores padronizados** (cabeçalho e cards: Livres · Na garagem · A passeio · Overbooking; **Livres = padrão − na garagem − a passeio**; overbooking à parte; cards mantêm % Ocup. — cálculo único `_calcIndicadores`); **kill switch**: DEV sempre ativo (`_isDevEnv`), cliente robusto (falha transitória mantém último estado válido, sem falso "inativo", re-checagem suave no `visibilitychange`); **atalho de check-out** pelo painel vai direto à confirmação (`_iniciarCheckout(vaga,true)`). **Produção (hotel) atualizada nesta rodada.**
+- ⏳ **Google Drive** (com APK, versionCode 23) — backup + restauração; escopo `drive.file` (não-sensível, sem verificação pesada); consentimento publicado em "Produção" (sem expiração de 7 dias). Douglas configura o Google Cloud (projeto + Drive API + Client IDs por SHA-1 dev/prod); Code gera SHA-1, implementa e builda. (Explicação didática ao Douglas quando começar.)
 - 🅿️ **A decidir** ("vamos ver depois"): cadastro de apartamentos opcional (reconhece apto inexistente e pede correção; hotel e estacionamento comum).
-- 🟢 **Atualização do hotel** — deploy em produção (`garagespot-hotelgumz`).
 - ⏳ (pós-hotel) Patches de correção + novas ideias de qualidade de vida do uso real.
 
 ### Verificação pendente
@@ -59,7 +60,7 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 
 ### Iniciativas maiores (futuro)
 - ⏳ **Módulo Reservas / 3 apps:** GarageSpot (operação) + Reserva de Garagem (reservas futuras) + Combinado (as reservas migram para o GarageSpot; manobristas veem chegadas do dia e futuras). Inclui reestruturação do painel ("Hoje" → "Movimentações"; novo "Programação de Reservas").
-- 🚫 **v2.0 — Banco de dados + servidor**: cliente-servidor; multi-dispositivo (PC + celular + tablet em tempo real); isolamento por hotel (multi-tenant); backup e recuperação central. **SÓ depois de tudo rodando 100% no hotel.** Stack candidata: **Supabase** (Postgres + RLS + tempo real + auth) ou Firebase; IndexedDB como cache offline.
+- 🚫 **v2.0 — servidor / multi-dispositivo (mês que vem):** PC + celular + tablet ao vivo; **PC como app desktop offline (Electron/Tauri), NÃO navegador**; arquitetura **offline-first com sync**; **multi-tenant** (outros hotéis, isolados por hotel). Planejamento dedicado e didático antes. **SÓ depois de tudo rodando 100% no hotel.** Stack candidata: **Supabase** (Postgres + RLS + tempo real + auth) ou Firebase; IndexedDB como cache offline.
 
 ## Decisões confirmadas / regras de trabalho
 - **Versionamento:** usar `v1.9.x` / `v1.9.x.y`; **NADA de v2.0** até tudo rodar 100% no hotel.
@@ -124,4 +125,4 @@ https://raw.githubusercontent.com/ApolloDSk/garagespot-app/refs/heads/master/CLA
 - Estratégia de preço e venda (folder, pitch, valores, prospecção em Balneário Camboriú e região) — em documento de material de vendas separado.
 
 ## Última atualização deste handoff
-v1.9.4.6 — 2026-06-01
+v1.9.4.7 — 2026-06-02 (DEV + HOTEL)
