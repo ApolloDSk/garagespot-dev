@@ -367,6 +367,19 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 .vst-avarias-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 .vst-mk-wrap{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;touch-action:none}
 .vst-mk{font-size:22px;font-weight:700;color:#d32f2f;text-shadow:0 0 3px rgba(255,255,255,.95),0 0 6px rgba(255,255,255,.8);line-height:1;pointer-events:none;user-select:none}
+/* Parte 4 v1.9.4.8: o ✕ de avaria era px fixo (22px) — no tablet, com o diagrama
+   maior, ficava pequeno demais em proporção (no celular estava bom). Escala
+   responsiva por largura de viewport para manter a MESMA proporção visual do ✕
+   em relação ao diagrama, sem exagerar. A composição PNG do PDF usa canvas próprio
+   (independente deste CSS). */
+@media (min-width:768px){
+  .vst-mk-wrap{width:60px;height:60px}
+  .vst-mk{font-size:32px}
+}
+@media (min-width:1024px){
+  .vst-mk-wrap{width:70px;height:70px}
+  .vst-mk{font-size:38px}
+}
 .vst-mk-debug{position:absolute;width:6px;height:6px;background:#00c853;border-radius:50%;border:1px solid #fff;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 2px rgba(0,0,0,.4);z-index:10}
 /* Popup avaria */
 .vst-popup{position:absolute;transform:translate(-50%,-130%);background:#fff;border:1.5px solid #bbb;border-radius:8px;padding:5px;display:flex;gap:5px;box-shadow:0 3px 12px rgba(0,0,0,.28);z-index:25;white-space:nowrap;pointer-events:auto}
@@ -743,7 +756,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.7 -->
+<!-- GarageSpot v1.9.4.8 -->
 <body>
 <div class="page">
 
@@ -1278,8 +1291,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.7: string de versão atualizada. versionCode permanece 22 (sem APK build nesta release).
-const GS_VERSION = 'v1.9.4.7';
+// v1.9.4.8: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
+// nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
+const GS_VERSION = 'v1.9.4.8';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-06-02';
 
@@ -2796,12 +2810,15 @@ function doChk(id){
       const anexosChk=getAnexos(id,false);
       // Bug Q v1.9.4.1.7: snapshot de TODAS as fotos ANTES de liberar vaga + deletar anexos.
       // Sem isto, buildRegistroDoc rodaria depois da deleção e encontraria ANEXOS vazio.
-      const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[], recargas:[] };
+      const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[], recargas:[], todos:[] };
       (function(){
         // v1.9.4.5: tudo no ID estável da hospedagem (h_<gs>); ainda dobra v_<id> legado.
         const keyV='v_'+id;
         const keyH='h_'+(hospNum||'');
         const todos=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]||[]);
+        // Parte 5 v1.9.4.8: guarda a lista COMPLETA — o PDF de check-out precisa ser
+        // completo (todos os anexos, inclusive PDFs/docs via "Arquivo"). Nada pode sumir.
+        _snapshotAnexosCheckout.todos=todos.slice();
         _snapshotAnexosCheckout.fotos=todos.filter(function(a){
           if(!a) return false;
           const ehFoto=a.tipo==='foto' || (a.isImg===true && a.tipo!=='vistoria' && !a.tipo);
@@ -3053,7 +3070,18 @@ function showEdit(id, fromPasseio){
       // 5) Auditoria: registra o que mudou + por quem (aparece no painel e nos detalhes)
       addHistorico(novoApt,'edicao', fromPasseio?'':id, 'Edição de detalhes — '+mudancas.join(' · '), usuarioStr, hospNum);
       // 6) Persistir + atualizar UI
-      if(fromPasseio) upd(); else saveData();
+      if(fromPasseio){
+        upd();
+      } else {
+        saveData();
+        // Parte 2 v1.9.4.8: re-render IMEDIATO e SÍNCRONO da vaga no mapa — o rótulo do
+        // apto (ex.: 466→469) passa a refletir na hora, sem depender de refresh atrasado.
+        // ref()/refByApt() reaproveitam o render idempotente (não duplicam células).
+        try {
+          if(typeof ref==='function') ref(id);
+          if(aptMudou && typeof refByApt==='function'){ refByApt(novoApt); if(aptAtual) refByApt(aptAtual); }
+        } catch(e){ console.error('[editar] re-render vaga falhou', e); }
+      }
       try { if(typeof renderAgrupadoresPainel==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderAgrupadoresPainel(); } catch(e){}
       showToast('✓ Dados atualizados',2500);
       showDet(fromPasseio?novoApt:id, fromPasseio);
@@ -3276,8 +3304,23 @@ function estaNoExpediente(u){
 // ── CONFIRMAR USUÁRIO ─────────────────────────────────────────────────────
 function confirmarUsuario(acao, callback){
   if(!USUARIOS.length){ callback(null); return; }
-  const noExp=USUARIOS.filter(u=>estaNoExpediente(u)).sort((a,b)=>a.nome.localeCompare(b.nome));
-  const foraExp=USUARIOS.filter(u=>!estaNoExpediente(u)).sort((a,b)=>a.nome.localeCompare(b.nome));
+  // Parte 1 v1.9.4.8: o DESTAQUE ("em serviço") agora vem do PLANTÃO ATUAL EFETIVO —
+  // mesma fonte do "Plantão" do dashboard: escala que converge com o horário ± overrides
+  // temporários (plantaoIncluir/plantaoRemover). Assim, REMOVER alguém do plantão agora o
+  // tira do destaque na hora (passa só ao "ver mais"); INCLUIR o coloca em destaque.
+  // Fallback: se a função de plantão não existir, usa o expediente individual (legado).
+  let _emPlantao;
+  try {
+    if(typeof plantaoAtualUsuarios==='function'){
+      const _pl=plantaoAtualUsuarios();
+      const _ids=new Set((_pl&&_pl.membros?_pl.membros:[]).map(function(u){return u.id;}));
+      _emPlantao=function(u){ return _ids.has(u.id); };
+    } else {
+      _emPlantao=function(u){ return estaNoExpediente(u); };
+    }
+  } catch(e){ console.error('[plantao] fonte do destaque falhou, usando expediente', e); _emPlantao=function(u){ return estaNoExpediente(u); }; }
+  const noExp=USUARIOS.filter(_emPlantao).sort((a,b)=>a.nome.localeCompare(b.nome));
+  const foraExp=USUARIOS.filter(u=>!_emPlantao(u)).sort((a,b)=>a.nome.localeCompare(b.nome));
   const todosForaOuSemExp=noExp.length===0;
 
   function renderItemUsr(u){
@@ -4413,7 +4456,7 @@ function renderExpansaoHoje(filtro){
     if(outras.length===0){
       html+='<div class="exp-empty">Nenhuma outra movimentação hoje</div>';
     } else {
-      const tLabel={saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria Criada',vistoria_assinada:'Vistoria Assinada',vistoria_adicional_criada:'Vistoria Adicional',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada'};
+      const tLabel={saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria Criada',vistoria_assinada:'Vistoria Assinada',vistoria_adicional_criada:'Vistoria Adicional',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
       for(const e of outras){
         const hora=_fmtHrPainel(e.ts);
         const isDesignacao=e.tipo==='movimentacao_vaga'||(e.tipo==='checkin' && e.vaga);
@@ -4718,9 +4761,9 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showExibicao')">🔤 <span>Tamanho de fonte</span></div>
     <div class="gestao-menu-sep">Dados do mapa</div>
     <div class="gestao-menu-item" onclick="closeOv();exportarZip()">📦 <span>Exportar todos os dados</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();confirmReset()" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('confirmReset')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();alterarPIN()" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('alterarPIN')" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
@@ -4892,6 +4935,10 @@ let HISTORICO_RECARGAS = [];
 // arredondamento_dir mantido apenas por retrocompat (ignorado no cálculo).
 let RECARGA_CONFIG = {valorHora:10, arredondamento:15, alertas:true, vibracao:true};
 const _recTimers = {};
+// Parte 7 v1.9.4.8: estado do alarme de conclusão de recarga (camada web) + AudioContext
+// destravado por gesto do usuário (política de autoplay).
+let _rcAudioCtx = null;
+let _rcAlarme = { soundInt:null, vibrInt:null, el:null, vagaId:null };
 const RECARGA_LS = 'garagespot_recargas';
 const RECARGA_HIST_LS = 'garagespot_historico_recargas';
 const RECARGA_CFG_LS = 'garagespot_recarga_config';
@@ -8373,12 +8420,15 @@ function agendarAlertaRecarga(vagaId){
 
 function _onRecargaBateu(vagaId){
   if(!RECARGAS[vagaId]||!RECARGAS[vagaId].ativo) return;
-  // Parte 6 v1.9.4.5: alerta configurável (liga/desliga) + vibração (liga/desliga).
+  // Parte 7 v1.9.4.8: alerta confiável com o app ABERTO — modal que precisa ser
+  // dispensado + som de alarme (Web Audio) repetido + vibração repetida (estilo
+  // despertador), tudo respeitando os toggles. Corrige o "não avisa" anterior (que era
+  // só um toast efêmero). _rcDispararAlertaConclusao já trata o toggle de alertas.
   const cfg = (typeof RECARGA_CONFIG!=='undefined') ? RECARGA_CONFIG : {};
   const alertasOn = (cfg.alertas !== false); // default ligado
   if(alertasOn){
-    showToast('⚡ Recarga concluida! Vaga '+vagaId+' — Apt. '+RECARGAS[vagaId].apt,5000);
-    if(cfg.vibracao){ _rcVibrar([200,100,200]); }
+    showToast('⚡ Recarga concluída! Vaga '+vagaId+' — Apt. '+RECARGAS[vagaId].apt,5000);
+    try { _rcDispararAlertaConclusao(vagaId); } catch(e){ console.error('[Parte7] alerta de recarga falhou', e); if(cfg.vibracao){ _rcVibrar([200,100,200]); } }
   }
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   // Re-render vaga
@@ -8390,6 +8440,82 @@ function _rcVibrar(padrao){
   try{
     if(navigator && typeof navigator.vibrate === 'function'){ navigator.vibrate(padrao||200); }
   }catch(e){ /* dispositivo sem suporte — ignora */ }
+}
+
+// ── Parte 7 v1.9.4.8: ALERTA DE CONCLUSÃO DA RECARGA (camada WEB, app aberto) ──────
+// Som de alarme via Web Audio (oscillator, sem arquivo) + vibração em padrão repetido
+// (estilo despertador) + modal visual que o operador precisa DISPENSAR. Respeita os
+// toggles RECARGA_CONFIG.alertas (som+visual) e RECARGA_CONFIG.vibracao (vibração).
+// A metade NATIVA (notificação em segundo plano/app fechado + som do dispositivo) fica
+// para o APK do Drive (Local Notifications) — ver CHAT_HANDOFF.md.
+function _rcAudioUnlock(){
+  try{
+    if(!_rcAudioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(AC) _rcAudioCtx=new AC(); }
+    if(_rcAudioCtx && _rcAudioCtx.state==='suspended') _rcAudioCtx.resume();
+  }catch(e){ /* sem Web Audio — ignora */ }
+}
+function _rcInitAudioUnlock(){
+  // destrava o áudio no primeiro gesto do usuário (contorna a política de autoplay)
+  const h=function(){ _rcAudioUnlock(); };
+  ['pointerdown','touchstart','keydown','click'].forEach(function(ev){
+    try{ document.addEventListener(ev, h, {passive:true}); }catch(e){ try{ document.addEventListener(ev, h); }catch(_){} }
+  });
+}
+function _rcBeep(){
+  try{
+    if(!_rcAudioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(AC) _rcAudioCtx=new AC(); }
+    if(!_rcAudioCtx) return;
+    if(_rcAudioCtx.state==='suspended') _rcAudioCtx.resume();
+    const ctx=_rcAudioCtx, now=ctx.currentTime;
+    // dois bipes curtos, estilo despertador
+    [0, 0.34].forEach(function(off){
+      const osc=ctx.createOscillator(), g=ctx.createGain();
+      osc.type='square'; osc.frequency.value=880;
+      g.gain.setValueAtTime(0.0001, now+off);
+      g.gain.exponentialRampToValueAtTime(0.25, now+off+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now+off+0.26);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(now+off); osc.stop(now+off+0.3);
+    });
+  }catch(e){ /* ignora */ }
+}
+function _rcPararAlarme(){
+  if(_rcAlarme.soundInt){ clearInterval(_rcAlarme.soundInt); _rcAlarme.soundInt=null; }
+  if(_rcAlarme.vibrInt){ clearInterval(_rcAlarme.vibrInt); _rcAlarme.vibrInt=null; }
+  try{ if(navigator && typeof navigator.vibrate==='function') navigator.vibrate(0); }catch(e){}
+  if(_rcAlarme.el && _rcAlarme.el.parentNode){ _rcAlarme.el.parentNode.removeChild(_rcAlarme.el); }
+  _rcAlarme.el=null; _rcAlarme.vagaId=null;
+}
+function _rcDispararAlertaConclusao(vagaId){
+  const r=RECARGAS[vagaId]; if(!r) return;
+  const cfg=(typeof RECARGA_CONFIG!=='undefined')?RECARGA_CONFIG:{};
+  const alertasOn=(cfg.alertas!==false);   // toggle "Alerta quando a recarga concluir"
+  const vibracaoOn=!!cfg.vibracao;          // toggle "Vibração no alerta"
+  if(!alertasOn) return;                     // respeita o toggle: alerta desligado → nada
+  _rcPararAlarme();                          // evita empilhar alarmes
+  const apt=r.apt||'—';
+  const el=document.createElement('div');
+  el.id='rc-alarme-overlay';
+  el.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(20,20,30,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+  el.innerHTML='<div style="background:#fff;border-radius:14px;max-width:340px;width:100%;padding:22px 20px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.35);border-top:6px solid #27AE60">'+
+    '<div style="font-size:40px;line-height:1;margin-bottom:8px">⚡</div>'+
+    '<div style="font-size:17px;font-weight:800;color:#1A2238">Recarga concluída</div>'+
+    '<div style="font-size:14px;color:#444;margin-top:6px">Vaga <strong>'+_vtEsc(String(vagaId))+'</strong> · Apt <strong>'+_vtEsc(String(apt))+'</strong></div>'+
+    '<button id="rc-alarme-ok" style="margin-top:18px;width:100%;background:#27AE60;color:#fff;border:none;border-radius:9px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Dispensar</button>'+
+  '</div>';
+  document.body.appendChild(el);
+  _rcAlarme.el=el; _rcAlarme.vagaId=vagaId;
+  // som repetido até dispensar (Web Audio, sem arquivo)
+  _rcBeep();
+  _rcAlarme.soundInt=setInterval(_rcBeep, 1300);
+  // vibração repetida (estilo despertador) até dispensar — só se o toggle estiver ligado
+  if(vibracaoOn){
+    _rcVibrar([400,200,400,200,600]);
+    _rcAlarme.vibrInt=setInterval(function(){ _rcVibrar([400,200,400,200,600]); }, 1800);
+  }
+  const ok=el.querySelector('#rc-alarme-ok'); if(ok) ok.onclick=_rcPararAlarme;
+  // trava de segurança: para sozinho após 90s para não tocar indefinidamente
+  setTimeout(function(){ if(_rcAlarme.vagaId===vagaId) _rcPararAlarme(); }, 90000);
 }
 
 function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
@@ -8470,10 +8596,79 @@ function showRecargaDetalhe(vagaId){
     <div class="ag">
       ${st==='carregando'?'<button class="bsv" id="rc-finalizar" style="background:#27AE60">✓ Finalizar agora</button>':''}
       ${st==='horario-bateu'?'<button class="bsv" id="rc-finalizar" style="background:#27AE60">✓ Confirmar e finalizar</button>':''}
+      ${!r.confirmada?'<button class="bcx" id="rc-editar-periodo" style="border-color:#185FA5;color:#185FA5">✎ Editar período</button>':''}
       ${r.confirmada?'<div style="background:#EEF9F2;border-radius:6px;padding:6px 10px;font-size:12px;color:#0F6E56;text-align:center">Recarga confirmada</div>':''}
       <button class="bcx" onclick="closeOv()">Fechar</button>
     </div>`);
-  setTimeout(()=>{ document.getElementById('rc-finalizar')?.addEventListener('click',()=>{ closeOv(); showRecargaFinalizar(vagaId); }); },80);
+  setTimeout(()=>{
+    document.getElementById('rc-finalizar')?.addEventListener('click',()=>{ closeOv(); showRecargaFinalizar(vagaId); });
+    document.getElementById('rc-editar-periodo')?.addEventListener('click',()=>{ _rcEditarPeriodo(vagaId); });
+  },80);
+}
+
+// Parte 6 v1.9.4.8: editar o período da recarga (corrigir início e/ou término previsto)
+// na tela de detalhes — recalcula término/restante/valor (fração mais próxima via
+// calcValorRecarga), gera registro de movimentação "de → para" com operador/horário e
+// MANTÉM a recarga ATIVA (não finaliza). Reaproveita iniciarRecarga/agendarAlertaRecarga.
+function _rcEditarPeriodo(vagaId){
+  const r=RECARGAS[vagaId]; if(!r){ return; }
+  if(r.confirmada){ showToast('Recarga já finalizada — não é possível editar o período',2500); return; }
+  const _tsToLocal=function(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); };
+  const _localToTs=function(s){ if(!s) return NaN; const parts=String(s).split('T'); if(parts.length<2) return NaN; const dp=parts[0].split('-').map(Number); const tp=parts[1].split(':').map(Number); if(dp.length<3||tp.length<2) return NaN; return new Date(dp[0],dp[1]-1,dp[2],tp[0],tp[1],0,0).getTime(); };
+  const iniIni=r.inicio_ts, fimIni=r.fim_ts;
+  showM(`<div class="mt">✎ Editar período — Vaga ${vagaId}</div>
+    <div class="ms">Apt. ${_vtEsc(String(r.apt||''))}${r.hospedagem?' · '+_vtEsc(String(r.hospedagem)):''} · a recarga continua ativa.</div>
+    <label class="fl">Início</label>
+    <input class="fi" id="rc-ed-inicio" type="datetime-local" value="${_tsToLocal(iniIni)}">
+    <label class="fl">Término previsto <span class="req">*</span></label>
+    <input class="fi" id="rc-ed-fim" type="datetime-local" value="${_tsToLocal(fimIni)}">
+    <div style="background:#FFF8E6;border:1px solid #BA7517;border-radius:7px;padding:6px 10px;font-size:11px;color:#633806;margin-top:6px" id="rc-ed-est">Estimativa: calculando...</div>
+    <div class="b2" style="margin-top:10px">
+      <button class="bcx" id="rc-ed-voltar">← Voltar</button>
+      <button class="bsv" id="rc-ed-salvar">Salvar período</button>
+    </div>`);
+  function _est(){
+    const iTs=_localToTs(document.getElementById('rc-ed-inicio')?.value);
+    const fTs=_localToTs(document.getElementById('rc-ed-fim')?.value);
+    const el=document.getElementById('rc-ed-est'); if(!el) return;
+    if(isNaN(iTs)||isNaN(fTs)||fTs<=iTs){ el.textContent='⚠️ O término deve ser depois do início.'; return; }
+    const {mins,valor}=calcValorRecarga(iTs,fTs);
+    const rem=Math.max(0,Math.ceil((fTs-Date.now())/60000));
+    el.textContent=`${_fmtDurRecarga(mins)} cobrados → R$ ${valor.toFixed(2).replace('.',',')} · restam ${_fmtDurRecarga(rem)} (R$ ${RECARGA_CONFIG.valorHora}/h, arred. ${RECARGA_CONFIG.arredondamento}min)`;
+  }
+  setTimeout(()=>{
+    document.getElementById('rc-ed-inicio')?.addEventListener('change',_est);
+    document.getElementById('rc-ed-fim')?.addEventListener('change',_est);
+    _est();
+    document.getElementById('rc-ed-voltar')?.addEventListener('click',()=>{ showRecargaDetalhe(vagaId); });
+    document.getElementById('rc-ed-salvar')?.addEventListener('click',()=>{
+      const novoIni=_localToTs(document.getElementById('rc-ed-inicio')?.value);
+      const novoFim=_localToTs(document.getElementById('rc-ed-fim')?.value);
+      if(isNaN(novoIni)){ showToast('Início inválido',2000); return; }
+      if(isNaN(novoFim)){ showToast('Término inválido',2000); return; }
+      if(novoFim<=novoIni){ showToast('O término deve ser depois do início',2500); return; }
+      if(novoIni===iniIni && novoFim===fimIni){ showToast('Nenhuma alteração',2000); showRecargaDetalhe(vagaId); return; }
+      confirmarUsuario('editando o período da recarga',function(usuario){
+        const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+        const rr=RECARGAS[vagaId]; if(!rr){ closeOv(); return; }
+        const mud=[];
+        if(novoIni!==iniIni) mud.push("Início: "+fmtDt(iniIni)+" → "+fmtDt(novoIni));
+        if(novoFim!==fimIni) mud.push("Término previsto: "+fmtDt(fimIni)+" → "+fmtDt(novoFim));
+        rr.inicio_ts=novoIni; rr.fim_ts=novoFim;
+        // mantém ativa; se o novo término ainda é futuro, reativa o estado de carregamento
+        if(novoFim>Date.now()){ rr.ativo=true; rr.confirmada=false; }
+        saveRecargas();
+        if(typeof agendarAlertaRecarga==='function') agendarAlertaRecarga(vagaId);
+        if(rr.apt && typeof addHistorico==='function'){
+          addHistorico(rr.apt,'recarga_editada',vagaId,'Período da recarga ajustado · '+mud.join(' · '),usuarioStr,rr.hospedagem);
+        }
+        if(typeof ref==='function') ref(vagaId);
+        if(document.getElementById('recarga-wrap')?.style?.display!=='none' && typeof renderTelaRecarga==='function') renderTelaRecarga();
+        showToast('✓ Período da recarga atualizado',2500);
+        showRecargaDetalhe(vagaId);
+      });
+    });
+  },80);
 }
 
 // v1.9.4.3.3: Encerramento com cobrança (3 opções quando em atraso). Cortesia (valorHora=0) = R$ 0,00.
@@ -9718,10 +9913,10 @@ function showConfiguracoesSistema(){
       </div>
       ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
     </div>
-    <div class="gestao-menu-item" onclick="closeOv();showRecargaCfg()" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>
     <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
     <div class="gestao-menu-sep" style="margin-top:14px">Aparência</div>
-    <div class="gestao-menu-item" onclick="closeOv();showTema()">🎨 <span>Cor do tema</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showTema')">🎨 <span>Cor do tema</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
@@ -10414,8 +10609,8 @@ function showToast(msg,duration){
 function showHistoricoModal(apt, hospedagem, detId, detFp){
   // Parte 5 v1.9.4.4: ordenar da mais recente → mais antiga (antes era ordem de inserção)
   const hist=getHistorico(apt).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada'};
-  const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D',recarga_iniciada:'#BA7517',recarga_encerrada:'#1F9A5F'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
+  const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D',recarga_iniciada:'#BA7517',recarga_encerrada:'#1F9A5F',recarga_editada:'#185FA5',exclusao_anexo:'#A32D2D'};
   const titulo=hospedagem?`ℹ️ Apt. ${apt} · ${hospedagem}`:`ℹ️ Apt. ${apt}`;
   const cardsHTML=hist.length===0
     ?'<span style="font-size:12px;color:#bbb;font-style:italic">Sem eventos registrados</span>'
@@ -10895,23 +11090,30 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
       for(const f of fotosDessa){ _emitirFoto(f); }
     }
 
+    // Parte 5 v1.9.4.8: timestamp de um anexo (para ordenar do mais recente → mais antigo)
+    const _anxTs=function(a){ return (a && (a.recarga_ts || a.timestamp || a.ts)) || 0; };
+
     // 3) fotos AVULSAS: sem vistoria_numero OU cujo número não bate com nenhuma vistoria listada
+    // Parte 5 v1.9.4.8: ordenadas do mais recente → mais antigo.
     const fotosAvulsas = fotos.filter(function(f){
       if(!f || fotosUsadas.has(f)) return false;
       if(!f.vistoria_numero) return true;       // sem vínculo
       if(!numerosVist.has(f.vistoria_numero)) return true; // vínculo "órfão" (vistoria não está nesta hospedagem)
       return false;
-    });
+    }).sort(function(a,b){ return _anxTs(b)-_anxTs(a); });
     console.log('[BUG C] fotos avulsas no fim:', fotosAvulsas.length);
     for(const f of fotosAvulsas){ _emitirFoto(f); }
 
-    // Parte 3 v1.9.4.5: comprovantes de recarga (tipo:'recarga') ao final
+    // Parte 3 v1.9.4.5 + Parte 5 v1.9.4.8: comprovantes de recarga (tipo:'recarga') como
+    // ÚLTIMAS páginas, depois das fotos, ordenados do mais recente → mais antigo.
     let recargas;
     if(snapshotCheckout && Array.isArray(snapshotCheckout.recargas)){
-      recargas = snapshotCheckout.recargas;
+      recargas = snapshotCheckout.recargas.slice();
     } else {
       recargas = (ANEXOS['h_'+hospNum]||[]).filter(function(a){ return a && a.tipo==='recarga' && !!(a.data||a.base64Original); });
     }
+    recargas.sort(function(a,b){ return _anxTs(b)-_anxTs(a); });
+    const recargasUsadas = new Set(recargas);
     for(const rc of recargas){
       try{
         const imgData=rc.data||rc.base64Original; if(!imgData) continue;
@@ -10920,9 +11122,52 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
         const fmt=(rc.type||'').includes('png')?'PNG':'JPEG';
         doc.addImage(imgData,fmt,10,yR,190,240);
         _pdfFooter(doc);
+        recargasUsadas.add(rc);
       }catch(e){ console.error('[recarga PDF] erro', rc&&rc.name, e); }
     }
     console.log('[Parte3] comprovantes de recarga no PDF:', recargas.length);
+
+    // Parte 5 v1.9.4.8: CATCH-ALL — garante que NADA suma do PDF de check-out. Inclui
+    // todo anexo ainda não emitido: imagens com tipo inesperado viram páginas; anexos
+    // não-imagem (PDF/doc via "Arquivo") entram como PÁGINA DE REFERÊNCIA identificando o
+    // arquivo (o original segue preservado nos anexos). Robusto a anexos corrompidos.
+    let todosAnex;
+    if(snapshotCheckout && Array.isArray(snapshotCheckout.todos)){
+      todosAnex = snapshotCheckout.todos;
+    } else {
+      todosAnex = (ANEXOS['h_'+hospNum]||[]).slice();
+      const vagaIdAtual2=Object.keys(S).find(function(k){return S[k]&&S[k].hospedagem===hospNum&&S[k].status==='occupied';});
+      if(vagaIdAtual2) todosAnex = todosAnex.concat(ANEXOS['v_'+vagaIdAtual2]||[]);
+    }
+    const restantes = (todosAnex||[]).filter(function(a){
+      if(!a) return false;
+      if(a.tipo==='vistoria') return false;     // já emitidas via VISTORIAS
+      if(recargasUsadas.has(a)) return false;   // já emitidas como recarga
+      if(fotosUsadas.has(a)) return false;      // já emitidas como foto
+      return true;
+    }).sort(function(a,b){ return _anxTs(b)-_anxTs(a); });
+    for(const an of restantes){
+      try{
+        const imgData=an.data||an.base64Original;
+        if(an.isImg && imgData){
+          doc.addPage();
+          let yA=_pdfHeader(doc,'Anexo', an.name||'Anexo');
+          const fmt=(an.type||'').includes('png')?'PNG':'JPEG';
+          doc.addImage(imgData,fmt,10,yA,190,240);
+          _pdfFooter(doc);
+        } else {
+          doc.addPage();
+          let yA=_pdfHeader(doc,'Anexo (documento)', an.name||'Documento anexado');
+          doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0); doc.setFontSize(10);
+          doc.text('Tipo: '+(an.type||'desconhecido'), 12, yA+4);
+          doc.text('Nome: '+(an.name||'—'), 12, yA+12);
+          const obs=doc.splitTextToSize('Anexo da hospedagem que nao pode ser incorporado como imagem neste PDF. O arquivo original esta preservado nos anexos do GarageSpot.', 186);
+          doc.text(obs, 12, yA+24);
+          _pdfFooter(doc);
+        }
+      }catch(e){ console.error('[Parte5] erro anexo restante', an&&an.name, e); }
+    }
+    console.log('[Parte5] anexos restantes (catch-all) no PDF:', restantes.length);
   }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
 
   _pdfFooter(doc);
@@ -11245,9 +11490,64 @@ function renderAnexosArea(id, fromPasseio, containerId){
   if(fileInput) fileInput.addEventListener('change', e=>handleFiles(e.target.files));
 }
 
+// Parte 3 v1.9.4.8: exclusão de anexo GATED — confirmação → senha PIN do gestor → exclui
+// + registro de movimentação ("exclusão de anexo — gestor (via senha PIN)"). Sem PIN
+// configurado, a exclusão é BLOQUEADA (exclusão sempre protegida). Reutiliza o mesmo
+// mecanismo de PIN do Gestão (showEntrarPIN / GESTAO_PIN_KEY).
 window.delAtt = function(id, fp, idx, containerId){
-  removeAnexo(id, fp===1||fp===true, idx);
-  renderAnexosArea(id, fp===1||fp===true, containerId);
+  const fromPasseio = fp===1||fp===true;
+  const lista = getAnexos(id, fromPasseio);
+  const a = lista[idx];
+  if(!a){ return; }
+  const nomeAnexo = a.name || 'anexo';
+  const _reabrir = function(){
+    if(containerId==='att-occ-area'){
+      if(typeof showOcc==='function'){ showOcc(id); setTimeout(function(){ try{ renderAnexosArea(id,false,'att-occ-area'); }catch(e){} },60); }
+      else { closeOv(); }
+    } else {
+      if(typeof showDet==='function'){ showDet(id, fromPasseio); }
+      else { closeOv(); }
+    }
+  };
+  // 1) Confirmação
+  showM(`<div class="mt">🗑 Excluir anexo</div>
+    <div class="ms" style="margin-bottom:12px">Tem certeza que deseja excluir este anexo?<br><strong>${_vtEsc(String(nomeAnexo))}</strong></div>
+    <div class="b2">
+      <button class="bcx" id="da-nao">Não</button>
+      <button class="bsv" id="da-sim" style="background:#A32D2D">Sim, excluir</button>
+    </div>`);
+  setTimeout(function(){
+    const bN=document.getElementById('da-nao'); if(bN) bN.onclick=_reabrir;
+    const bS=document.getElementById('da-sim'); if(bS) bS.onclick=function(){
+      // 2) Exclusão protegida: precisa de PIN configurado
+      const pinSalvo = localStorage.getItem(GESTAO_PIN_KEY);
+      if(!pinSalvo){
+        showM(`<div class="mt">🔒 Exclusão protegida</div>
+          <div class="ms" style="margin-bottom:12px">Para excluir anexos é preciso configurar um PIN de Gestão.<br>Vá em <strong>Gestão → Alterar PIN</strong>. A exclusão de anexos é sempre protegida.</div>
+          <button class="bcx" id="da-pinmiss" style="width:100%">Entendi</button>`);
+        setTimeout(function(){ const e=document.getElementById('da-pinmiss'); if(e) e.onclick=_reabrir; },50);
+        return;
+      }
+      // 3) Pede o PIN do gestor (mesmo mecanismo do Gestão)
+      showEntrarPIN(function(){
+        // PIN correto → exclui + registra
+        const key = getAnexoKey(id, fromPasseio);
+        let nomeReal = nomeAnexo;
+        if(ANEXOS[key] && ANEXOS[key][idx]){
+          nomeReal = ANEXOS[key][idx].name || nomeAnexo;
+          ANEXOS[key].splice(idx,1);
+          saveAnexos();
+        }
+        const apt = fromPasseio ? id : (S[id]?.apt||'');
+        const hospNum = _gsDaVaga(id, fromPasseio);
+        if(apt && typeof addHistorico==='function'){
+          addHistorico(apt,'exclusao_anexo',fromPasseio?'':id,'Exclusão de anexo — gestor (via senha PIN): '+nomeReal,'Gestor (via senha PIN)',hospNum);
+        }
+        showToast('✓ Anexo excluído',2500);
+        _reabrir();
+      });
+    };
+  },50);
 };
 const STORAGE_KEY = 'garagem_spot_v1';
 const DB_NAME     = 'GaragemSpot';
@@ -11950,6 +12250,7 @@ checkLicense().then(async (ativo)=>{
         }
       } catch(e){ console.warn('[BUG T v1.9.4.4] restore init falhou:', e); }
       navTo('painel');
+      try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
     });
