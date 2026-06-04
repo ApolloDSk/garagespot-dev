@@ -107,6 +107,9 @@ html.font-large{zoom:1.13}
 .apt-lbl.ob{color:#A32D2D}
 .apt-lbl.dup{color:#BF360C}
 .id-lbl{color:#ccc;display:block;line-height:1;font-size:.7vw}
+/* Parte 3 v1.9.4.9: rótulo "check-out" (vermelho sólido) abaixo do número, fonte MENOR
+   que o número, clean (sem fundo) e responsivo — para aptos com check-out previsto hoje. */
+.co-lbl{display:block;color:#C53030;font-weight:700;line-height:1;text-transform:lowercase;letter-spacing:.2px;margin-top:1px;font-size:clamp(6.5px,.85vw,12px)}
 
 .leg{display:flex;flex-wrap:wrap;gap:6px;flex-shrink:0}
 .li{display:flex;align-items:center;gap:3px;font-size:8px;color:#777}
@@ -179,6 +182,7 @@ html.font-large{zoom:1.13}
   .top-strip{flex-direction:column}
   .apt-lbl{font-size:2.5vw}
   .id-lbl{font-size:1.2vw}
+  .co-lbl{font-size:clamp(7px,1.5vw,12px)}
 }
 
 /* ── TOOLBAR FERRAMENTAS ── */
@@ -299,6 +303,7 @@ html.font-large{zoom:1.13}
   .clk{display:none}
   .apt-lbl{font-size:2.5vw}
   .id-lbl{font-size:1.2vw}
+  .co-lbl{font-size:clamp(7px,1.5vw,12px)}
 }
 /* ── VISTORIA ── */
 .vst-icon{font-size:10px;cursor:pointer;user-select:none;line-height:1;display:inline-block}
@@ -756,7 +761,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.8 -->
+<!-- GarageSpot v1.9.4.9 -->
 <body>
 <div class="page">
 
@@ -1291,9 +1296,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.8: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
+// v1.9.4.9: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.8';
+const GS_VERSION = 'v1.9.4.9';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-06-02';
 
@@ -1582,7 +1587,17 @@ function ref(id){
     td.innerHTML=`<span class="id-lbl">${id}</span>`;
   } else {
     const aptCls=isDup(d.apt)?'dup':(OB.has(id)?'ob':'');
-    td.innerHTML=`<span class="id-lbl">${id}</span><span class="apt-lbl${aptCls?' '+aptCls:''}">${d.apt}</span>`;
+    // Parte 3 v1.9.4.9: rótulo "check-out" para aptos com saída prevista HOJE e ainda não
+    // concluída. Mesma noção de "hoje" do painel (toISOString().slice(0,10)). Some quando
+    // o check-out é feito (a vaga fica livre) — robusto a hospedagem ausente.
+    let coLbl='';
+    try{
+      const gs=d.hospedagem; const h=gs?HOSPEDAGENS[gs]:null;
+      if(h && !h.checkout_ts && h.saida_prevista && h.saida_prevista===new Date().toISOString().slice(0,10)){
+        coLbl='<span class="co-lbl">check-out</span>';
+      }
+    }catch(e){}
+    td.innerHTML=`<span class="id-lbl">${id}</span><span class="apt-lbl${aptCls?' '+aptCls:''}">${d.apt}</span>${coLbl}`;
   }
   if(d.status==='occupied'){refRecarga(id);refVistoria(id);}
 }
@@ -2302,6 +2317,79 @@ function _clkVRotear(id, apt, usuario){
     return;
   }
 
+  // Helpers locais reutilizados pelos vários caminhos abaixo.
+  const _corrigirApt=function(){
+    _clkVPedirApt(id,usuario);
+    setTimeout(()=>{const e=document.getElementById('cv-apt');if(e){e.value='';e.focus();}},80);
+  };
+  const _iniciarNovoCheckin=function(){
+    closeOv();
+    // v1.9.4.1.1: marca a vaga de origem para designação automática ao final
+    vagaInicialNCI=id;
+    _nciD={usuario,apt,model:'',color:'',plate:'',guest:'',obs:'',size:'small',saida_prevista:'',gs:nextNumHospedagem(),numero:nextNumVistoriaPreview(),uuid:_vtUUID(),avarias:[],danos:[],com_avaria:false,assinatura:null,documento_final_b64:null,ts_inicio:Date.now(),fotos:[]};
+    _nciAbrir();
+  };
+
+  // Parte 2 v1.9.4.9: pendência no modelo NOVO — hospedagem com check-in feito e
+  // status 'aguardando_designacao' ("designar depois"). O fluxo legado só olhava
+  // CHECKINS_PENDENTES; agora reconhecemos também HOSPEDAGENS aguardando_designacao →
+  // DESIGNAR esta vaga (não oferecer novo check-in). Designa direto (já temos o operador).
+  const gsPend=Object.keys(HOSPEDAGENS).find(function(gs){
+    const h=HOSPEDAGENS[gs];
+    return h && h.apt===apt && h.status==='aguardando_designacao' && !h.checkout_ts;
+  });
+  if(gsPend){
+    const h=HOSPEDAGENS[gsPend];
+    const info=[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'Sem detalhes';
+    const hrChk=h.checkin_ts?new Date(h.checkin_ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+    mc.innerHTML=`
+      <div class="mt">Aguardando vaga — Vaga ${id}</div>
+      <div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:9px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700">${_vtEsc(h.numero||gsPend)} · Apt. ${_vtEsc(apt)}</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">${_vtEsc(info)}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">Check-in às ${hrChk} · ${_vtEsc(h.usuario_checkin||'—')}</div>
+      </div>
+      <div class="ms">Confirma designar este carro para a vaga <strong>${id}</strong>?</div>
+      <div class="ag">
+        <button class="bsv" id="cv-desigh-sim">✓ Designar vaga ${id}</button>
+        <button class="bcx" id="cv-desigh-nao">Corrigir apartamento</button>
+        <button class="bcx" onclick="closeOv()">Cancelar</button>
+      </div>`;
+    document.getElementById('cv-desigh-sim').onclick=function(){
+      // Monta MODO_DESIGNACAO com o operador JÁ confirmado (origem vaga_direta = não re-pergunta)
+      MODO_DESIGNACAO={
+        gs:gsPend, apt:h.apt, model:h.model, color:h.color, plate:h.plate, guest:h.guest, obs:h.obs,
+        vistoria_numero:(h.vistorias&&h.vistorias[0])||null,
+        origem:'vaga_direta', operador:usuario||null, timestamp:Date.now()
+      };
+      if(typeof _persistirModoDesignacao==='function') _persistirModoDesignacao();
+      closeOv();
+      _aplicarDesignacaoExec(id);
+    };
+    document.getElementById('cv-desigh-nao').onclick=_corrigirApt;
+    return;
+  }
+
+  // Parte 2 v1.9.4.9: apto JÁ ocupando uma vaga (hospedagem ativa em outra vaga) → AVISA
+  // ("já está numa vaga"), não duplica. Mantém o caso de 2º veículo (mesmo apto, GS separado):
+  // o operador pode optar por iniciar mesmo assim um novo check-in.
+  const vagaComApt=Object.keys(S).find(function(k){ return k!==id && S[k] && S[k].status==='occupied' && S[k].apt===apt; });
+  if(vagaComApt){
+    const dv=S[vagaComApt];
+    const info=[dv.model,dv.color,dv.plate].filter(Boolean).join(' · ');
+    mc.innerHTML=`
+      <div class="mt">Apt. ${apt} já está numa vaga</div>
+      <div class="warn-box">O Apt. ${apt} já está guardado na vaga <strong>${vagaComApt}</strong>${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}<br><br>Iniciar mesmo assim um <strong>novo check-in</strong> (2º veículo do mesmo apto)?</div>
+      <div class="ag">
+        <button class="bsv" id="cv-2v-sim">＋ Sim, novo check-in (2º veículo)</button>
+        <button class="bcx" id="cv-2v-nao">Corrigir apartamento</button>
+        <button class="bcx" onclick="closeOv()">Cancelar</button>
+      </div>`;
+    document.getElementById('cv-2v-sim').onclick=_iniciarNovoCheckin;
+    document.getElementById('cv-2v-nao').onclick=_corrigirApt;
+    return;
+  }
+
   mc.innerHTML=`
     <div class="mt">Apt. ${apt}</div>
     <div class="warn-box">Apt. ${apt} não tem check-in registrado.<br><br>Deseja iniciar um novo check-in?</div>
@@ -2310,17 +2398,8 @@ function _clkVRotear(id, apt, usuario){
       <button class="bcx" id="cv-novo-nao">Corrigir apartamento</button>
       <button class="bcx" onclick="closeOv()">Cancelar</button>
     </div>`;
-  document.getElementById('cv-novo-sim').onclick=function(){
-    closeOv();
-    // v1.9.4.1.1: marca a vaga de origem para designação automática ao final
-    vagaInicialNCI=id;
-    _nciD={usuario,apt,model:'',color:'',plate:'',guest:'',obs:'',size:'small',saida_prevista:'',gs:nextNumHospedagem(),numero:nextNumVistoriaPreview(),uuid:_vtUUID(),avarias:[],danos:[],com_avaria:false,assinatura:null,documento_final_b64:null,ts_inicio:Date.now(),fotos:[]};
-    _nciAbrir();
-  };
-  document.getElementById('cv-novo-nao').onclick=function(){
-    _clkVPedirApt(id,usuario);
-    setTimeout(()=>{const e=document.getElementById('cv-apt');if(e){e.value='';e.focus();}},80);
-  };
+  document.getElementById('cv-novo-sim').onclick=_iniciarNovoCheckin;
+  document.getElementById('cv-novo-nao').onclick=_corrigirApt;
 }
 
 function showOcc(id){
@@ -2859,16 +2938,33 @@ function doChk(id){
       if(ANEXOS[keyV]){ delete ANEXOS[keyV]; _limpou=true; }
       if(ANEXOS[keyP]){ delete ANEXOS[keyP]; _limpou=true; }
       if(_limpou) saveAnexos();
-      // Pergunta se quer compartilhar o registro
+      // Parte 1 v1.9.4.9: o PDF de check-out é SALVO NO DISPOSITIVO automaticamente
+      // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
+      // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
+      // no navegador, baixa o arquivo. O snapshot preserva os anexos (já deletados acima).
+      const _coNome=fmtNomeCheckout(aptKey,hospNum);
+      const _coDoc=buildRegistroDoc(aptKey,dvChk,histChk,_snapshotAnexosCheckout);
+      const _coConteudo=_coDoc||buildRegistroHTML(aptKey,dvChk,histChk,anexosChk);
       showM(`<div class="mt">✅ Check-out realizado!</div>
         <div class="ms">Hospedagem ${hospNum||'s/n'} · Apt. ${aptKey}<br>${dvChk.guest||'Hóspede não identificado'}</div>
-        <div style="background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56">✅ Registro salvo — Hospedagem ${hospNum||'s/n'}</div>
-        <div style="font-size:13px;font-weight:700;text-align:center;margin:8px 0 6px">Deseja compartilhar?</div>
+        <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">💾 Salvando PDF no dispositivo…</div>
         <div class="ag">
-          <button class="bsv" id="co-share">📤 Sim — Compartilhar</button>
-          <button class="bcx" onclick="closeOv()" style="margin-top:4px">Não — Fechar</button>
+          <button class="bsv" id="co-share">📤 Compartilhar</button>
+          <button class="bcx" onclick="closeOv()" style="margin-top:4px">Fechar</button>
         </div>`);
       document.getElementById('co-share').onclick=async()=>{ closeOv(); await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); };
+      // salva sem bloquear a UI; atualiza o aviso ao concluir
+      (async()=>{
+        const r=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
+        const el=document.getElementById('co-save-status'); if(!el) return;
+        if(r&&r.sucesso){
+          el.style.cssText='background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
+          el.textContent=(r.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+r.nome:'✅ PDF baixado · '+r.nome);
+        } else {
+          el.style.cssText='background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
+          el.textContent='⚠️ Não foi possível salvar automaticamente — use Compartilhar.';
+        }
+      })();
     });
   };
 }
@@ -10932,6 +11028,49 @@ async function gerarECompartilharPDF(titulo, conteudo, nomeArquivo){
     setTimeout(()=>URL.revokeObjectURL(url),10000);
   }
   return {sucesso:true};
+}
+
+// Parte 1 v1.9.4.9: nome de arquivo do PDF de check-out — identificável e datado.
+// Ex.: checkout-GS016-Apt390-2026-05-28
+function fmtNomeCheckout(apt, hospNum, ts){
+  const d=new Date(ts||Date.now());
+  const p=n=>String(n).padStart(2,'0');
+  const data=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  const aptTxt=String(apt||'').trim().replace(/[^\w-]+/g,'') || 'semApt';
+  return 'checkout-'+(hospNum||'semGS')+'-Apt'+aptTxt+'-'+data;
+}
+
+// Parte 1 v1.9.4.9: SALVA o PDF no dispositivo SEM compartilhar (compartilhar é ação à
+// parte). Reaproveita o @capacitor/filesystem já usado pelo app (sem plugin nativo novo);
+// no navegador, força download. Retorna {sucesso, nome, nativo}. Robusto a falha.
+async function salvarPDFNoDispositivo(titulo, conteudo, nomeArquivo){
+  const isDoc = conteudo && typeof conteudo.output === 'function';
+  const nomeCompleto = nomeArquivo + (isDoc ? '.pdf' : '.html');
+  if(window.Capacitor&&window.Capacitor.Plugins?.Filesystem){
+    const {Filesystem}=window.Capacitor.Plugins;
+    try{
+      if(isDoc){
+        const b64=conteudo.output('datauristring').split(',')[1];
+        await Filesystem.writeFile({path:'GarageSpot/'+nomeCompleto,data:b64,directory:'DOCUMENTS',recursive:true});
+      } else {
+        await Filesystem.writeFile({path:'GarageSpot/'+nomeCompleto,data:conteudo,directory:'DOCUMENTS',encoding:'utf8',recursive:true});
+      }
+      let uri='';
+      try{ const r=await Filesystem.getUri({path:'GarageSpot/'+nomeCompleto,directory:'DOCUMENTS'}); uri=r.uri; }catch(e){}
+      return {sucesso:true,nome:nomeCompleto,uri:uri,nativo:true};
+    }catch(e){ console.error('[Parte1] salvar PDF no dispositivo falhou:',e); return {sucesso:false,erro:e}; }
+  }
+  // Fallback navegador: força DOWNLOAD (salvar), não só abrir.
+  try{
+    const blob = isDoc ? new Blob([conteudo.output('blob')],{type:'application/pdf'})
+                       : new Blob([conteudo],{type:'text/html;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=nomeCompleto; a.rel='noopener';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+    return {sucesso:true,nome:nomeCompleto,nativo:false};
+  }catch(e){ console.error('[Parte1] download do PDF falhou:',e); return {sucesso:false,erro:e}; }
 }
 
 // ── BUILDERS DE PDF (jsPDF) ───────────────────────────────────────────────
