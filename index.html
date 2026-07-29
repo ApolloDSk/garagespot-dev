@@ -761,7 +761,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.9 -->
+<!-- GarageSpot v1.9.4.10 -->
 <body>
 <div class="page">
 
@@ -1296,11 +1296,44 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.9: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
+// v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.9';
+const GS_VERSION = 'v1.9.4.10';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-06-02';
+const GS_BUILD_TS = '2026-07-28';
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.10 — BUG A: GUARDA DE INICIALIZAÇÃO (perda silenciosa de dados)
+// ════════════════════════════════════════════════════════════════════════
+// CAUSA-RAIZ CONFIRMADA da perda de anexos/vistorias (celular dev, jun) e de
+// cadastros de funcionários (hotel, jul). NÃO era evicção do SO: funcionários e
+// hospedagens moram no MESMO localStorage e as hospedagens sobreviveram.
+//
+// Os listeners de visibilitychange/pagehide são registrados no PARSE do script,
+// mas os dados só são carregados no fim de um init ASSÍNCRONO (checkLicense com
+// fetch de até 6s → openDB → loadData → loadUsuarios/loadHospedagens/...).
+// Se o app fosse minimizado, a tela apagasse ou o Android tirasse o foco do
+// WebView NESSA JANELA, o handler rodava com a memória ainda VAZIA e gravava
+// [] / {} por cima dos dados bons: saveUsuarios() apagava os funcionários,
+// saveAnexos()/saveVistorias() zeravam os stores do IndexedDB, saveHistorico()
+// e saveTurnos() idem. Só saveHospedagens() tinha proteção (_saveProtegido) —
+// por isso as hospedagens eram as ÚNICAS que sempre sobreviviam.
+//
+// Prova de campo: o log "[BUG W] Save de hospedagens vazio (tinha 29)" já foi
+// capturado no aparelho real (v1.9.4.4) — a corrida ACONTECE; a proteção salvou
+// as hospedagens e todo o resto foi apagado em silêncio.
+//
+// _GS_PRONTO só vira true no FIM do init. Enquanto for false, nenhum handler de
+// ciclo de vida grava nada (nem o backup automático, que também gerava .json
+// vazio). Tudo fail-safe: se algo falhar, o app segue normalmente.
+let _GS_PRONTO = false;
+function gsPronto(){ return _GS_PRONTO === true; }
+function _gsContar(v){
+  try {
+    if(!v) return 0;
+    return Array.isArray(v) ? v.length : Object.keys(v).length;
+  } catch(e){ return 0; }
+}
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.1.8: PAINEL DE DEBUG NA TELA — captura logs sem chrome://inspect
@@ -2937,7 +2970,7 @@ function doChk(id){
       if(hospNum && ANEXOS[keyH2]){ delete ANEXOS[keyH2]; _limpou=true; }
       if(ANEXOS[keyV]){ delete ANEXOS[keyV]; _limpou=true; }
       if(ANEXOS[keyP]){ delete ANEXOS[keyP]; _limpou=true; }
-      if(_limpou) saveAnexos();
+      if(_limpou) saveAnexos({permitirVazio:true}); // v1.9.4.10: limpeza INTENCIONAL do check-out
       // Parte 1 v1.9.4.9: o PDF de check-out é SALVO NO DISPOSITIVO automaticamente
       // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
       // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
@@ -3384,9 +3417,16 @@ function loadHospedagens(){
 }
 
 // ── USUÁRIOS ──────────────────────────────────────────────────────────────
-function saveUsuarios(){ try{ localStorage.setItem('garagespot_usuarios',JSON.stringify(USUARIOS)); }catch(e){} }
+// v1.9.4.10 (Bug A): funcionários eram a vítima nº 1 no hotel — save cru, sem
+// nenhuma proteção, sobrescrito com [] pela corrida de inicialização.
+// opts.permitirVazio = exclusão intencional do último funcionário.
+function saveUsuarios(opts){
+  if(!_gsGuardaSave('usuarios', USUARIOS, opts)) return;
+  try{ localStorage.setItem('garagespot_usuarios',JSON.stringify(USUARIOS)); }catch(e){}
+}
 function loadUsuarios(){
   try{ const r=localStorage.getItem('garagespot_usuarios'); if(r) USUARIOS=JSON.parse(r)||[]; }catch(e){}
+  try{ _contadorAnterior.usuarios = _gsContar(USUARIOS); }catch(e){}
 }
 function estaNoExpediente(u){
   if(!u||!u.horaInicio||!u.horaFim) return true;
@@ -3581,7 +3621,8 @@ function showModalUsuarios(){
       else{ const idx=USUARIOS.findIndex(x=>x.id===u.id); if(idx>=0) USUARIOS[idx]={...USUARIOS[idx],nome,cargo,horaInicio,horaFim,escala,...extra12}; }
       saveUsuarios(); renderLista();
     };
-    window._excluirUsr=(uid)=>{ USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios(); renderLista(); };
+    // v1.9.4.10: exclusão INTENCIONAL — pode zerar a lista (permitirVazio)
+    window._excluirUsr=(uid)=>{ USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios({permitirVazio:true}); renderLista(); };
   }
   renderLista();
 }
@@ -3592,9 +3633,13 @@ let TURNOS = [
   { id:'t2', nome:'Tarde',  inicio:'14:00', fim:'22:00' },
   { id:'t3', nome:'Noite',  inicio:'22:00', fim:'06:00' },
 ];
-function saveTurnos(){ try{ localStorage.setItem('garagespot_turnos',JSON.stringify(TURNOS)); }catch(e){} }
+function saveTurnos(opts){
+  if(!_gsGuardaSave('turnos', TURNOS, opts)) return; // v1.9.4.10 (Bug A)
+  try{ localStorage.setItem('garagespot_turnos',JSON.stringify(TURNOS)); }catch(e){}
+}
 function loadTurnos(){
   try{ const r=localStorage.getItem('garagespot_turnos'); if(r) TURNOS=JSON.parse(r)||TURNOS; }catch(e){}
+  try{ _contadorAnterior.turnos = _gsContar(TURNOS); }catch(e){}
 }
 let PLANTAO_MANUAL = [];
 function savePlantaoManual(){ try{ localStorage.setItem('garagespot_plantao_manual',JSON.stringify(PLANTAO_MANUAL)); }catch(e){} }
@@ -5110,9 +5155,12 @@ let VISTORIAS_LIXEIRA = {};
 const VISTORIA_COUNTER_KEY = 'garagespot_vistoria_counter';
 const VISTORIAS_LS = 'garagespot_vistorias';
 const VISTORIAS_LIXEIRA_LS = 'garagespot_vistorias_lixeira';
-function saveVistorias(){
+function saveVistorias(opts){
   // v1.9.4.2: VISTORIAS no IndexedDB (resolve QuotaExceededError com documento_final_b64)
   // Fire-and-forget (assinatura sync mantida para callers existentes)
+  // v1.9.4.10 (Bug A): idem anexos — a corrida zerava o store.
+  // opts.permitirVazio = exclusão intencional da última vistoria.
+  if(!_gsGuardaSave('vistorias', VISTORIAS, opts)) return;
   try { saveVistoriasIDB(); } catch(e){ console.error('[BUG #1] saveVistorias falhou:', e); }
 }
 function saveLixeira(){try{localStorage.setItem(VISTORIAS_LIXEIRA_LS,JSON.stringify(VISTORIAS_LIXEIRA));}catch(e){}}
@@ -5734,7 +5782,7 @@ function deletarVistoria(id){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
       if(v.apt) addHistorico(v.apt,'vistoria_deletada','',v.numero,usuarioStr,v.hospedagem||'');
       delete VISTORIAS[id];
-      saveVistorias();
+      saveVistorias({permitirVazio:true}); // v1.9.4.10: exclusão INTENCIONAL
       const vagaId=Object.keys(S).find(k=>S[k].apt===v.apt&&S[k].status==='occupied');
       if(vagaId) refVistoria(vagaId);
       closeOv();
@@ -8335,6 +8383,26 @@ function saveDriveStatus(){ try{localStorage.setItem(DRIVE_STATUS_LS,JSON.string
 
 async function fazerBackupLocal(motivo){
   try{
+    // ════════════════════════════════════════════════════════════════════
+    // v1.9.4.10 (Bug A): BACKUP NUNCA GRAVA SNAPSHOT VAZIO.
+    // Antes, a corrida de inicialização disparava este backup com a memória
+    // ainda vazia e gerava um .json só com {} — que passava a ser a cópia
+    // "mais recente" em Documentos/GarageSpot/Dados. Ou seja: no mesmo evento
+    // em que os dados eram apagados, o backup que salvaria o dia era poluído.
+    // ════════════════════════════════════════════════════════════════════
+    if(!gsPronto()){
+      console.warn('[BUG A] backup abortado: app ainda inicializando');
+      return {ok:false,erro:'app ainda inicializando'};
+    }
+    const _tinha = (_contadorAnterior.hospedagens||0) + (_contadorAnterior.usuarios||0) +
+                   (_contadorAnterior.vistorias||0)   + (_contadorAnterior.anexos||0);
+    const _tem = _gsContar(HOSPEDAGENS) + _gsContar(USUARIOS) +
+                 _gsContar(VISTORIAS)   + _gsContar(ANEXOS);
+    if(_tem === 0 && _tinha > 0){
+      console.warn('[BUG A] backup abortado: snapshot vazio (havia ' + _tinha + ' registros)');
+      if(typeof addLogSistema === 'function') addLogSistema('Backup abortado: snapshot vazio (proteção de dados)');
+      return {ok:false,erro:'snapshot vazio — backup abortado para não sobrescrever a cópia boa'};
+    }
     const dados={exportado_em:fmtDt(Date.now()),ts:Date.now(),versao:'1.7',
       vagas:S,passeio:PASSEIO,hospedagens:HOSPEDAGENS,usuarios:USUARIOS,
       historico:HISTORICO,turnos:TURNOS,plantao_manual:PLANTAO_MANUAL,
@@ -10751,7 +10819,8 @@ function addHistorico(apt, tipo, vaga, extra, usuario, hospedagem){
   saveHistorico();
 }
 
-function saveHistorico(){
+function saveHistorico(opts){
+  if(!_gsGuardaSave('historico', HISTORICO, opts)) return; // v1.9.4.10 (Bug A)
   try{ localStorage.setItem('garagespot_historico', JSON.stringify(HISTORICO)); }catch(e){}
 }
 
@@ -10760,6 +10829,7 @@ function loadHistorico(){
     const raw=localStorage.getItem('garagespot_historico');
     if(raw){ const d=JSON.parse(raw); Object.assign(HISTORICO,d); }
   }catch(e){}
+  try{ _contadorAnterior.historico = _gsContar(HISTORICO); }catch(e){}
 }
 
 function iniciarHistorico(apt, vaga, hospedagem, usuario){
@@ -11537,9 +11607,13 @@ function removeAnexo(id, fromPasseio, idx){
   }
 }
 
-function saveAnexos(){
+function saveAnexos(opts){
   // v1.9.4.2: ANEXOS no IndexedDB (resolve QuotaExceededError com fotos base64).
   // Fire-and-forget (assinatura sync mantida para callers existentes).
+  // v1.9.4.10 (Bug A): a corrida de init gravava {} aqui e ZERAVA o store do IDB —
+  // foi assim que as fotos sumiram no celular dev. opts.permitirVazio = limpeza
+  // intencional (check-out).
+  if(!_gsGuardaSave('anexos', ANEXOS, opts)) return;
   try { saveAnexosIDB(); } catch(e){ console.error('[BUG #1] erro em saveAnexos:', e); }
 }
 
@@ -11704,13 +11778,53 @@ const BACKUP_KEYS = {
   hospedagens: ['garagespot_hospedagens', 'garagespot_hospedagens_bk1', 'garagespot_hospedagens_bk2'],
   state:       ['garagem_spot_v1',        'garagem_spot_v1_bk1',        'garagem_spot_v1_bk2']
 };
-let _contadorAnterior = { hospedagens:0, vistorias:0, anexos:0 };
+// v1.9.4.10: contadores estendidos a usuarios/historico/turnos (Bug A)
+let _contadorAnterior = { hospedagens:0, vistorias:0, anexos:0, usuarios:0, historico:0, turnos:0 };
 
 function _atualizarContadores(){
   _contadorAnterior.hospedagens = Object.keys(HOSPEDAGENS || {}).length;
   _contadorAnterior.vistorias   = Object.keys(VISTORIAS   || {}).length;
   _contadorAnterior.anexos      = Object.keys(ANEXOS      || {}).length;
+  _contadorAnterior.usuarios    = _gsContar(typeof USUARIOS !== 'undefined' ? USUARIOS : null);
+  _contadorAnterior.historico   = _gsContar(typeof HISTORICO !== 'undefined' ? HISTORICO : null);
+  _contadorAnterior.turnos      = _gsContar(typeof TURNOS    !== 'undefined' ? TURNOS    : null);
   try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.10 — BUG A, camada 2: PROTEÇÃO ANTI-VAZIO UNIVERSAL
+// ════════════════════════════════════════════════════════════════════════
+// A camada 1 (_GS_PRONTO nos handlers de ciclo de vida) mata a corrida na
+// origem. Esta é defesa em profundidade: NENHUM save pode zerar uma coleção
+// que tinha dados, a menos que a exclusão seja INTENCIONAL — nesse caso o
+// chamador passa {permitirVazio:true} (excluir último funcionário, excluir
+// última vistoria, limpeza de anexos no check-out).
+// Fail-safe: qualquer exceção aqui deixa o save seguir (nunca trava o app).
+function _gsGuardaSave(tipo, dados, opts){
+  try {
+    opts = opts || {};
+    const novo = _gsContar(dados);
+    const ant  = _contadorAnterior[tipo] || 0;
+    if(novo === 0){
+      // Antes do init terminar, gravar vazio é SEMPRE a corrida do Bug A.
+      if(!gsPronto()){
+        console.warn('[BUG A] save de ' + tipo + ' BLOQUEADO: app ainda inicializando (tinha ' + ant + ')');
+        return false;
+      }
+      // Depois do init, só zera se for exclusão intencional.
+      if(!opts.permitirVazio && ant > 0){
+        console.warn('[BUG A] save de ' + tipo + ' vazio BLOQUEADO (tinha ' + ant + ', sem permitirVazio)');
+        if(typeof showToast === 'function') showToast('⚠️ Gravação vazia de ' + tipo + ' bloqueada (proteção de dados)', 4000);
+        return false;
+      }
+    }
+    _contadorAnterior[tipo] = novo;
+    try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
+    return true;
+  } catch(e){
+    console.warn('[BUG A] guarda falhou, permitindo save de ' + tipo + ':', e);
+    return true; // fail-safe: nunca impedir o app de funcionar
+  }
 }
 function _carregarContadores(){
   try {
@@ -11724,6 +11838,20 @@ function _carregarContadores(){
 function _saveProtegido(key, dados, tipo){
   const novoCount = Object.keys(dados || {}).length;
   const anteriorCount = _contadorAnterior[tipo] || 0;
+  // v1.9.4.10 (Bug A): fecha o buraco do limiar. A regra antiga só bloqueava com
+  // MAIS de 5 registros anteriores — um hotel com 4 hospedagens ativas era zerado
+  // pela corrida de inicialização sem nenhum aviso. Agora: gravar vazio antes do
+  // init terminar é SEMPRE bloqueado, e depois do init qualquer 0 tendo havido
+  // dados também é (HOSPEDAGENS nunca é esvaziada por ação legítima — o check-out
+  // preenche checkout_ts e mantém o registro).
+  if(novoCount === 0 && anteriorCount > 0 && !(anteriorCount > 5)){
+    console.warn('[BUG A] save de ' + tipo + ' vazio BLOQUEADO (tinha ' + anteriorCount + ', app pronto=' + gsPronto() + ')');
+    return false;
+  }
+  if(novoCount === 0 && !gsPronto()){
+    console.warn('[BUG A] save de ' + tipo + ' BLOQUEADO: app ainda inicializando');
+    return false;
+  }
   if(anteriorCount > 5 && novoCount === 0){
     console.error('[BUG W] BLOQUEIO! Save de', tipo, 'vazio (tinha', anteriorCount, '). NÃO SALVANDO.');
     if(typeof showToast==='function') showToast('⚠️ Save de ' + tipo + ' vazio bloqueado. Veja console.', 5000);
@@ -12146,6 +12274,13 @@ function applySnapshot(data){
 
 // Salva no IndexedDB (assíncrono, não bloqueia UI)
 function saveData(){
+  // v1.9.4.10 (Bug A): antes do init terminar, S ainda é o mapa DEFAULT (todas as
+  // vagas livres) — gravar isso apagaria a ocupação real. O reset manual do mapa
+  // continua funcionando normalmente (acontece com o app já pronto).
+  if(!gsPronto()){
+    console.warn('[BUG A] saveData BLOQUEADO: app ainda inicializando');
+    return;
+  }
   const snap = buildSnapshot();
   // Tenta IndexedDB primeiro
   if(db){
@@ -12225,11 +12360,18 @@ document.addEventListener('visibilitychange', ()=>{
 
 // Backup automático quando o app é minimizado/fechado
 document.addEventListener('visibilitychange',()=>{
+  // v1.9.4.10 (Bug A, camada 1): antes do init terminar o backup sairia VAZIO e
+  // ainda substituiria a cópia boa em Documentos/GarageSpot/Dados.
+  if(!gsPronto()){ console.warn('[BUG A] backup automático ignorado: app ainda inicializando'); return; }
   if(document.visibilityState==='hidden') fazerBackupLocal('App minimizado');
 });
 
 // Bug W v1.9.4.1.6: Save IMEDIATO ao perder foco (antes do Android matar o webview)
 document.addEventListener('visibilitychange', function(){
+  // v1.9.4.10 (Bug A, camada 1): ESTE handler era a origem da perda silenciosa.
+  // Registrado no parse, disparava com a memória vazia durante o init assíncrono e
+  // gravava [] / {} por cima de funcionários, anexos, vistorias, histórico e turnos.
+  if(!gsPronto()){ console.warn('[BUG A] saves de proteção ignorados: app ainda inicializando'); return; }
   if(document.visibilityState === 'hidden'){
     console.log('[BUG W] app perdendo foco, forçando saves');
     try {
@@ -12247,6 +12389,8 @@ document.addEventListener('visibilitychange', function(){
 });
 // Bug W v1.9.4.1.6: pagehide é mais confiável em mobile/iOS para detectar fechamento
 window.addEventListener('pagehide', function(){
+  // v1.9.4.10 (Bug A, camada 1): mesmo motivo do visibilitychange acima.
+  if(!gsPronto()){ console.warn('[BUG A] pagehide ignorado: app ainda inicializando'); return; }
   console.log('[BUG W] pagehide disparou, force-save');
   try {
     if(typeof saveData==='function') saveData();
@@ -12388,6 +12532,16 @@ checkLicense().then(async (ativo)=>{
           if(typeof showToast==='function') showToast('Há um carro aguardando vaga — toque numa vaga livre no Mapa',3500);
         }
       } catch(e){ console.warn('[BUG T v1.9.4.4] restore init falhou:', e); }
+      // ══════════════════════════════════════════════════════════════════
+      // v1.9.4.10 (Bug A): A PARTIR DAQUI os dados reais estão em memória.
+      // Só agora os handlers de ciclo de vida (visibilitychange/pagehide),
+      // o backup automático e os saves têm permissão de gravar. Tudo o que
+      // dispararem ANTES deste ponto é ignorado — era essa janela que
+      // apagava funcionários, anexos, vistorias, histórico e turnos.
+      // ══════════════════════════════════════════════════════════════════
+      _GS_PRONTO = true;
+      try { _atualizarContadores(); } catch(e){ console.warn('[BUG A] contadores pós-init:', e); }
+      console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
       navTo('painel');
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
