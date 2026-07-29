@@ -761,7 +761,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.10 -->
+<!-- GarageSpot v1.9.4.11 -->
 <body>
 <div class="page">
 
@@ -1298,9 +1298,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.10';
+const GS_VERSION = 'v1.9.4.11';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-07-28';
+const GS_BUILD_TS = '2026-07-29';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.10 — BUG A: GUARDA DE INICIALIZAÇÃO (perda silenciosa de dados)
@@ -2650,10 +2650,15 @@ function perguntarCheckin(vagaId, apt, model, color, plate, guest, obs){
       <button class="bcx" id="ci-nao">Não — corrigir apartamento</button>
       <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
     </div>`;
+  // v1.9.4.11 (Bug B): antes de confirmar o check-in, PEDIR a data de saída
+  // prevista — mesmo campo obrigatório que o check-in com vistoria (padrão) já
+  // exige. Era o único fluxo que criava hospedagem sem data de check-out.
   document.getElementById('ci-sim').onclick=function(){
-    confirmarUsuario('fazendo o check-in',function(usuario){
-      saveV(vagaId,apt,model,color,plate,guest,obs,true,usuario);
-    });
+    _perguntarSaidaPrevista(apt, function(saida){
+      confirmarUsuario('fazendo o check-in',function(usuario){
+        saveV(vagaId,apt,model,color,plate,guest,obs,true,usuario,saida);
+      });
+    }, function(){ perguntarCheckin(vagaId, apt, model, color, plate, guest, obs); });
   };
   document.getElementById('ci-nao').onclick=function(){
     showOcc(vagaId);
@@ -2661,7 +2666,41 @@ function perguntarCheckin(vagaId, apt, model, color, plate, guest, obs){
   };
 }
 
-function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario){
+// v1.9.4.11 (Bug B): passo "Data de saída prevista" do check-in clássico.
+// Obrigatório e sem data no passado (mesma régua do check-in com vistoria).
+function _perguntarSaidaPrevista(apt, onOk, onVoltar){
+  const mc=document.getElementById('mc');
+  if(!mc){ if(typeof onOk==='function') onOk(''); return; }
+  const hoje=new Date();
+  const hojeISOv=hoje.toISOString().slice(0,10);
+  mc.innerHTML=`
+    <div class="mt">📅 Data de saída prevista</div>
+    <div class="ms" style="margin-bottom:10px">Apartamento <strong>${_vtEsc(String(apt||''))}</strong> — quando o hóspede faz o check-out?</div>
+    <label class="fl">Data de saída prevista <span class="req">* obrigatório</span></label>
+    <input class="fi" id="ci-saida" type="date" min="${hojeISOv}" value="">
+    <div class="ms" style="font-size:11px;color:#888;margin-top:6px">Aparece como aviso de check-out no mapa e na lista do dia.</div>
+    <div class="b2">
+      <button class="bcx" id="ci-saida-voltar">← Voltar</button>
+      <button class="bsv" id="ci-saida-ok">Continuar</button>
+    </div>`;
+  document.getElementById('ov').classList.add('on');
+  setTimeout(function(){ const e=document.getElementById('ci-saida'); if(e) e.focus(); },80);
+  document.getElementById('ci-saida-voltar').onclick=function(){
+    if(typeof onVoltar==='function') onVoltar(); else closeOv();
+  };
+  document.getElementById('ci-saida-ok').onclick=function(){
+    const v=(document.getElementById('ci-saida').value||'').trim();
+    if(!v){
+      const e=document.getElementById('ci-saida');
+      if(e){ e.classList.add('err'); e.focus(); e.addEventListener('input',function(){e.classList.remove('err');},{once:true}); }
+      showToast('Data de saída prevista é obrigatória',2500);
+      return;
+    }
+    if(typeof onOk==='function') onOk(v);
+  };
+}
+
+function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevista){
   const d=S[id];
   d.apt=String(apt||'');d.model=String(model||'');d.color=String(color||'');
   d.plate=String(plate||'');d.guest=String(guest||'');d.obs=String(obs||'');d.status='occupied';
@@ -2682,15 +2721,20 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario){
   if(isCheckin){
     const numH=nextNumHospedagem();
     d.hospedagem=numH;
-    HOSPEDAGENS[numH]={numero:numH,apt,checkin_ts:Date.now(),checkout_ts:null,
-      vaga_inicial:id,model,color,plate,guest,obs,size:ssz,
-      usuario_checkin:usuarioStr,usuario_checkout:''};
+    // v1.9.4.11 (Bug B): ponto único de criação — `saida_prevista` SEMPRE gravada.
+    HOSPEDAGENS[numH]=_novaHospedagem({
+      numero:numH, apt:apt, checkin_ts:Date.now(), vaga_inicial:id,
+      model:model, color:color, plate:plate, guest:guest, obs:obs, size:ssz,
+      saida_prevista:saidaPrevista||'',
+      usuario_checkin:usuarioStr, usuario_checkout:'',
+    });
     saveHospedagens();
     iniciarHistorico(apt,id,numH,usuarioStr);
     ref(id);refByApt(d.apt);
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
     upd();closeOv();
     showToast('✅ Check-in registrado — Hospedagem '+numH);
+    _gsBackupAuto('check-in '+numH); // v1.9.4.11
   } else if(isCheckin===false){
     const hospNum=(PASSEIO[apt]?.hospedagem)||d.hospedagem||'';
     if(hospNum) d.hospedagem=hospNum;
@@ -2971,6 +3015,8 @@ function doChk(id){
       if(ANEXOS[keyV]){ delete ANEXOS[keyV]; _limpou=true; }
       if(ANEXOS[keyP]){ delete ANEXOS[keyP]; _limpou=true; }
       if(_limpou) saveAnexos({permitirVazio:true}); // v1.9.4.10: limpeza INTENCIONAL do check-out
+      // v1.9.4.11: check-out é evento crítico → backup COMPLETO (com fotos) agora
+      _gsBackupAuto('check-out '+(hospNum||aptKey), {completo:true});
       // Parte 1 v1.9.4.9: o PDF de check-out é SALVO NO DISPOSITIVO automaticamente
       // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
       // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
@@ -3407,6 +3453,56 @@ function saveHospedagens(){
   // Bug W v1.9.4.1.6: storage protegido com 3 slots de backup
   _saveProtegido('garagespot_hospedagens', HOSPEDAGENS, 'hospedagens');
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.11 — BUG B: ponto ÚNICO de criação de hospedagem.
+// ════════════════════════════════════════════════════════════════════════
+// Antes, os 3 fluxos de check-in montavam o objeto na mão e só dois deles
+// gravavam `saida_prevista` — o check-in clássico pela vaga livre (`saveV`)
+// criava a hospedagem SEM a data de check-out. Resultado: sem rótulo no mapa,
+// fora de "Check-outs de hoje" e "Saída prevista —" nos detalhes; o hotel lia
+// isso como "a data de check-out sumiu".
+// Agora todo caminho passa por aqui e o campo SEMPRE existe no registro.
+function _novaHospedagem(o){
+  o = o || {};
+  return {
+    numero:          o.numero || '',
+    apt:             o.apt || '',
+    checkin_ts:      o.checkin_ts || Date.now(),
+    checkout_ts:     (o.checkout_ts === undefined ? null : o.checkout_ts),
+    vaga_inicial:    o.vaga_inicial || '',
+    model:           o.model || '',
+    color:           o.color || '',
+    plate:           o.plate || '',
+    guest:           o.guest || '',
+    obs:             o.obs || '',
+    size:            o.size || 'small',
+    saida_prevista:  o.saida_prevista || '',   // ← BUG B: nunca mais ausente
+    usuario_checkin: o.usuario_checkin || '',
+    usuario_checkout:(o.usuario_checkout === undefined ? null : o.usuario_checkout),
+    vistorias:       Array.isArray(o.vistorias) ? o.vistorias : [],
+    status:          o.status || 'ativa',
+  };
+}
+
+// v1.9.4.11 (Bug B): normalização NÃO destrutiva das hospedagens já gravadas —
+// garante a existência da chave `saida_prevista` (vazia) sem INVENTAR datas.
+// Hospedagens antigas sem data continuam sem data (o gestor preenche na edição);
+// o que muda é que o campo passa a existir de forma previsível para a UI.
+function _normalizarHospedagens(){
+  try {
+    let ajustadas = 0;
+    Object.keys(HOSPEDAGENS || {}).forEach(function(gs){
+      const h = HOSPEDAGENS[gs];
+      if(h && typeof h === 'object' && h.saida_prevista === undefined){
+        h.saida_prevista = '';
+        ajustadas++;
+      }
+    });
+    if(ajustadas > 0) console.log('[BUG B] hospedagens normalizadas (saida_prevista ausente):', ajustadas);
+    return ajustadas;
+  } catch(e){ console.warn('[BUG B] normalização falhou:', e); return 0; }
+}
 function loadHospedagens(){
   const dados = _loadProtegido('hospedagens');
   if(dados){
@@ -3421,8 +3517,8 @@ function loadHospedagens(){
 // nenhuma proteção, sobrescrito com [] pela corrida de inicialização.
 // opts.permitirVazio = exclusão intencional do último funcionário.
 function saveUsuarios(opts){
-  if(!_gsGuardaSave('usuarios', USUARIOS, opts)) return;
-  try{ localStorage.setItem('garagespot_usuarios',JSON.stringify(USUARIOS)); }catch(e){}
+  // v1.9.4.11: guarda + escrita segura (cota) + releitura de validação
+  _gsGravarColecao('garagespot_usuarios', USUARIOS, 'usuarios', opts);
 }
 function loadUsuarios(){
   try{ const r=localStorage.getItem('garagespot_usuarios'); if(r) USUARIOS=JSON.parse(r)||[]; }catch(e){}
@@ -3619,7 +3715,7 @@ function showModalUsuarios(){
       const extra12 = escala==='12x36' ? { diaAB:dAB, turno12:t12v } : { diaAB:null, turno12:null };
       if(isNovo){ USUARIOS.push(Object.assign({id:'u'+Date.now(),nome,cargo,horaInicio,horaFim,escala},extra12)); }
       else{ const idx=USUARIOS.findIndex(x=>x.id===u.id); if(idx>=0) USUARIOS[idx]={...USUARIOS[idx],nome,cargo,horaInicio,horaFim,escala,...extra12}; }
-      saveUsuarios(); renderLista();
+      saveUsuarios(); _gsBackupAuto('cadastro de funcionário'); renderLista();
     };
     // v1.9.4.10: exclusão INTENCIONAL — pode zerar a lista (permitirVazio)
     window._excluirUsr=(uid)=>{ USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios({permitirVazio:true}); renderLista(); };
@@ -3634,19 +3730,22 @@ let TURNOS = [
   { id:'t3', nome:'Noite',  inicio:'22:00', fim:'06:00' },
 ];
 function saveTurnos(opts){
-  if(!_gsGuardaSave('turnos', TURNOS, opts)) return; // v1.9.4.10 (Bug A)
-  try{ localStorage.setItem('garagespot_turnos',JSON.stringify(TURNOS)); }catch(e){}
+  _gsGravarColecao('garagespot_turnos', TURNOS, 'turnos', opts); // v1.9.4.10/.11
 }
 function loadTurnos(){
   try{ const r=localStorage.getItem('garagespot_turnos'); if(r) TURNOS=JSON.parse(r)||TURNOS; }catch(e){}
   try{ _contadorAnterior.turnos = _gsContar(TURNOS); }catch(e){}
 }
 let PLANTAO_MANUAL = [];
-function savePlantaoManual(){ try{ localStorage.setItem('garagespot_plantao_manual',JSON.stringify(PLANTAO_MANUAL)); }catch(e){} }
-function loadPlantaoManual(){ try{ const r=localStorage.getItem('garagespot_plantao_manual'); if(r) PLANTAO_MANUAL=JSON.parse(r)||[]; }catch(e){} }
+// v1.9.4.11: sob as guardas. O esvaziamento da virada é INTENCIONAL (permitirVazio).
+function savePlantaoManual(opts){ _gsGravarColecao('garagespot_plantao_manual', PLANTAO_MANUAL, 'plantao_manual', opts); }
+function loadPlantaoManual(){
+  try{ const r=localStorage.getItem('garagespot_plantao_manual'); if(r) PLANTAO_MANUAL=JSON.parse(r)||[]; }catch(e){}
+  try{ _contadorAnterior.plantao_manual = _gsContar(PLANTAO_MANUAL); }catch(e){}
+}
 function agendarLimparPlantao(){
   const agora=new Date(), amanha=new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()+1,0,0,5);
-  setTimeout(()=>{ PLANTAO_MANUAL=[]; savePlantaoManual(); atualizarPlantao(); agendarLimparPlantao(); }, amanha-agora);
+  setTimeout(()=>{ PLANTAO_MANUAL=[]; savePlantaoManual({permitirVazio:true}); atualizarPlantao(); agendarLimparPlantao(); }, amanha-agora);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -4901,7 +5000,8 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-sep">Exibição</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showExibicao')">🔤 <span>Tamanho de fonte</span></div>
     <div class="gestao-menu-sep">Dados do mapa</div>
-    <div class="gestao-menu-item" onclick="closeOv();exportarZip()">📦 <span>Exportar todos os dados</span></div>
+    <div class="gestao-menu-item" onclick="closeOv();exportarBackupCompleto()">📦 <span>Exportar todos os dados</span></div>
+    <div class="gestao-menu-item" onclick="closeOv();abrirImportarDados()">📥 <span>Importar dados</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('confirmReset')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('alterarPIN')" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
@@ -5085,11 +5185,14 @@ const RECARGA_HIST_LS = 'garagespot_historico_recargas';
 const RECARGA_CFG_LS = 'garagespot_recarga_config';
 const RECARGA_PONTOS_LS = 'garagespot_recarga_pontos'; // v1.9.4.3.3
 
-function saveRecargas(){ try{localStorage.setItem(RECARGA_LS,JSON.stringify(RECARGAS));}catch(e){} }
-function saveRecargaHist(){ try{localStorage.setItem(RECARGA_HIST_LS,JSON.stringify(HISTORICO_RECARGAS));}catch(e){} }
+// v1.9.4.11: sob as guardas. RECARGAS esvazia legitimamente ao encerrar a última
+// recarga → permitirVazio. HISTORICO_RECARGAS é financeiro e NUNCA deve zerar.
+function saveRecargas(opts){ _gsGravarColecao(RECARGA_LS, RECARGAS, 'recargas', opts || {permitirVazio:true}); }
+function saveRecargaHist(opts){ _gsGravarColecao(RECARGA_HIST_LS, HISTORICO_RECARGAS, 'recarga_hist', opts); }
 function loadRecargas(){
   try{ const r=localStorage.getItem(RECARGA_LS); if(r) RECARGAS=JSON.parse(r)||{}; }catch(e){}
   try{ const r=localStorage.getItem(RECARGA_HIST_LS); if(r) HISTORICO_RECARGAS=JSON.parse(r)||[]; }catch(e){}
+  try{ _contadorAnterior.recargas = _gsContar(RECARGAS); _contadorAnterior.recarga_hist = _gsContar(HISTORICO_RECARGAS); }catch(e){}
   try{ const r=localStorage.getItem(RECARGA_CFG_LS); if(r) RECARGA_CONFIG=Object.assign(RECARGA_CONFIG,JSON.parse(r)||{}); }catch(e){}
   // v1.9.4.3.3: carregar pontos personalizados (se houver). Sem nada → mantém padrão.
   try{
@@ -5163,11 +5266,13 @@ function saveVistorias(opts){
   if(!_gsGuardaSave('vistorias', VISTORIAS, opts)) return;
   try { saveVistoriasIDB(); } catch(e){ console.error('[BUG #1] saveVistorias falhou:', e); }
 }
-function saveLixeira(){try{localStorage.setItem(VISTORIAS_LIXEIRA_LS,JSON.stringify(VISTORIAS_LIXEIRA));}catch(e){}}
+// v1.9.4.11: sob as guardas (a lixeira esvazia por ação do gestor → permitirVazio)
+function saveLixeira(opts){ _gsGravarColecao(VISTORIAS_LIXEIRA_LS, VISTORIAS_LIXEIRA, 'vistorias_lixeira', opts || {permitirVazio:true}); }
 function loadVistorias(){
   // v1.9.4.2: load do IndexedDB com fallback localStorage. Retorna Promise.
   // Lixeira continua no localStorage (pequena, sem documento_final_b64).
   try{const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS);if(d)VISTORIAS_LIXEIRA=JSON.parse(d)||{};}catch(e){}
+  try{ _contadorAnterior.vistorias_lixeira = _gsContar(VISTORIAS_LIXEIRA); }catch(e){}
   return loadVistoriasIDB();
 }
 function nextNumVistoria(){
@@ -5934,11 +6039,14 @@ const VISTORIA_RASCUNHO_LS = 'garagespot_vistoria_rascunho';
 let _nciD = null;
 let _nciStep = 0;
 
-function saveCheckinsPendentes(){
-  try{ localStorage.setItem(CHECKINS_PENDENTES_LS,JSON.stringify(CHECKINS_PENDENTES)); }catch(e){}
+// v1.9.4.11: sob as guardas. Esvazia legitimamente quando o último pendente é
+// designado (vira hospedagem ativa) → permitirVazio por padrão.
+function saveCheckinsPendentes(opts){
+  _gsGravarColecao(CHECKINS_PENDENTES_LS, CHECKINS_PENDENTES, 'checkins_pendentes', opts || {permitirVazio:true});
 }
 function loadCheckinsPendentes(){
   try{ const d=localStorage.getItem(CHECKINS_PENDENTES_LS); if(d) CHECKINS_PENDENTES=JSON.parse(d)||{}; }catch(e){}
+  try{ _contadorAnterior.checkins_pendentes = _gsContar(CHECKINS_PENDENTES); }catch(e){}
 }
 function getPendentePorApt(apt){
   if(!apt) return null;
@@ -7645,21 +7753,25 @@ function _nciCommitCheckin(){
   // Criar HOSPEDAGEM com status='aguardando_designacao'
   const gs=d.gs;
   const nomeUsr=_vtFuncNome(d);
-  HOSPEDAGENS[gs]={
+  // v1.9.4.11 (Bug B): mesmo ponto único dos demais fluxos. Este é o check-in
+  // COM VISTORIA — o procedimento PADRÃO — e já exigia a data no formulário.
+  HOSPEDAGENS[gs]=_novaHospedagem({
     numero:gs, apt:d.apt, checkin_ts:d.ts_inicio||Date.now(),
-    vaga_inicial:null, checkout_ts:null,
+    vaga_inicial:null,
     model:d.model, color:d.color, plate:d.plate||null,
     guest:d.guest||null, obs:d.obs||null,
     size:'small', saida_prevista:d.saida_prevista||'',
     usuario_checkin:nomeUsr,
     vistorias:[numero],
     status:'aguardando_designacao'
-  };
+  });
   saveHospedagens();
   // Criar VISTORIA via _nciCriarVistoria (compatível v1.9.4)
   const numCriado=_nciCriarVistoriaV2(d,numero);
   // Salvar histórico
   iniciarHistorico(d.apt,null,gs,nomeUsr);
+  // v1.9.4.11: check-in COM VISTORIA (padrão) → backup completo (traz as fotos)
+  _gsBackupAuto('check-in com vistoria '+gs, {completo:true});
   addHistorico(d.apt,'vistoria_criada',null,
     numero+' — '+(d.model||'')+' '+(d.color||'')+((d.avarias||d.danos||[]).length?' · '+(d.avarias||d.danos||[]).length+' avaria(s)':''),
     nomeUsr,gs);
@@ -8358,7 +8470,8 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
     const bId=vagaId.slice(0,-1)+'B';
     if(S[bId]&&S[bId].status==='free'){ S[bId].status='occupied'; S[bId].mergedSlave=vagaId; v.mergedMaster=true; }
   }
-  HOSPEDAGENS[p.gs]={numero:p.gs,apt:p.apt,checkin_ts:p.ts_inicio,vaga_inicial:vagaId,model:p.model,color:p.color,plate:p.plate,guest:p.guest,obs:p.obs,size:p.size,saida_prevista:p.saida_prevista||'',usuario_checkin:p.usuario,checkout_ts:null,usuario_checkout:null,vistorias:[],status:'ativa'};
+  // v1.9.4.11 (Bug B): ponto único de criação (designação a partir do pendente legado)
+  HOSPEDAGENS[p.gs]=_novaHospedagem({numero:p.gs,apt:p.apt,checkin_ts:p.ts_inicio,vaga_inicial:vagaId,model:p.model,color:p.color,plate:p.plate,guest:p.guest,obs:p.obs,size:p.size,saida_prevista:p.saida_prevista||'',usuario_checkin:p.usuario,vistorias:[],status:'ativa'});
   iniciarHistorico(p.apt,vagaId,p.gs,p.usuario);
   addHistorico(p.apt,'checkin',vagaId,'Check-in via NCI',usuario,p.gs);
   const vstId=_nciCriarVistoria(p);
@@ -8374,6 +8487,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   if(document.getElementById('painel-wrap')?.style?.display!=='none' && typeof renderPainelDia==='function') renderPainelDia();
   showToast('✅ '+p.gs+' · Apt. '+p.apt+' → vaga '+vagaId,3500);
   if(typeof addLogSistema==='function') addLogSistema('NCI designação: '+p.gs+' → '+vagaId+' por '+(usuario&&usuario.nome?usuario.nome:usuario));
+  _gsBackupAuto('designação '+p.gs); // v1.9.4.11
 }
 // ── BACKUP LOCAL ──────────────────────────────────────────────────────────
 let DRIVE_STATUS = {conectado:false,email:'',ultimo_backup:null,falha_backup:false};
@@ -8381,58 +8495,188 @@ const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
 function saveDriveStatus(){ try{localStorage.setItem(DRIVE_STATUS_LS,JSON.stringify(DRIVE_STATUS));}catch(e){} }
 
-async function fazerBackupLocal(motivo){
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.4.11 — BACKUP COMPLETO, DURÁVEL E VALIDADO
+// ════════════════════════════════════════════════════════════════════════════
+// O backup anterior (v1.7) trazia hospedagens, usuários, vistorias e histórico —
+// mas NÃO os ANEXOS (as fotos). Restaurar dele devolvia tudo menos as fotos.
+// Agora o snapshot é versionado e cobre TODO o localStorage + TODO o IndexedDB.
+//
+// DUAS CADÊNCIAS (decisão de engenharia, ver RELATORIO):
+//  • COMPLETO (com fotos) — a cópia durável de verdade. Pesado (MBs), então roda
+//    no manual, no check-out e no máximo 1×/hora no automático.
+//  • LEVE (sem fotos) — roda após CADA mudança relevante. Poucos KB, então pode
+//    ser frequente sem encher o tablet do hotel, que tem pouco espaço.
+// Nenhuma cópia é apagada pelo app — exclusão é só manual, pelo gestor.
+const GS_BACKUP_SCHEMA = 2;
+const GS_BACKUP_META_LS = 'garagespot_backup_meta';
+const GS_BACKUP_INTERVALO_COMPLETO = 60 * 60 * 1000; // 1h
+// Chaves efêmeras/cache que NÃO entram no snapshot (rascunhos, licença, contadores)
+const GS_LS_EXCLUIR = [
+  'garagespot_license_cache', 'garagespot_backups_local', 'garagespot_modo_designacao',
+  'garagespot_rascunho_completo', 'garagespot_vistoria_rascunho', 'garagespot_contadores',
+  GS_BACKUP_META_LS,
+];
+
+function _gsSnapshotLocalStorage(){
+  const out = {};
+  try {
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(GS_LS_EXCLUIR.indexOf(k) >= 0) continue;
+      if(/_bk[12]$/.test(k)) continue;            // slots rotativos, redundantes
+      if(k === 'garagespot_anexos' || k === VISTORIAS_LS) continue; // vão em `indexeddb`
+      try { out[k] = localStorage.getItem(k); } catch(e){}
+    }
+  } catch(e){ console.warn('[BACKUP] varredura do localStorage falhou:', e); }
+  return out;
+}
+
+function _gsContagensAtuais(){
+  return {
+    hospedagens: _gsContar(HOSPEDAGENS),
+    usuarios:    _gsContar(typeof USUARIOS !== 'undefined' ? USUARIOS : null),
+    vistorias:   _gsContar(VISTORIAS),
+    anexos:      _gsContar(ANEXOS),
+    historico:   _gsContar(typeof HISTORICO !== 'undefined' ? HISTORICO : null),
+  };
+}
+
+// Monta o snapshot. `comFotos` inclui ANEXOS+VISTORIAS (o IndexedDB) em base64.
+function _gsMontarSnapshot(comFotos){
+  const snap = {
+    schemaVersion: GS_BACKUP_SCHEMA,
+    appVersion: (typeof GS_VERSION !== 'undefined' ? GS_VERSION : '?'),
+    tipo: comFotos ? 'completo' : 'leve',
+    ts: Date.now(),
+    exportado_em: (typeof fmtDt === 'function' ? fmtDt(Date.now()) : new Date().toISOString()),
+    contagens: _gsContagensAtuais(),
+    localStorage: _gsSnapshotLocalStorage(),
+    indexeddb: comFotos ? { anexos: ANEXOS || {}, vistorias: VISTORIAS || {} } : null,
+    // compat/legibilidade: os mesmos dados pequenos no formato v1.7 (fotos e
+    // vistorias NÃO são duplicadas aqui — só vão em `indexeddb`).
+    versao: '1.7',
+    vagas: S, passeio: PASSEIO, hospedagens: HOSPEDAGENS,
+    usuarios: (typeof USUARIOS !== 'undefined' ? USUARIOS : []),
+    historico: (typeof HISTORICO !== 'undefined' ? HISTORICO : {}),
+    turnos: (typeof TURNOS !== 'undefined' ? TURNOS : []),
+    plantao_manual: (typeof PLANTAO_MANUAL !== 'undefined' ? PLANTAO_MANUAL : []),
+    recarga_config: RECARGA_CONFIG || {}, recargas: RECARGAS || {},
+    historico_recargas: HISTORICO_RECARGAS || [],
+    vistorias_lixeira: VISTORIAS_LIXEIRA || {},
+    vistoria_counter: localStorage.getItem(VISTORIA_COUNTER_KEY) || '0',
+    checkins_pendentes: CHECKINS_PENDENTES || {},
+  };
+  return snap;
+}
+
+// Rejeita snapshot vazio E snapshot PARCIAL (coleção que tinha dados vindo com 0).
+function _gsValidarSnapshot(snap){
+  try {
+    if(!snap || typeof snap !== 'object') return {ok:false, motivo:'snapshot inválido'};
+    const c = snap.contagens || {};
+    const totalAgora = (c.hospedagens||0) + (c.usuarios||0) + (c.vistorias||0) + (c.anexos||0);
+    const totalAntes = (_contadorAnterior.hospedagens||0) + (_contadorAnterior.usuarios||0) +
+                       (_contadorAnterior.vistorias||0)   + (_contadorAnterior.anexos||0);
+    if(totalAgora === 0 && totalAntes > 0){
+      return {ok:false, motivo:'snapshot vazio (havia ' + totalAntes + ' registros)'};
+    }
+    // parcial: alguma coleção que tinha dados aparece zerada
+    const pares = [['hospedagens','hospedagens'],['usuarios','usuarios'],['vistorias','vistorias'],['anexos','anexos']];
+    for(let i = 0; i < pares.length; i++){
+      const nome = pares[i][0], contKey = pares[i][1];
+      const antes = _contadorAnterior[contKey] || 0;
+      const agora = c[nome] || 0;
+      if(antes > 0 && agora === 0){
+        return {ok:false, motivo:'snapshot parcial — ' + nome + ' zerada (tinha ' + antes + ')'};
+      }
+    }
+    if(snap.tipo === 'completo' && !snap.indexeddb){
+      return {ok:false, motivo:'snapshot marcado como completo mas sem o IndexedDB'};
+    }
+    return {ok:true};
+  } catch(e){ return {ok:false, motivo:'validação lançou: ' + (e && e.message)}; }
+}
+
+// Guarda o último snapshot COMPLETO no IndexedDB → permite restaurar em um toque
+// mesmo sem plugin de arquivo. (Store criado na DB_VERSION 3, não destrutivo.)
+function _gsGuardarSnapshotIDB(snap){
+  return new Promise(function(resolve){
+    try {
+      if(!_idbAvailable() || !db.objectStoreNames.contains(STORE_BACKUPS)){ resolve(false); return; }
+      const tx = db.transaction(STORE_BACKUPS, 'readwrite');
+      tx.objectStore(STORE_BACKUPS).put(snap, 'ultimo_completo');
+      tx.oncomplete = function(){ resolve(true); };
+      tx.onerror = function(){ console.warn('[BACKUP] não guardou snapshot no IDB'); resolve(false); };
+    } catch(e){ console.warn('[BACKUP] IDB do snapshot falhou:', e); resolve(false); }
+  });
+}
+
+function _gsLerSnapshotIDB(){
+  return new Promise(function(resolve){
+    try {
+      if(!_idbAvailable() || !db.objectStoreNames.contains(STORE_BACKUPS)){ resolve(null); return; }
+      const tx = db.transaction(STORE_BACKUPS, 'readonly');
+      const req = tx.objectStore(STORE_BACKUPS).get('ultimo_completo');
+      req.onsuccess = function(){ resolve(req.result || null); };
+      req.onerror = function(){ resolve(null); };
+    } catch(e){ resolve(null); }
+  });
+}
+
+// motivo: texto p/ log. opts: {comFotos:bool, forcar:bool}
+async function fazerBackupLocal(motivo, opts){
+  opts = opts || {};
   try{
-    // ════════════════════════════════════════════════════════════════════
-    // v1.9.4.10 (Bug A): BACKUP NUNCA GRAVA SNAPSHOT VAZIO.
-    // Antes, a corrida de inicialização disparava este backup com a memória
-    // ainda vazia e gerava um .json só com {} — que passava a ser a cópia
-    // "mais recente" em Documentos/GarageSpot/Dados. Ou seja: no mesmo evento
-    // em que os dados eram apagados, o backup que salvaria o dia era poluído.
-    // ════════════════════════════════════════════════════════════════════
+    // v1.9.4.10 (Bug A): nunca gravar durante o init — o snapshot sairia vazio e
+    // ainda substituiria a cópia boa em Documentos/GarageSpot/Dados.
     if(!gsPronto()){
       console.warn('[BUG A] backup abortado: app ainda inicializando');
       return {ok:false,erro:'app ainda inicializando'};
     }
-    const _tinha = (_contadorAnterior.hospedagens||0) + (_contadorAnterior.usuarios||0) +
-                   (_contadorAnterior.vistorias||0)   + (_contadorAnterior.anexos||0);
-    const _tem = _gsContar(HOSPEDAGENS) + _gsContar(USUARIOS) +
-                 _gsContar(VISTORIAS)   + _gsContar(ANEXOS);
-    if(_tem === 0 && _tinha > 0){
-      console.warn('[BUG A] backup abortado: snapshot vazio (havia ' + _tinha + ' registros)');
-      if(typeof addLogSistema === 'function') addLogSistema('Backup abortado: snapshot vazio (proteção de dados)');
-      return {ok:false,erro:'snapshot vazio — backup abortado para não sobrescrever a cópia boa'};
+    const comFotos = (opts.comFotos !== false);
+    const snap = _gsMontarSnapshot(comFotos);
+    const val = _gsValidarSnapshot(snap);
+    if(!val.ok){
+      console.warn('[BACKUP] abortado:', val.motivo);
+      if(typeof addLogSistema === 'function') addLogSistema('Backup abortado: ' + val.motivo + ' (proteção de dados)');
+      return {ok:false,erro:val.motivo};
     }
-    const dados={exportado_em:fmtDt(Date.now()),ts:Date.now(),versao:'1.7',
-      vagas:S,passeio:PASSEIO,hospedagens:HOSPEDAGENS,usuarios:USUARIOS,
-      historico:HISTORICO,turnos:TURNOS,plantao_manual:PLANTAO_MANUAL,
-      recarga_config:RECARGA_CONFIG||{},recargas:RECARGAS||{},
-      historico_recargas:HISTORICO_RECARGAS||[],
-      vistorias:VISTORIAS||{},
-      vistorias_lixeira:VISTORIAS_LIXEIRA||{},
-      vistoria_counter:localStorage.getItem(VISTORIA_COUNTER_KEY)||'0',
-      checkins_pendentes:CHECKINS_PENDENTES||{}};
-    const json=JSON.stringify(dados);
+    const json=JSON.stringify(snap);
     const hoje=new Date();
-    const ds=String(hoje.getDate()).padStart(2,'0')+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getFullYear()).slice(-2)+'_'+String(hoje.getHours()).padStart(2,'0')+'h'+String(hoje.getMinutes()).padStart(2,'0');
-    const nome='backup_'+ds+'.json';
+    const ds=String(hoje.getDate()).padStart(2,'0')+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getFullYear()).slice(-2)+'_'+String(hoje.getHours()).padStart(2,'0')+'h'+String(hoje.getMinutes()).padStart(2,'0')+'m'+String(hoje.getSeconds()).padStart(2,'0');
+    const nome='backup_'+(comFotos?'completo':'leve')+'_'+ds+'.json';
+    let gravouArquivo = false;
     if(window.Capacitor?.Plugins?.Filesystem){
       const {Filesystem}=window.Capacitor.Plugins;
       const b64=btoa(unescape(encodeURIComponent(json)));
       await Filesystem.writeFile({path:'GarageSpot/Dados/'+nome,data:b64,directory:'DOCUMENTS',recursive:true});
+      gravouArquivo = true;
     }
+    // Cópia de restauração em um toque (e rede de segurança no navegador)
+    if(comFotos) await _gsGuardarSnapshotIDB(snap);
+    // Registro das cópias — v1.9.4.11: MANTÉM TODAS (sem poda; exclusão só manual)
     try{
       let bkps=JSON.parse(localStorage.getItem('garagespot_backups_local')||'[]');
-      bkps.unshift({ts:Date.now(),nome});
-      if(bkps.length>5) bkps=bkps.slice(0,5);
-      localStorage.setItem('garagespot_backups_local',JSON.stringify(bkps));
+      bkps.unshift({ts:Date.now(),nome,tipo:snap.tipo,contagens:snap.contagens,arquivo:gravouArquivo});
+      _gsSetItemSeguro('garagespot_backups_local',JSON.stringify(bkps),'registro de backups');
     }catch(e2){}
+    // Meta do último backup NÃO-VAZIO (base da guarda de integridade)
+    if(comFotos){
+      try{
+        _gsSetItemSeguro(GS_BACKUP_META_LS, JSON.stringify({
+          ts: snap.ts, nome: nome, tipo: snap.tipo, contagens: snap.contagens, temFotos: true,
+        }), 'meta do backup');
+        _gsUltimoCompletoTs = snap.ts;
+      }catch(e3){}
+    }
     DRIVE_STATUS.ultimo_backup=Date.now();
     DRIVE_STATUS.falha_backup=false;
     saveDriveStatus();
     // Bug latente v1.9.4.1.8: era logSistema (não definido) — causava ReferenceError em cada backup/designação
-    if(typeof addLogSistema === 'function') addLogSistema('Backup: '+(motivo||'manual')+' — '+nome);
-    return {ok:true,nome};
+    if(typeof addLogSistema === 'function') addLogSistema('Backup ('+snap.tipo+'): '+(motivo||'manual')+' — '+nome);
+    return {ok:true,nome,tipo:snap.tipo,contagens:snap.contagens};
   }catch(e){
     DRIVE_STATUS.falha_backup=true;
     saveDriveStatus();
@@ -8441,18 +8685,403 @@ async function fazerBackupLocal(motivo){
   }
 }
 
+// ── Backup automático frequente ────────────────────────────────────────────
+// Chamado após mudanças relevantes (check-in, check-out, funcionário, vistoria,
+// recarga) + tique periódico. Debounce para não gravar a cada tecla.
+let _gsBackupTimer = null;
+let _gsUltimoCompletoTs = 0;
+try {
+  const _m = JSON.parse(localStorage.getItem(GS_BACKUP_META_LS) || 'null');
+  if(_m && _m.ts) _gsUltimoCompletoTs = _m.ts;
+} catch(e){}
+
+function _gsBackupAuto(motivo, opts){
+  opts = opts || {};
+  try {
+    if(!gsPronto()) return;               // camada 1 (Bug A) também aqui
+    if(_gsBackupTimer) clearTimeout(_gsBackupTimer);
+    const atraso = (opts.imediato ? 0 : 15000);
+    _gsBackupTimer = setTimeout(function(){
+      _gsBackupTimer = null;
+      const passou = (Date.now() - (_gsUltimoCompletoTs || 0)) > GS_BACKUP_INTERVALO_COMPLETO;
+      const comFotos = !!opts.completo || passou;
+      fazerBackupLocal(motivo || 'automático', {comFotos:comFotos})
+        .catch(function(e){ console.warn('[BACKUP] automático falhou:', e); });
+    }, atraso);
+  } catch(e){ console.warn('[BACKUP] agendamento falhou:', e); }
+}
+
 async function fazerBackupAgora(){
-  showToast('Gerando backup...',3000);
-  const r=await fazerBackupLocal('Manual');
+  showToast('Gerando backup completo...',3000);
+  const r=await fazerBackupLocal('Manual', {comFotos:true});
   if(r.ok){
-    showToast('✅ Backup salvo: '+r.nome);
+    const c=r.contagens||{};
+    showToast('✅ Backup completo salvo: '+r.nome+' · '+(c.hospedagens||0)+' hosp., '+(c.anexos||0)+' anexos, '+(c.usuarios||0)+' func.',5000);
     // Re-render modal se estiver aberto
     if(document.getElementById('ov').classList.contains('on')){
       const t=document.getElementById('mc').querySelector('.mt');
       if(t&&t.textContent.includes('Conexões')) showConexoes();
     }
   } else {
-    showToast('⚠️ Erro no backup');
+    showToast('⚠️ Backup não gravado: '+(r.erro||'erro'),5000);
+  }
+}
+
+// ── Exportação COMPLETA sem depender de plugin ─────────────────────────────
+// Blob + <a download> funciona em qualquer aparelho/navegador; se o Share do
+// Capacitor existir, oferece compartilhar também. Serve de rede manual.
+async function exportarBackupCompleto(){
+  try{
+    showToast('Gerando exportação completa...',3000);
+    const snap=_gsMontarSnapshot(true);
+    const val=_gsValidarSnapshot(snap);
+    if(!val.ok){ showToast('⚠️ Exportação abortada: '+val.motivo,5000); return; }
+    const json=JSON.stringify(snap);
+    const hoje=new Date();
+    const ds=hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getDate()).padStart(2,'0')+'_'+String(hoje.getHours()).padStart(2,'0')+'h'+String(hoje.getMinutes()).padStart(2,'0');
+    const nome='GarageSpot_backup_completo_'+ds+'.json';
+    let compartilhou=false;
+    if(window.Capacitor?.Plugins?.Filesystem&&window.Capacitor?.Plugins?.Share){
+      try{
+        const {Filesystem,Share}=window.Capacitor.Plugins;
+        const b64=btoa(unescape(encodeURIComponent(json)));
+        await Filesystem.writeFile({path:'GarageSpot/'+nome,data:b64,directory:'DOCUMENTS',recursive:true});
+        const {uri}=await Filesystem.getUri({path:'GarageSpot/'+nome,directory:'DOCUMENTS'});
+        await Share.share({title:'Backup GarageSpot',url:uri,dialogTitle:'Salvar/enviar backup'});
+        compartilhou=true;
+      }catch(eShare){ console.warn('[EXPORT] share indisponível, caindo para download:',eShare&&eShare.message); }
+    }
+    if(!compartilhou){
+      const blob=new Blob([json],{type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;a.download=nome;document.body.appendChild(a);a.click();document.body.removeChild(a);
+      setTimeout(function(){URL.revokeObjectURL(url);},10000);
+    }
+    const c=snap.contagens||{};
+    showToast('✅ Exportado: '+(c.hospedagens||0)+' hosp., '+(c.anexos||0)+' anexos, '+(c.vistorias||0)+' vist., '+(c.usuarios||0)+' func.',5000);
+    if(typeof addLogSistema==='function') addLogSistema('Exportação completa: '+nome);
+  }catch(e){
+    console.error('[EXPORT] falhou:',e);
+    showToast('⚠️ Erro ao exportar: '+(e.message||e),5000);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.4.11 — IMPORTAR / RESTAURAR (MESCLA, nunca substitui)
+// ════════════════════════════════════════════════════════════════════════════
+// Regra de ouro: o que está no aparelho SEMPRE vence. A importação só ACRESCENTA
+// o que falta. Assim, importar um backup antigo nunca desfaz trabalho recente, e
+// importar duas vezes o mesmo arquivo não duplica nada (idempotente).
+
+// Assinatura estável de um anexo, para deduplicar sem depender de ordem.
+function _gsAssinaturaAnexo(a){
+  try {
+    if(!a || typeof a !== 'object') return '';
+    const dados = String(a.data || a.b64 || '');
+    return [String(a.name||''), String(a.tipo||''), String(a.ts||''), dados.length, dados.slice(-48)].join('|');
+  } catch(e){ return ''; }
+}
+
+// Mescla arrays de anexos preservando os existentes e somando os que faltam.
+function _gsMesclarAnexosChave(destino, origem){
+  const base = Array.isArray(destino) ? destino.slice() : [];
+  const vistos = {};
+  base.forEach(function(a){ vistos[_gsAssinaturaAnexo(a)] = true; });
+  let somados = 0;
+  (Array.isArray(origem) ? origem : []).forEach(function(a){
+    const sig = _gsAssinaturaAnexo(a);
+    if(sig && vistos[sig]) return;   // já existe → idempotente
+    vistos[sig] = true;
+    base.push(a);
+    somados++;
+  });
+  return { lista: base, somados: somados };
+}
+
+// Lê o conteúdo de um backup (novo ou antigo) numa forma normalizada.
+function _gsNormalizarBackup(obj){
+  const r = {
+    schema: (obj && obj.schemaVersion) || 1,
+    tipo: (obj && obj.tipo) || 'legado',
+    ts: (obj && obj.ts) || 0,
+    appVersion: (obj && obj.appVersion) || (obj && obj.versao) || '?',
+    ls: (obj && obj.localStorage) || null,
+    anexos: null,
+    vistorias: null,
+    hospedagens: (obj && obj.hospedagens) || null,
+    usuarios: (obj && obj.usuarios) || null,
+    historico: (obj && obj.historico) || null,
+    turnos: (obj && obj.turnos) || null,
+    temIndexedDB: false,
+  };
+  if(obj && obj.indexeddb && typeof obj.indexeddb === 'object'){
+    r.anexos = obj.indexeddb.anexos || null;
+    r.vistorias = obj.indexeddb.vistorias || null;
+    r.temIndexedDB = !!(r.anexos || r.vistorias);
+  }
+  // formato antigo (v1.5/v1.7): vistorias no topo, anexos inexistentes
+  if(!r.vistorias && obj && obj.vistorias) r.vistorias = obj.vistorias;
+  if(!r.anexos && obj && obj.ANEXOS) r.anexos = obj.ANEXOS;      // dump do gsExportarTudo()
+  if(!r.hospedagens && obj && obj.HOSPEDAGENS) r.hospedagens = obj.HOSPEDAGENS;
+  return r;
+}
+
+// Aplica o backup MESCLANDO. Retorna um resumo do que entrou.
+async function _gsAplicarBackup(obj, origem){
+  const n = _gsNormalizarBackup(obj);
+  const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0, ignorados:0 };
+
+  // 1) Hospedagens — só as que faltam (as do aparelho vencem)
+  try {
+    const h = n.hospedagens || (n.ls && n.ls['garagespot_hospedagens'] ? JSON.parse(n.ls['garagespot_hospedagens']) : null);
+    if(h && typeof h === 'object'){
+      Object.keys(h).forEach(function(gs){
+        if(!HOSPEDAGENS[gs]){ HOSPEDAGENS[gs] = _novaHospedagem(h[gs]); res.hospedagens++; }
+        else res.ignorados++;
+      });
+      if(res.hospedagens) saveHospedagens();
+    }
+  } catch(e){ console.warn('[IMPORT] hospedagens:', e); }
+
+  // 2) Funcionários — dedupe por id (e por nome+cargo, para arquivos antigos)
+  try {
+    const u = n.usuarios || (n.ls && n.ls['garagespot_usuarios'] ? JSON.parse(n.ls['garagespot_usuarios']) : null);
+    if(Array.isArray(u)){
+      const temId = {}, temNome = {};
+      USUARIOS.forEach(function(x){ if(x){ temId[String(x.id)] = true; temNome[String(x.nome||'').toLowerCase()+'|'+String(x.cargo||'').toLowerCase()] = true; } });
+      u.forEach(function(x){
+        if(!x) return;
+        const chaveNome = String(x.nome||'').toLowerCase()+'|'+String(x.cargo||'').toLowerCase();
+        if(temId[String(x.id)] || temNome[chaveNome]){ res.ignorados++; return; }
+        temId[String(x.id)] = true; temNome[chaveNome] = true;
+        USUARIOS.push(x); res.usuarios++;
+      });
+      if(res.usuarios) saveUsuarios();
+    }
+  } catch(e){ console.warn('[IMPORT] usuarios:', e); }
+
+  // 3) Vistorias — só as que faltam
+  try {
+    if(n.vistorias && typeof n.vistorias === 'object'){
+      let novas = 0;
+      Object.keys(n.vistorias).forEach(function(id){
+        if(!VISTORIAS[id]){ VISTORIAS[id] = n.vistorias[id]; novas++; }
+        else res.ignorados++;
+      });
+      res.vistorias = novas;
+      if(novas) saveVistorias();
+    }
+  } catch(e){ console.warn('[IMPORT] vistorias:', e); }
+
+  // 4) Anexos — SOMADOS (append) por chave h_<gs>, nunca sobrescritos
+  try {
+    if(n.anexos && typeof n.anexos === 'object'){
+      let chaves = 0, itens = 0;
+      Object.keys(n.anexos).forEach(function(k){
+        const lista = n.anexos[k];
+        if(!Array.isArray(lista) || !lista.length) return;
+        const m = _gsMesclarAnexosChave(ANEXOS[k], lista);
+        if(m.somados > 0){
+          ANEXOS[k] = m.lista;
+          chaves++; itens += m.somados;
+        }
+      });
+      res.anexosChaves = chaves; res.anexosItens = itens;
+      if(itens) saveAnexos();
+      // chaves legadas v_/p_ dobradas em h_<gs> (mesma regra da v1.9.4.5)
+      try {
+        if(typeof _migrarAnexosParaHosp === 'function'){
+          Object.keys(HOSPEDAGENS).forEach(function(gs){
+            const h = HOSPEDAGENS[gs];
+            const legadas = [];
+            if(h && h.vaga_inicial) legadas.push('v_' + h.vaga_inicial);
+            if(h && h.apt) legadas.push('p_' + h.apt);
+            if(legadas.length) _migrarAnexosParaHosp(gs, legadas);
+          });
+        }
+      } catch(eM){ console.warn('[IMPORT] re-chaveamento h_<gs>:', eM); }
+    }
+  } catch(e){ console.warn('[IMPORT] anexos:', e); }
+
+  // 5) Histórico — mescla por apto, dedupe por (tipo,ts)
+  try {
+    const hist = n.historico || (n.ls && n.ls['garagespot_historico'] ? JSON.parse(n.ls['garagespot_historico']) : null);
+    if(hist && typeof hist === 'object'){
+      let novos = 0;
+      Object.keys(hist).forEach(function(apt){
+        const chegando = Array.isArray(hist[apt]) ? hist[apt] : [];
+        if(!HISTORICO[apt]) HISTORICO[apt] = [];
+        const vistos = {};
+        HISTORICO[apt].forEach(function(e){ if(e) vistos[String(e.tipo)+'|'+String(e.ts)] = true; });
+        chegando.forEach(function(e){
+          if(!e) return;
+          const sig = String(e.tipo)+'|'+String(e.ts);
+          if(vistos[sig]) return;
+          vistos[sig] = true;
+          HISTORICO[apt].push(e); novos++;
+        });
+        HISTORICO[apt].sort(function(a,b){ return (a.ts||0)-(b.ts||0); });
+      });
+      res.historico = novos;
+      if(novos) saveHistorico();
+    }
+  } catch(e){ console.warn('[IMPORT] historico:', e); }
+
+  // 6) Turnos — só se o aparelho não tiver nenhum
+  try {
+    const t = n.turnos || (n.ls && n.ls['garagespot_turnos'] ? JSON.parse(n.ls['garagespot_turnos']) : null);
+    if(Array.isArray(t) && t.length && _gsContar(TURNOS) === 0){
+      TURNOS = t; res.turnos = t.length; saveTurnos();
+    }
+  } catch(e){ console.warn('[IMPORT] turnos:', e); }
+
+  try { _atualizarContadores(); } catch(e){}
+  try { if(typeof addLogSistema === 'function') addLogSistema(
+    'Importação (' + (origem||'arquivo') + '): +' + res.hospedagens + ' hosp., +' + res.usuarios +
+    ' func., +' + res.vistorias + ' vist., +' + res.anexosItens + ' anexos, +' + res.historico + ' eventos'); } catch(e){}
+  return res;
+}
+
+// UI: escolher arquivo → conferir → PIN → aplicar
+function abrirImportarDados(){
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.json,application/json';
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = function(){
+    const f = inp.files && inp.files[0];
+    try { document.body.removeChild(inp); } catch(e){}
+    if(!f) return;
+    const fr = new FileReader();
+    fr.onerror = function(){ showToast('⚠️ Não foi possível ler o arquivo',4000); };
+    fr.onload = function(){
+      let obj = null;
+      try { obj = JSON.parse(String(fr.result||'')); }
+      catch(e){ showToast('⚠️ Arquivo inválido (não é um backup JSON)',5000); return; }
+      _gsConfirmarImportacao(obj, f.name);
+    };
+    fr.readAsText(f);
+  };
+  inp.click();
+}
+
+function _gsConfirmarImportacao(obj, nomeArq){
+  const n = _gsNormalizarBackup(obj);
+  const qtdHosp = _gsContar(n.hospedagens || {});
+  const qtdUsr  = _gsContar(n.usuarios || []);
+  const qtdVst  = _gsContar(n.vistorias || {});
+  const qtdAnx  = _gsContar(n.anexos || {});
+  const avisoIDB = n.temIndexedDB ? '' :
+    `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos/anexos</strong> (backup de formato antigo). Os demais dados serão importados normalmente.</div>`;
+  const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):new Date(n.ts).toLocaleString('pt-BR')) : '—';
+  showM(`<div class="mt">📥 Importar dados</div>
+    <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nomeArq||'backup.json'))}</div>
+    <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
+      <div><strong>Gerado em:</strong> ${_vtEsc(dataArq)}</div>
+      <div><strong>Versão:</strong> ${_vtEsc(String(n.appVersion))} · formato ${n.schema}</div>
+      <div style="margin-top:6px"><strong>Conteúdo:</strong></div>
+      <div>• ${qtdHosp} hospedagens</div>
+      <div>• ${qtdUsr} funcionários</div>
+      <div>• ${qtdVst} vistorias</div>
+      <div>• ${qtdAnx} chaves de anexos</div>
+    </div>
+    ${avisoIDB}
+    <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:9px 12px;font-size:12px;color:#0F6E56;margin-top:8px">
+      ✅ A importação <strong>SOMA</strong> o que falta. Nada do que está no aparelho é apagado ou sobrescrito.
+    </div>
+    <div class="b2">
+      <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <button class="bsv" id="imp-ok">Importar</button>
+    </div>`);
+  setTimeout(function(){
+    const b = document.getElementById('imp-ok');
+    if(!b) return;
+    b.onclick = function(){
+      // PIN do gestor antes de mexer nos dados
+      const pinSalvo = localStorage.getItem(GESTAO_PIN_KEY);
+      const aplicar = async function(){
+        showToast('Importando...',3000);
+        const res = await _gsAplicarBackup(obj, nomeArq);
+        try { if(typeof upd==='function') upd(); } catch(e){}
+        try { if(typeof renderPainelDia==='function') renderPainelDia(); } catch(e){}
+        showM(`<div class="mt">✅ Importação concluída</div>
+          <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
+            <div>+ ${res.hospedagens} hospedagens</div>
+            <div>+ ${res.usuarios} funcionários</div>
+            <div>+ ${res.vistorias} vistorias</div>
+            <div>+ ${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
+            <div>+ ${res.historico} eventos de histórico</div>
+            <div style="color:#888;margin-top:6px">${res.ignorados} registro(s) já existiam e foram preservados.</div>
+          </div>
+          <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
+      };
+      if(!pinSalvo){ aplicar(); return; }
+      showEntrarPIN(function(){ aplicar(); });
+    };
+  },50);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.4.11 — GUARDA DE INTEGRIDADE NO LOAD (conservadora)
+// ════════════════════════════════════════════════════════════════════════════
+// Compara as contagens atuais com as do último backup COMPLETO não-vazio.
+// Dispara SÓ em queda catastrófica (tinha N>0, agora 0) e NUNCA restaura sozinha:
+// só oferece. Instalação nova (sem backup) não dispara. Backup vazio/poluído é
+// ignorado por construção — a meta só é gravada em backup completo validado.
+async function _gsChecarIntegridade(){
+  try {
+    let meta = null;
+    try { meta = JSON.parse(localStorage.getItem(GS_BACKUP_META_LS) || 'null'); } catch(e){}
+    if(!meta || !meta.contagens){ return false; }        // instalação nova → não dispara
+    const antes = meta.contagens;
+    const agora = _gsContagensAtuais();
+    const quedas = [];
+    [['anexos','anexos'],['vistorias','vistorias'],['usuarios','funcionários']].forEach(function(par){
+      const k = par[0];
+      if((antes[k] || 0) > 0 && (agora[k] || 0) === 0) quedas.push({ chave:k, rotulo:par[1], antes:antes[k] });
+    });
+    if(!quedas.length) return false;
+
+    console.warn('[INTEGRIDADE] queda catastrófica detectada:', quedas);
+    if(typeof addLogSistema === 'function') addLogSistema('Integridade: possível perda detectada — ' + quedas.map(function(q){ return q.rotulo+' '+q.antes+'→0'; }).join(', '));
+
+    const snapIDB = await _gsLerSnapshotIDB();
+    const lista = quedas.map(function(q){ return '<div>• <strong>'+q.rotulo+'</strong>: '+q.antes+' → 0</div>'; }).join('');
+    const dataBk = meta.ts ? (typeof fmtDt==='function'?fmtDt(meta.ts):new Date(meta.ts).toLocaleString('pt-BR')) : '—';
+    const podeUmToque = !!snapIDB;
+    showM(`<div class="mt">⚠️ Dados podem ter sido apagados</div>
+      <div class="ms" style="margin-bottom:8px">Comparando com o último backup completo (${_vtEsc(dataBk)}), estes itens sumiram:</div>
+      <div style="background:#FCEBEB;border:1px solid #A32D2D;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7;color:#A32D2D">${lista}</div>
+      <div class="ms" style="margin-top:10px;font-size:12px">Nada foi alterado. Você decide o que fazer.</div>
+      <div class="ag" style="margin-top:10px">
+        ${podeUmToque ? '<button class="bsv" id="int-restaurar">♻ Restaurar do último backup</button>' : ''}
+        <button class="bcx" id="int-importar">📥 Importar de um arquivo</button>
+        <button class="bcx" onclick="closeOv()" style="margin-top:4px">Agora não</button>
+      </div>`);
+    setTimeout(function(){
+      const bi = document.getElementById('int-importar');
+      if(bi) bi.onclick = function(){ closeOv(); abrirImportarDados(); };
+      const br = document.getElementById('int-restaurar');
+      if(br) br.onclick = function(){
+        const aplicar = async function(){
+          showToast('Restaurando...',3000);
+          const res = await _gsAplicarBackup(snapIDB, 'restauração automática');
+          try { if(typeof upd==='function') upd(); } catch(e){}
+          try { if(typeof renderPainelDia==='function') renderPainelDia(); } catch(e){}
+          showToast('✅ Restaurado: +'+res.anexosItens+' anexos, +'+res.vistorias+' vistorias, +'+res.usuarios+' funcionários',6000);
+          closeOv();
+        };
+        const pinSalvo = localStorage.getItem(GESTAO_PIN_KEY);
+        if(!pinSalvo){ aplicar(); return; }
+        showEntrarPIN(function(){ aplicar(); });
+      };
+    },50);
+    return true;
+  } catch(e){
+    console.warn('[INTEGRIDADE] checagem falhou (ignorada):', e);
+    return false;
   }
 }
 
@@ -8699,6 +9328,7 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   }
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   showToast('⚡ Recarga iniciada — Vaga '+vagaId);
+  _gsBackupAuto('recarga iniciada '+vagaId); // v1.9.4.11
 }
 
 function showRecargaModal(vagaId){
@@ -9036,6 +9666,7 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   RECARGAS[vagaId].confirmada = true;
   RECARGAS[vagaId].fim_ts = fimReal;
   saveRecargas();
+  _gsBackupAuto('recarga encerrada '+vagaId); // v1.9.4.11
   if(typeof ref === 'function') ref(vagaId);
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   // PDF
@@ -10105,6 +10736,11 @@ function showConexoes(){
     <div class="gestao-menu-sep">Backup local</div>
     ${_renderBackupStatus()}
     <button class="bsv" id="btn-backup-agora" onclick="fazerBackupAgora()" style="width:100%;margin-top:8px">💾 Fazer backup agora</button>
+    <button class="bcx" id="btn-exportar-completo" onclick="exportarBackupCompleto()" style="width:100%;margin-top:6px">📦 Exportar backup completo</button>
+    <button class="bcx" id="btn-importar-dados" onclick="abrirImportarDados()" style="width:100%;margin-top:6px">📥 Importar / Restaurar dados</button>
+    <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:8px 11px;font-size:11px;color:#0F6E56;margin-top:8px;line-height:1.5">
+      O backup completo inclui <strong>fotos, vistorias, funcionários</strong> e todo o resto. A importação <strong>soma</strong> — nunca apaga o que está no aparelho.
+    </div>
     <div class="gestao-menu-sep" style="margin-top:14px">Google Drive</div>
     <div style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -10820,8 +11456,7 @@ function addHistorico(apt, tipo, vaga, extra, usuario, hospedagem){
 }
 
 function saveHistorico(opts){
-  if(!_gsGuardaSave('historico', HISTORICO, opts)) return; // v1.9.4.10 (Bug A)
-  try{ localStorage.setItem('garagespot_historico', JSON.stringify(HISTORICO)); }catch(e){}
+  _gsGravarColecao('garagespot_historico', HISTORICO, 'historico', opts); // v1.9.4.10/.11
 }
 
 function loadHistorico(){
@@ -11766,9 +12401,13 @@ const STORAGE_KEY = 'garagem_spot_v1';
 const DB_NAME     = 'GaragemSpot';
 const DB_STORE    = 'estado';
 // v1.9.4.2: stores dedicados para dados grandes (resolve QuotaExceededError do localStorage)
-const DB_VERSION  = 2;
+// v1.9.4.11: DB_VERSION 3 adiciona o store 'backups' (último snapshot completo,
+// para restaurar em um toque). Migração NÃO destrutiva: o onupgradeneeded só CRIA
+// stores que faltam — nenhum deleteObjectStore, nenhum dado tocado.
+const DB_VERSION  = 3;
 const STORE_ANEXOS    = 'anexos';
 const STORE_VISTORIAS = 'vistorias';
+const STORE_BACKUPS   = 'backups';
 let   db          = null;
 
 // === BUG W v1.9.4.1.6: Sistema de Backup Rotativo (3 SLOTS) ===
@@ -11779,7 +12418,9 @@ const BACKUP_KEYS = {
   state:       ['garagem_spot_v1',        'garagem_spot_v1_bk1',        'garagem_spot_v1_bk2']
 };
 // v1.9.4.10: contadores estendidos a usuarios/historico/turnos (Bug A)
-let _contadorAnterior = { hospedagens:0, vistorias:0, anexos:0, usuarios:0, historico:0, turnos:0 };
+// v1.9.4.11: cobertura estendida a TODAS as coleções sob guarda
+let _contadorAnterior = { hospedagens:0, vistorias:0, anexos:0, usuarios:0, historico:0, turnos:0,
+                          recargas:0, recarga_hist:0, checkins_pendentes:0, vistorias_lixeira:0, plantao_manual:0 };
 
 function _atualizarContadores(){
   _contadorAnterior.hospedagens = Object.keys(HOSPEDAGENS || {}).length;
@@ -11788,6 +12429,11 @@ function _atualizarContadores(){
   _contadorAnterior.usuarios    = _gsContar(typeof USUARIOS !== 'undefined' ? USUARIOS : null);
   _contadorAnterior.historico   = _gsContar(typeof HISTORICO !== 'undefined' ? HISTORICO : null);
   _contadorAnterior.turnos      = _gsContar(typeof TURNOS    !== 'undefined' ? TURNOS    : null);
+  _contadorAnterior.recargas           = _gsContar(typeof RECARGAS !== 'undefined' ? RECARGAS : null);
+  _contadorAnterior.recarga_hist       = _gsContar(typeof HISTORICO_RECARGAS !== 'undefined' ? HISTORICO_RECARGAS : null);
+  _contadorAnterior.checkins_pendentes = _gsContar(typeof CHECKINS_PENDENTES !== 'undefined' ? CHECKINS_PENDENTES : null);
+  _contadorAnterior.vistorias_lixeira  = _gsContar(typeof VISTORIAS_LIXEIRA !== 'undefined' ? VISTORIAS_LIXEIRA : null);
+  _contadorAnterior.plantao_manual     = _gsContar(typeof PLANTAO_MANUAL !== 'undefined' ? PLANTAO_MANUAL : null);
   try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
 }
 
@@ -11825,6 +12471,70 @@ function _gsGuardaSave(tipo, dados, opts){
     console.warn('[BUG A] guarda falhou, permitindo save de ' + tipo + ':', e);
     return true; // fail-safe: nunca impedir o app de funcionar
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.11 — ESCRITA SEGURA E VALIDADA
+// ════════════════════════════════════════════════════════════════════════
+// `localStorage.setItem` é atômico: ou grava tudo, ou lança e o valor ANTERIOR
+// permanece intacto. O perigo real é o código que apaga antes de gravar, ou que
+// engole a exceção e segue como se tivesse gravado. Aqui: capturamos a cota,
+// avisamos, NUNCA removemos o valor existente e devolvemos false para o chamador
+// saber que não gravou.
+function _gsEhErroDeCota(e){
+  try {
+    if(!e) return false;
+    if(e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') return true;
+    if(e.code === 22 || e.code === 1014) return true;
+    return /quota|exceeded/i.test(String(e.message || ''));
+  } catch(_){ return false; }
+}
+
+function _gsSetItemSeguro(key, str, rotulo){
+  try {
+    localStorage.setItem(key, str);
+    return true;
+  } catch(e){
+    if(_gsEhErroDeCota(e)){
+      // NÃO remover nada: o valor anterior de `key` continua lá, íntegro.
+      console.error('[COTA] localStorage cheio ao gravar ' + (rotulo || key) + ' — dado ANTERIOR preservado:', e.message);
+      if(typeof showToast === 'function') showToast('⚠️ Armazenamento cheio. O dado anterior foi preservado — libere espaço no aparelho.', 6000);
+      if(typeof addLogSistema === 'function') addLogSistema('Cota do armazenamento excedida ao gravar ' + (rotulo || key) + ' (dado anterior preservado)');
+    } else {
+      console.error('[STORAGE] falha gravando ' + (rotulo || key) + ':', e && e.message);
+    }
+    return false;
+  }
+}
+
+// Grava uma coleção: guarda anti-vazio → escrita segura → RELEITURA de validação.
+// A releitura pega gravação parcial/corrompida (JSON truncado por cota, storage
+// que aceita e descarta) antes que o dado ruim vire a "verdade" do app.
+function _gsGravarColecao(key, dados, tipo, opts){
+  if(!_gsGuardaSave(tipo, dados, opts)) return false;
+  let str;
+  try { str = JSON.stringify(dados); }
+  catch(e){ console.error('[STORAGE] não foi possível serializar ' + tipo + ':', e); return false; }
+  if(!_gsSetItemSeguro(key, str, tipo)) return false;
+  // Validação: relê e confere a contagem
+  try {
+    const devolta = localStorage.getItem(key);
+    if(devolta === null){
+      console.error('[STORAGE] validação falhou: ' + tipo + ' sumiu logo após gravar');
+      return false;
+    }
+    const esperado = _gsContar(dados);
+    const obtido   = _gsContar(JSON.parse(devolta));
+    if(obtido !== esperado){
+      console.error('[STORAGE] validação falhou em ' + tipo + ': gravou ' + obtido + ', esperado ' + esperado);
+      if(typeof showToast === 'function') showToast('⚠️ Falha ao gravar ' + tipo + ' — confira o espaço do aparelho', 5000);
+      return false;
+    }
+  } catch(e){
+    console.error('[STORAGE] validação de ' + tipo + ' não pôde ser lida de volta:', e);
+    return false;
+  }
+  return true;
 }
 function _carregarContadores(){
   try {
@@ -11871,8 +12581,14 @@ function _saveProtegido(key, dados, tipo){
       }
     }
   } catch(e){ console.warn('[BUG W] erro rotacionando backup:', e); }
+  // v1.9.4.11: escrita segura (cota não corrompe o valor anterior) + releitura
   try {
-    localStorage.setItem(key, JSON.stringify(dados));
+    if(!_gsSetItemSeguro(key, JSON.stringify(dados), tipo)) return false;
+    const devolta = localStorage.getItem(key);
+    if(devolta === null || _gsContar(JSON.parse(devolta)) !== novoCount){
+      console.error('[STORAGE] validação falhou em', tipo, '— releitura não confere');
+      return false;
+    }
     _contadorAnterior[tipo] = novoCount;
     try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
     return true;
@@ -11997,6 +12713,9 @@ function openDB(){
         d.createObjectStore(STORE_ANEXOS);
       if(!d.objectStoreNames.contains(STORE_VISTORIAS))
         d.createObjectStore(STORE_VISTORIAS);
+      // v1.9.4.11: store do último snapshot completo (restauração em um toque)
+      if(!d.objectStoreNames.contains(STORE_BACKUPS))
+        d.createObjectStore(STORE_BACKUPS);
       console.log('[IDB] upgrade aplicado | versão:', DB_VERSION, '| stores:', Array.from(d.objectStoreNames));
     };
     req.onsuccess = e => {
@@ -12099,11 +12818,13 @@ function _loadAnexosLocalStorageFallback(){
 }
 
 function _saveAnexosLocalStorageFallback(){
-  // Último recurso. Captura quota silenciosamente — dados ainda estão em memória.
+  // Último recurso (IDB indisponível). v1.9.4.11: escrita segura — em estouro de
+  // cota o valor anterior fica intacto e o usuário é avisado; os dados seguem em
+  // memória. Fotos base64 no localStorage é o cenário de cota mais provável.
   try {
-    localStorage.setItem('garagespot_anexos', JSON.stringify(ANEXOS));
+    _gsSetItemSeguro('garagespot_anexos', JSON.stringify(ANEXOS), 'anexos (fallback)');
   } catch(e){
-    console.error('[IDB] fallback localStorage anexos falhou (quota?):', e.message);
+    console.error('[IDB] fallback localStorage anexos falhou:', e.message);
   }
 }
 
@@ -12176,8 +12897,31 @@ function _loadVistoriasLocalStorageFallback(){
 }
 
 function _saveVistoriasLocalStorageFallback(){
-  try { localStorage.setItem(VISTORIAS_LS, JSON.stringify(VISTORIAS)); }
-  catch(e){ console.error('[IDB] fallback localStorage vistorias falhou (quota?):', e.message); }
+  // v1.9.4.11: idem anexos — cota não corrompe o que já estava gravado.
+  try { _gsSetItemSeguro(VISTORIAS_LS, JSON.stringify(VISTORIAS), 'vistorias (fallback)'); }
+  catch(e){ console.error('[IDB] fallback localStorage vistorias falhou:', e.message); }
+}
+
+// v1.9.4.11: relê um store do IDB e confirma que a contagem bate com a memória.
+// Usado como pré-condição de qualquer limpeza (migração NÃO destrutiva).
+function _gsConfirmarNoIDB(store, esperadoObj){
+  return new Promise(function(resolve){
+    try {
+      if(!_idbAvailable()){ resolve(false); return; }
+      const esperado = _gsContar(esperadoObj);
+      if(esperado === 0){ resolve(true); return; } // nada a confirmar
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).get('all');
+      req.onsuccess = function(){
+        const obtido = _gsContar(req.result);
+        if(obtido !== esperado){
+          console.warn('[IDB] confirmação de ' + store + ' falhou: ' + obtido + ' ≠ ' + esperado);
+        }
+        resolve(obtido === esperado);
+      };
+      req.onerror = function(){ resolve(false); };
+    } catch(e){ console.warn('[IDB] confirmação de ' + store + ' lançou:', e); resolve(false); }
+  });
 }
 
 // === Limpeza de backups legados (rodada UMA vez após migração confirmada) ===
@@ -12217,8 +12961,18 @@ async function _migrarParaIndexedDB(){
   }
 
   // 3. SÓ DEPOIS de confirmar dados no IndexedDB, limpa backups legados (libera quota)
+  // v1.9.4.11 (migração não destrutiva): além do IDB estar disponível, exigir que
+  // os dados estejam MESMO lá — relendo do store. Antes bastava o IDB abrir, e uma
+  // gravação que falhasse silenciosamente levaria junto os backups legados.
   if(_idbAvailable()){
-    _limparBackupsLegados();
+    const okAnexos    = await _gsConfirmarNoIDB(STORE_ANEXOS,    ANEXOS);
+    const okVistorias = await _gsConfirmarNoIDB(STORE_VISTORIAS, VISTORIAS);
+    if(okAnexos && okVistorias){
+      _limparBackupsLegados();
+    } else {
+      console.warn('[MIGRAÇÃO] backups legados PRESERVADOS: dados ainda não confirmados no IDB',
+                   '| anexos:', okAnexos, '| vistorias:', okVistorias);
+    }
   }
 
   // 4. NÃO remove garagespot_anexos / garagespot_vistorias principais — viram backup de emergência
@@ -12494,6 +13248,19 @@ checkLicense().then(async (ativo)=>{
     showLicenseBlocked(false);
     return;
   }
+  // v1.9.4.11 (Parte 3): pede armazenamento PERSISTENTE ao navegador/WebView.
+  // Reduz a chance de o SO descartar o IndexedDB em aparelho cheio. Totalmente
+  // fail-safe: em WebView antigo a API não existe (ou devolve false) e o app segue
+  // igual — a proteção de verdade são as guardas + o backup em arquivo.
+  try {
+    if(navigator.storage && typeof navigator.storage.persist === 'function'){
+      navigator.storage.persist()
+        .then(function(ok){ console.log('[PERSIST] armazenamento persistente:', ok ? 'CONCEDIDO' : 'negado'); })
+        .catch(function(e){ console.log('[PERSIST] indisponível:', e && e.message); });
+    } else {
+      console.log('[PERSIST] API indisponível neste WebView — seguindo sem ela');
+    }
+  } catch(e){ console.log('[PERSIST] chamada falhou (ignorada):', e && e.message); }
   // Licença OK — inicializa normalmente
   openDB()
     .catch((err)=>{ db=null; console.warn('[IDB] openDB falhou, modo localStorage:', err); })
@@ -12540,9 +13307,17 @@ checkLicense().then(async (ativo)=>{
       // apagava funcionários, anexos, vistorias, histórico e turnos.
       // ══════════════════════════════════════════════════════════════════
       _GS_PRONTO = true;
+      try { _normalizarHospedagens(); } catch(e){ console.warn('[BUG B] normalização pós-init:', e); }
       try { _atualizarContadores(); } catch(e){ console.warn('[BUG A] contadores pós-init:', e); }
       console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
       navTo('painel');
+      // v1.9.4.11 (Parte 6): guarda de integridade — só OFERECE restaurar, e só
+      // em queda catastrófica frente ao último backup completo. Fail-safe.
+      setTimeout(function(){
+        try { _gsChecarIntegridade(); } catch(e){ console.warn('[INTEGRIDADE] falhou:', e); }
+      }, 1200);
+      // v1.9.4.11 (Parte 4): backup periódico (leve; completo no máximo 1×/hora)
+      try { setInterval(function(){ _gsBackupAuto('periódico'); }, 10 * 60 * 1000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
