@@ -761,7 +761,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
-<!-- GarageSpot v1.9.4.11 -->
+<!-- GarageSpot v1.9.4.12 -->
 <body>
 <div class="page">
 
@@ -1298,7 +1298,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.11';
+const GS_VERSION = 'v1.9.4.12';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-07-29';
 
@@ -3021,28 +3021,87 @@ function doChk(id){
       // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
       // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
       // no navegador, baixa o arquivo. O snapshot preserva os anexos (já deletados acima).
+      // ══════════════════════════════════════════════════════════════════
+      // v1.9.4.12: a montagem do PDF era SÍNCRONA e acontecia AQUI, antes do
+      // modal aparecer — a tela ficava congelada durante todo o processo.
+      // Agora o modal abre na hora, com barra de progresso, e o documento é
+      // montado em etapas assíncronas com as imagens já comprimidas.
+      // Ao final: DUAS opções — "Salvar" e "Salvar e compartilhar". O app
+      // SEMPRE salva no dispositivo; compartilhar é ação adicional.
+      // ══════════════════════════════════════════════════════════════════
       const _coNome=fmtNomeCheckout(aptKey,hospNum);
-      const _coDoc=buildRegistroDoc(aptKey,dvChk,histChk,_snapshotAnexosCheckout);
-      const _coConteudo=_coDoc||buildRegistroHTML(aptKey,dvChk,histChk,anexosChk);
       showM(`<div class="mt">✅ Check-out realizado!</div>
         <div class="ms">Hospedagem ${hospNum||'s/n'} · Apt. ${aptKey}<br>${dvChk.guest||'Hóspede não identificado'}</div>
-        <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">💾 Salvando PDF no dispositivo…</div>
-        <div class="ag">
-          <button class="bsv" id="co-share">📤 Compartilhar</button>
+        <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">📄 Preparando o documento…</div>
+        <div id="co-prog-wrap" style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin:-4px 0 10px"><div id="co-prog" style="background:#185FA5;height:100%;width:0%;transition:width .2s"></div></div>
+        <div class="ag" id="co-acoes" style="display:none">
+          <button class="bsv" id="co-salvar">💾 Salvar</button>
+          <button class="bsv" id="co-share" style="margin-top:4px">📤 Salvar e compartilhar</button>
           <button class="bcx" onclick="closeOv()" style="margin-top:4px">Fechar</button>
         </div>`);
-      document.getElementById('co-share').onclick=async()=>{ closeOv(); await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); };
-      // salva sem bloquear a UI; atualiza o aviso ao concluir
       (async()=>{
-        const r=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
-        const el=document.getElementById('co-save-status'); if(!el) return;
-        if(r&&r.sucesso){
-          el.style.cssText='background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
-          el.textContent=(r.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+r.nome:'✅ PDF baixado · '+r.nome);
-        } else {
-          el.style.cssText='background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
-          el.textContent='⚠️ Não foi possível salvar automaticamente — use Compartilhar.';
+        const _st=function(){ return document.getElementById('co-save-status'); };
+        const _prog=function(p){
+          const b=document.getElementById('co-prog'); if(b) b.style.width=Math.round(p)+'%';
+        };
+        let _coConteudo=null, _salvo=null;
+        try{
+          const doc=await buildRegistroDocAsync(aptKey,dvChk,histChk,_snapshotAnexosCheckout,function(feitos,total){
+            const el=_st(); if(el) el.textContent='📄 Preparando imagens… ('+feitos+' de '+total+')';
+            _prog(total?(feitos/total)*90:90);
+          });
+          _coConteudo=doc||buildRegistroHTML(aptKey,dvChk,histChk,anexosChk);
+        }catch(e){
+          console.error('[PDF checkout] montagem falhou, usando fallback HTML:',e);
+          try{ _coConteudo=buildRegistroHTML(aptKey,dvChk,histChk,anexosChk); }catch(e2){}
         }
+        _prog(95);
+        const el2=_st(); if(el2) el2.textContent='💾 Salvando no dispositivo…';
+        // O app SEMPRE salva — nas duas opções.
+        if(_coConteudo){
+          _salvo=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
+        }
+        _prog(100);
+        const pw=document.getElementById('co-prog-wrap'); if(pw) pw.style.display='none';
+        const acoes=document.getElementById('co-acoes'); if(acoes) acoes.style.display='';
+        const el=_st();
+        if(el){
+          if(_salvo&&_salvo.sucesso){
+            el.style.cssText='background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
+            el.textContent=(_salvo.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+_salvo.nome:'✅ PDF baixado · '+_salvo.nome);
+          } else {
+            el.style.cssText='background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
+            el.textContent='⚠️ Não foi possível salvar automaticamente — use "Salvar e compartilhar".';
+          }
+        }
+        const bs=document.getElementById('co-salvar');
+        if(bs) bs.onclick=async function(){
+          if(_salvo&&_salvo.sucesso){ showToast('✅ Já salvo · '+_salvo.nome,3500); closeOv(); return; }
+          const r=_coConteudo?await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome):null;
+          showToast(r&&r.sucesso?('✅ PDF salvo · '+r.nome):'⚠️ Não foi possível salvar',4000);
+          if(r&&r.sucesso) closeOv();
+        };
+        const bc=document.getElementById('co-share');
+        if(bc) bc.onclick=async function(){
+          // v1.9.4.12: compartilha o arquivo JÁ SALVO — não remonta o PDF
+          // (antes, compartilhar disparava uma segunda geração completa).
+          if(_salvo&&_salvo.sucesso&&_salvo.uri&&window.Capacitor?.Plugins?.Share){
+            try{
+              await window.Capacitor.Plugins.Share.share({
+                title:'GarageSpot — Registro de Movimentacao',
+                url:_salvo.uri, dialogTitle:'Compartilhar registro'
+              });
+              closeOv(); return;
+            }catch(e){
+              const msg=(e&&(e.message||e.errorMessage)||'').toLowerCase();
+              if(msg.includes('cancel')||msg.includes('dismiss')||msg.includes('abort')||msg.includes('close')){ return; }
+              console.warn('[PDF checkout] share do arquivo salvo falhou, refazendo:',e&&e.message);
+            }
+          }
+          closeOv();
+          if(_coConteudo){ await gerarECompartilharPDF('Registro de Movimentacao',_coConteudo,_coNome); }
+          else { await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); }
+        };
       })();
     });
   };
@@ -11778,6 +11837,125 @@ async function salvarPDFNoDispositivo(titulo, conteudo, nomeArquivo){
   }catch(e){ console.error('[Parte1] download do PDF falhou:',e); return {sucesso:false,erro:e}; }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.4.12 — OTIMIZAÇÃO DO PDF DE CHECK-OUT
+// ════════════════════════════════════════════════════════════════════════════
+// Antes, cada foto entrava no PDF com os BYTES ORIGINAIS (câmera 1920×1080 q85,
+// ~300-500KB cada) e a montagem era 100% SÍNCRONA — 15 fotos = dezenas de MB
+// processados de uma vez, com a thread da interface travada do começo ao fim.
+// No SM-T585 (pouca RAM) isso é exatamente o congelamento relatado.
+//
+// Agora: cada imagem é redimensionada e recomprimida ANTES de entrar no PDF,
+// em etapas assíncronas que devolvem o controle à interface entre uma e outra.
+//
+// PARÂMETROS — escolhidos para PRESERVAR A LEGIBILIDADE DOCUMENTAL:
+// a área útil da página é 190mm ≈ 7,5", então 1400px no lado maior dá ~187 DPI,
+// bem acima do necessário para enxergar um risco ou amassado. Documentos
+// (vistoria/recarga) têm texto e traços finos, então vão com folga maior.
+const PDF_IMG_MAX_LADO   = 1400;  // fotos de veículo/avaria
+const PDF_IMG_QUALIDADE  = 0.75;
+const PDF_DOC_MAX_LADO   = 1700;  // vistoria e comprovantes (texto/linhas)
+const PDF_DOC_QUALIDADE  = 0.88;
+
+function _pdfEhDocumento(a){
+  try { return !!(a && (a.tipo === 'vistoria' || a.tipo === 'recarga')); }
+  catch(e){ return false; }
+}
+
+// Devolve o controle à interface entre etapas pesadas (a tela não congela).
+function _pdfCeder(){
+  return new Promise(function(r){ setTimeout(r, 0); });
+}
+
+// Redimensiona + recomprime uma imagem base64. Fail-safe: qualquer erro devolve
+// null e o chamador usa a imagem original (documento completo acima de tudo).
+function _pdfComprimirImagem(dataUrl, maxLado, qualidade){
+  return new Promise(function(resolve){
+    try{
+      if(!dataUrl){ resolve(null); return; }
+      const img = new Image();
+      let terminou = false;
+      const fim = function(v){ if(!terminou){ terminou = true; resolve(v); } };
+      // trava de segurança: imagem corrompida não pode pendurar o check-out
+      setTimeout(function(){ fim(null); }, 8000);
+      img.onload = function(){
+        try{
+          const w0 = img.naturalWidth || img.width;
+          const h0 = img.naturalHeight || img.height;
+          if(!w0 || !h0){ fim(null); return; }
+          const escala = Math.min(1, maxLado / Math.max(w0, h0));
+          const w = Math.max(1, Math.round(w0 * escala));
+          const h = Math.max(1, Math.round(h0 * escala));
+          const cv = document.createElement('canvas');
+          cv.width = w; cv.height = h;
+          const ctx = cv.getContext('2d');
+          ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h); // JPEG não tem alpha
+          ctx.drawImage(img, 0, 0, w, h);
+          const out = cv.toDataURL('image/jpeg', qualidade);
+          cv.width = 0; cv.height = 0; // libera a memória do canvas no WebView
+          if(!out || out.length < 32){ fim(null); return; }
+          fim({ data: out, fmt: 'JPEG', w: w, h: h, origW: w0, origH: h0 });
+        }catch(e){ console.warn('[PDF] compressão falhou:', e && e.message); fim(null); }
+      };
+      img.onerror = function(){ fim(null); };
+      img.src = dataUrl;
+    }catch(e){ resolve(null); }
+  });
+}
+
+// Prepara TODAS as imagens do check-out de uma vez, em etapas, com progresso.
+// Devolve um Map(anexo → versão comprimida) consumido por buildRegistroDoc.
+async function _pdfPrepararImagens(itens, onProgresso){
+  const cache = new Map();
+  const lista = (itens || []).filter(function(a){
+    return a && (a.data || a.base64Original || a.documento_final_b64);
+  });
+  let feitos = 0, bytesAntes = 0, bytesDepois = 0;
+  for(const a of lista){
+    const original = a.documento_final_b64 || a.data || a.base64Original;
+    const ehDoc = _pdfEhDocumento(a) || !!a.documento_final_b64;
+    const r = await _pdfComprimirImagem(
+      original,
+      ehDoc ? PDF_DOC_MAX_LADO : PDF_IMG_MAX_LADO,
+      ehDoc ? PDF_DOC_QUALIDADE : PDF_IMG_QUALIDADE
+    );
+    if(r){
+      cache.set(a, r);
+      bytesAntes  += String(original).length;
+      bytesDepois += String(r.data).length;
+    }
+    feitos++;
+    if(typeof onProgresso === 'function'){
+      try { onProgresso(feitos, lista.length); } catch(e){}
+    }
+    await _pdfCeder(); // <- a interface respira entre cada imagem
+  }
+  if(bytesAntes > 0){
+    console.log('[PDF] imagens preparadas:', cache.size + '/' + lista.length,
+      '| base64 ' + Math.round(bytesAntes/1024) + 'KB → ' + Math.round(bytesDepois/1024) + 'KB',
+      '(' + Math.round(100 - (bytesDepois/bytesAntes)*100) + '% menor)');
+  }
+  return cache;
+}
+
+// Insere a imagem preservando a PROPORÇÃO dentro da área útil e centralizada.
+// Antes tudo era esticado para 190×240mm — uma foto 16:9 saía deformada, o que
+// atrapalha justamente a leitura da avaria.
+function _pdfAddImagemAjustada(doc, item, original, tipoOriginal, cache, x, y, maxW, maxH){
+  let dados = original, fmt = (String(tipoOriginal||'').includes('png') ? 'PNG' : 'JPEG');
+  let w = 0, h = 0;
+  const c = cache && item ? cache.get(item) : null;
+  if(c){ dados = c.data; fmt = c.fmt; w = c.w; h = c.h; }
+  if(w > 0 && h > 0){
+    const escala = Math.min(maxW / w, maxH / h);
+    const fw = w * escala, fh = h * escala;
+    doc.addImage(dados, fmt, x + (maxW - fw) / 2, y, fw, fh);
+  } else {
+    // sem dimensões conhecidas (compressão falhou) → comportamento antigo
+    doc.addImage(dados, fmt, x, y, maxW, maxH);
+  }
+}
+
 // ── BUILDERS DE PDF (jsPDF) ───────────────────────────────────────────────
 function _pdfHeader(doc, titulo, subtitulo){
   const L=10,W=190;
@@ -11803,7 +11981,10 @@ function _pdfFooter(doc){
   }
 }
 
-function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
+// v1.9.4.12: `imgCache` (opcional) traz as imagens já comprimidas por
+// _pdfPrepararImagens. Sem ele, a função se comporta exatamente como antes —
+// nenhum chamador existente quebra.
+function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
   if(!window.jspdf) return null;
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
@@ -11905,9 +12086,11 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
         if(funcF) partes.push(funcF);
         const legenda = partes.join(' · ') || (foto.name || 'Foto');
         let yF=_pdfHeader(doc,'Foto do Veiculo', legenda);
-        const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
-        doc.addImage(imgData,fmt,10,yF,190,240);
-        _pdfFooter(doc);
+        // v1.9.4.12: imagem comprimida + proporção preservada. O rodapé NÃO é
+        // carimbado aqui — _pdfFooter percorre TODAS as páginas, então chamá-lo a
+        // cada foto era trabalho O(N²) e sobrepunha o texto várias vezes na mesma
+        // página. Agora é uma única passada, no fim.
+        _pdfAddImagemAjustada(doc, foto, imgData, foto.type, imgCache, 10, yF, 190, 240);
         fotosUsadas.add(foto);
         console.log('[BUG C] foto OK no PDF:', foto.name);
       }catch(e){
@@ -11922,8 +12105,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
           doc.addPage();
           const tit='Vistoria '+(vist.tipo||'entrada')+' · '+(vist.numero||vist.id||'—')+' · '+fmtDt(vist.ts_finalizacao||vist.ts_criada||Date.now());
           let yV=_pdfHeader(doc,'Vistoria',tit);
-          doc.addImage(vist.documento_final_b64,'PNG',10,yV,190,240);
-          _pdfFooter(doc);
+          _pdfAddImagemAjustada(doc, vist, vist.documento_final_b64, 'png', imgCache, 10, yV, 190, 240);
         }
       }catch(e){ console.error('[BUG C] erro vistoria',vist&&vist.numero,e); }
       // 2) fotos vinculadas a esta vistoria (na ordem em que foram tiradas)
@@ -11963,9 +12145,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
         const imgData=rc.data||rc.base64Original; if(!imgData) continue;
         doc.addPage();
         let yR=_pdfHeader(doc,'Recarga', rc.name||'Comprovante de recarga');
-        const fmt=(rc.type||'').includes('png')?'PNG':'JPEG';
-        doc.addImage(imgData,fmt,10,yR,190,240);
-        _pdfFooter(doc);
+        _pdfAddImagemAjustada(doc, rc, imgData, rc.type, imgCache, 10, yR, 190, 240);
         recargasUsadas.add(rc);
       }catch(e){ console.error('[recarga PDF] erro', rc&&rc.name, e); }
     }
@@ -11996,9 +12176,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
         if(an.isImg && imgData){
           doc.addPage();
           let yA=_pdfHeader(doc,'Anexo', an.name||'Anexo');
-          const fmt=(an.type||'').includes('png')?'PNG':'JPEG';
-          doc.addImage(imgData,fmt,10,yA,190,240);
-          _pdfFooter(doc);
+          _pdfAddImagemAjustada(doc, an, imgData, an.type, imgCache, 10, yA, 190, 240);
         } else {
           doc.addPage();
           let yA=_pdfHeader(doc,'Anexo (documento)', an.name||'Documento anexado');
@@ -12007,15 +12185,45 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout){
           doc.text('Nome: '+(an.name||'—'), 12, yA+12);
           const obs=doc.splitTextToSize('Anexo da hospedagem que nao pode ser incorporado como imagem neste PDF. O arquivo original esta preservado nos anexos do GarageSpot.', 186);
           doc.text(obs, 12, yA+24);
-          _pdfFooter(doc);
         }
       }catch(e){ console.error('[Parte5] erro anexo restante', an&&an.name, e); }
     }
     console.log('[Parte5] anexos restantes (catch-all) no PDF:', restantes.length);
   }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
 
-  _pdfFooter(doc);
+  _pdfFooter(doc); // v1.9.4.12: passada ÚNICA, carimba todas as páginas de uma vez
   return doc;
+}
+
+// v1.9.4.12: versão ASSÍNCRONA usada no check-out. Comprime as imagens em etapas
+// (cedendo a interface entre elas, com progresso) e só então monta o PDF — que aí
+// vira rápido, porque recebe tudo pronto e leve. Fail-safe: se a preparação
+// falhar, cai na montagem antiga, com as imagens originais.
+async function buildRegistroDocAsync(apt, dv, hist, snapshotCheckout, onProgresso){
+  let cache = null;
+  try{
+    const itens = [];
+    const push = function(arr){ (arr||[]).forEach(function(a){ if(a) itens.push(a); }); };
+    if(snapshotCheckout){
+      push(snapshotCheckout.fotos); push(snapshotCheckout.recargas); push(snapshotCheckout.todos);
+    }
+    // documentos de vistoria da hospedagem
+    try{
+      const hospNum = dv && dv.hospedagem;
+      const h = hospNum ? HOSPEDAGENS[hospNum] : null;
+      const vs = (h && Array.isArray(h.vistorias))
+        ? h.vistorias.map(function(n){ return VISTORIAS[n]; }).filter(Boolean)
+        : Object.values(VISTORIAS||{}).filter(function(v){ return v && (v.hospedagem===hospNum || v.hospedagem_gs===hospNum); });
+      vs.forEach(function(v){ if(v && v.documento_final_b64) itens.push(v); });
+    }catch(e){}
+    const unicos = itens.filter(function(a, i){ return itens.indexOf(a) === i; });
+    cache = await _pdfPrepararImagens(unicos, onProgresso);
+  }catch(e){
+    console.warn('[PDF] preparação de imagens falhou, seguindo com as originais:', e && e.message);
+    cache = null;
+  }
+  await _pdfCeder();
+  return buildRegistroDoc(apt, dv, hist, snapshotCheckout, cache);
 }
 
 function buildRelMovimentacoesDoc(evts, deVal, ateVal){
