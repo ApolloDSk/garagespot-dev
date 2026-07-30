@@ -1298,7 +1298,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.12';
+const GS_VERSION = 'v1.9.4.13';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-07-29';
 
@@ -5037,9 +5037,156 @@ function renderExpansaoRecarga(){
 // ── GESTÃO COM PIN ────────────────────────────────────────────────────────
 const GESTAO_PIN_KEY='garagespot_gestao_pin';
 
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.13 — PIN DO GESTOR: LEITURA NORMALIZADA + SENHA DEV (QUEBRA-VIDRO)
+// ════════════════════════════════════════════════════════════════════════
+// Diagnóstico (RELATORIO-v1.9.4.13): o bloqueio do gestor NÃO foi wipe de dado
+// (a migração DB v3 e as guardas nunca tocaram nesta chave — se a chave sumir,
+// `_gsPinGarantido` ressemeia 1200 e o gestor entra). Era bug de LÓGICA no
+// teclado: o `setTimeout` de 300ms que limpava as bolinhas rodava DEPOIS de o
+// usuário já ter começado a redigitar, zerando o visual sem zerar o `digitado`
+// — a tentativa seguinte saía deslocada por um dígito órfão e falhava, e o erro
+// re-armava a armadilha. Ver `_gsPinTeclado`, que é o ponto único do teclado.
+//
+// SENHA_DEV é CONSTANTE NO CÓDIGO de propósito: é imune a qualquer perda de
+// dado no aparelho e funciona mesmo sem PIN guardado. Fica visível no HTML
+// público — aceito como fallback até a fase de servidor.
+const SENHA_DEV='1022';
+
+// Lê o PIN guardado de forma tolerante. Devolve 4 dígitos ou null.
+// Tolera valor com espaços e valor gravado como JSON ("1200") por versão
+// antiga ou importação de terceiro. NÃO grava nem apaga nada.
+// Distingue "não tem PIN guardado" de "não deu para LER o armazenamento" — são
+// coisas diferentes: sem PIN, o default 1200 vale (regra de sempre); com leitura
+// quebrada, só a SENHA_DEV passa (não rebaixa a proteção para um default público).
+function _gsPinLerBruto(){
+  try{ return { erro:false, valor:localStorage.getItem(GESTAO_PIN_KEY) }; }
+  catch(e){
+    console.warn('[PIN] leitura do PIN do gestor falhou:',e&&e.message);
+    return { erro:true, valor:null };
+  }
+}
+
+function _gsPinNormalizar(v){
+  if(v===null||v===undefined) return null;
+  try{
+    let s=String(v).trim();
+    if(s.length>1&&s.charAt(0)==='"'&&s.charAt(s.length-1)==='"') s=s.slice(1,-1).trim();
+    s=s.replace(/\D/g,'');
+    return s.length===4?s:null;
+  }catch(e){ return null; }
+}
+
+function _gsPinGuardado(){
+  return _gsPinNormalizar(_gsPinLerBruto().valor);
+}
+
+// Escrita fail-safe: cota cheia NÃO remove o valor anterior (mesma regra da 4.11).
+function _gsPinGravar(pin){
+  try{ localStorage.setItem(GESTAO_PIN_KEY,String(pin)); return true; }
+  catch(e){
+    console.error('[PIN] não foi possível gravar o PIN do gestor:',e&&e.message);
+    if(typeof showToast==='function') showToast('⚠️ Não foi possível gravar o PIN — libere espaço no aparelho',5000);
+    return false;
+  }
+}
+
+// Garante um PIN utilizável. Repara valor ausente/corrompido sem apagar nada mais.
+function _gsPinGarantido(){
+  const p=_gsPinGuardado();
+  if(p) return p;
+  _gsPinGravar('1200');
+  return '1200';
+}
+
+// PONTO ÚNICO DE VERDADE da validação — usado por TODAS as telas de PIN.
+// Aceita o PIN do gestor OU a SENHA_DEV. Fail-safe: se qualquer coisa explodir,
+// o quebra-vidro continua funcionando (o gestor nunca fica trancado fora).
+function _gsPinValido(digitado){
+  try{
+    const d=String(digitado===undefined||digitado===null?'':digitado).trim();
+    if(d===SENHA_DEV) return true;          // quebra-vidro: sempre passa
+    const bruto=_gsPinLerBruto();
+    if(bruto.erro) return false;            // armazenamento ilegível → só a senha dev
+    const p=_gsPinNormalizar(bruto.valor);
+    if(p) return d===p;
+    return d==='1200';           // sem PIN utilizável guardado, vale o default
+  }catch(e){
+    console.warn('[PIN] validação lançou, caindo no quebra-vidro:',e&&e.message);
+    try{ return String(digitado||'').trim()===SENHA_DEV; }catch(_){ return false; }
+  }
+}
+
+// ── Teclado de PIN: ponto ÚNICO, sem dessincronismo ──────────────────────
+// Regras que corrigem o bug do bloqueio (NÃO REMOVER):
+//  1. `digitado` e as bolinhas são pintados pela MESMA função (`pintar`), sempre
+//     juntos — é impossível o visual discordar do estado.
+//  2. Qualquer tecla CANCELA o timer de limpeza pendente (`clearTimeout`), então
+//     um timer velho nunca mais apaga bolinhas de uma tentativa nova.
+// DESCARTADO de propósito: uma guarda "ignora o mesmo dígito dentro de X ms"
+// contra suposto toque duplicado. Os botões usam só `onclick` (não há handler de
+// touch concorrente), então o WebView não duplica o evento — e a guarda
+// DESCARTARIA dígitos legítimos de PIN com repetição (1200, 1022, 9999) digitados
+// em rajada. Perder dígito em silêncio é justamente o defeito que esta versão
+// corrige; não se troca por outro.
+// `onOk(digitado)` recebe os 4 dígitos; devolver true = aceito (o teclado para),
+// false = recusado (limpa e mostra a mensagem).
+function _gsPinTeclado(onOk, msgErro){
+  let digitado='', timerLimpar=null, travado=false;
+  function pintar(){
+    for(let i=0;i<4;i++){
+      const dot=document.getElementById('pd-'+i);
+      if(dot) dot.classList.toggle('filled',i<digitado.length);
+    }
+  }
+  function erro(txt){
+    const el=document.getElementById('pin-err');
+    if(el) el.textContent=txt||msgErro||'PIN incorreto — tente novamente';
+  }
+  function limparErro(){
+    const el=document.getElementById('pin-err');
+    if(el&&el.textContent) el.textContent='';
+  }
+  function zerar(){
+    digitado='';
+    if(timerLimpar){ clearTimeout(timerLimpar); timerLimpar=null; }
+    pintar();
+  }
+  window.pinKey=function(d){
+    try{
+      if(travado) return;
+      if(timerLimpar){ clearTimeout(timerLimpar); timerLimpar=null; }  // regra 2
+      if(digitado.length>=4) return;
+      digitado+=d;
+      pintar();
+      if(digitado.length===4){
+        const tentativa=digitado;
+        let aceito=false;
+        try{ aceito=(onOk(tentativa)===true); }
+        catch(e){ console.error('[PIN] callback lançou:',e&&e.message); aceito=false; }
+        if(aceito){ travado=true; return; }
+        erro();
+        digitado='';
+        timerLimpar=setTimeout(function(){ timerLimpar=null; pintar(); },300);
+      } else {
+        limparErro();
+      }
+    }catch(e){ console.error('[PIN] tecla falhou:',e&&e.message); }
+  };
+  window.pinDel=function(){
+    try{
+      if(travado) return;
+      if(timerLimpar){ clearTimeout(timerLimpar); timerLimpar=null; }
+      if(!digitado.length){ pintar(); return; }
+      digitado=digitado.slice(0,-1);
+      pintar();
+    }catch(e){ console.error('[PIN] backspace falhou:',e&&e.message); }
+  };
+  return { zerar:zerar, erro:erro };
+}
+
 function showGestaoMenu(){
-  let pinSalvo=localStorage.getItem(GESTAO_PIN_KEY);
-  if(!pinSalvo){ localStorage.setItem(GESTAO_PIN_KEY,'1200'); pinSalvo='1200'; }
+  _gsPinGarantido();     // repara chave ausente/corrompida (fail-safe, não apaga nada)
   showEntrarPIN(()=>_mostrarMenuGestao());
 }
 
@@ -5106,12 +5253,11 @@ function _vstBuscar(){
 }
 
 function showEntrarPIN(callback){
-  let digitado='';
   const mc=document.getElementById('mc');
   function render(){
     mc.innerHTML=`<div class="mt">🔑 PIN de Gestão</div>
       <div class="ms">Digite o PIN de 4 dígitos</div>
-      <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot${i<digitado.length?' filled':''}" id="pd-${i}"></div>`).join('')}</div>
+      <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot" id="pd-${i}"></div>`).join('')}</div>
       <div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px"></div>
       <div class="pin-keypad">
         ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="pin-key" onclick="pinKey('${n}')">${n}</button>`).join('')}
@@ -5121,34 +5267,13 @@ function showEntrarPIN(callback){
       </div>`;
     document.getElementById('ov').classList.add('on');
   }
-  window.pinKey=function(d){
-    if(digitado.length>=4) return;
-    digitado+=d;
-    for(let i=0;i<4;i++){
-      const dot=document.getElementById('pd-'+i);
-      if(dot) dot.classList.toggle('filled',i<digitado.length);
-    }
-    if(digitado.length===4){
-      const salvo=localStorage.getItem(GESTAO_PIN_KEY);
-      if(digitado===salvo){
-        callback();
-      } else {
-        const err=document.getElementById('pin-err');
-        if(err) err.textContent='PIN incorreto — tente novamente';
-        digitado='';
-        setTimeout(()=>{ for(let i=0;i<4;i++){const dot=document.getElementById('pd-'+i);if(dot)dot.classList.remove('filled');} },300);
-      }
-    }
-  };
-  window.pinDel=function(){
-    if(!digitado.length) return;
-    digitado=digitado.slice(0,-1);
-    for(let i=0;i<4;i++){
-      const dot=document.getElementById('pd-'+i);
-      if(dot) dot.classList.toggle('filled',i<digitado.length);
-    }
-  };
   render();
+  // v1.9.4.13: validação pelo ponto único (aceita o PIN do gestor OU a SENHA_DEV)
+  _gsPinTeclado(function(tentativa){
+    if(!_gsPinValido(tentativa)) return false;
+    callback();
+    return true;
+  });
 }
 
 function alterarPIN(){
@@ -5157,7 +5282,6 @@ function alterarPIN(){
   const subs=['','Confirme o PIN atual','Digite o novo PIN (4 dígitos)','Repita o novo PIN'];
   const mc=document.getElementById('mc');
   function renderStep(err){
-    let digitado='';
     mc.innerHTML=`<div class="mt">🔑 ${titulos[step]}</div>
       <div class="ms">${subs[step]}</div>
       <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot" id="pd-${i}"></div>`).join('')}</div>
@@ -5169,45 +5293,34 @@ function alterarPIN(){
         <button class="pin-key del" onclick="pinDel()">⌫</button>
       </div>`;
     document.getElementById('ov').classList.add('on');
-    window.pinKey=function(d){
-      if(digitado.length>=4) return;
-      digitado+=d;
-      for(let i=0;i<4;i++){
-        const dot=document.getElementById('pd-'+i);
-        if(dot) dot.classList.toggle('filled',i<digitado.length);
+    // v1.9.4.13: mesmo teclado único do showEntrarPIN (sem dessincronismo de
+    // bolinhas, sem toque duplicado). O passo 1 aceita o PIN do gestor OU a
+    // SENHA_DEV — é assim que "esqueci o PIN" se resolve: senha dev → Alterar PIN.
+    _gsPinTeclado(function(tentativa){
+      if(step===1){
+        if(!_gsPinValido(tentativa)) return false;
+        step=2; setTimeout(()=>renderStep(),300);
+        return true;
       }
-      if(digitado.length===4){
-        if(step===1){
-          const salvo=localStorage.getItem(GESTAO_PIN_KEY);
-          if(digitado===salvo){ step=2; setTimeout(()=>renderStep(),300); }
-          else {
-            const err=document.getElementById('pin-err');
-            if(err) err.textContent='PIN incorreto — tente novamente';
-            digitado='';
-            setTimeout(()=>{for(let i=0;i<4;i++){const dot=document.getElementById('pd-'+i);if(dot)dot.classList.remove('filled');}},300);
-          }
-        } else if(step===2){
-          pinNovo=digitado; step=3; setTimeout(()=>renderStep(),300);
-        } else {
-          if(digitado===pinNovo){
-            localStorage.setItem(GESTAO_PIN_KEY,pinNovo);
-            addLogSistema('PIN do gestor alterado');
-            closeOv(); showToast('PIN alterado com sucesso');
-          } else {
-            step=1; pinNovo='';
-            setTimeout(()=>renderStep('PINs não coincidem — recomeçar'),300);
-          }
-        }
+      if(step===2){
+        pinNovo=tentativa; step=3; setTimeout(()=>renderStep(),300);
+        return true;
       }
-    };
-    window.pinDel=function(){
-      if(!digitado.length) return;
-      digitado=digitado.slice(0,-1);
-      for(let i=0;i<4;i++){
-        const dot=document.getElementById('pd-'+i);
-        if(dot) dot.classList.toggle('filled',i<digitado.length);
+      // passo 3 — confirmação do novo PIN
+      if(tentativa!==pinNovo){
+        step=1; pinNovo='';
+        setTimeout(()=>renderStep('PINs não coincidem — recomeçar'),300);
+        return true;   // já tratado (volta ao passo 1), não é "PIN incorreto"
       }
-    };
+      if(!_gsPinGravar(pinNovo)){
+        step=1; pinNovo='';
+        setTimeout(()=>renderStep('Não foi possível gravar — tente de novo'),300);
+        return true;
+      }
+      addLogSistema('PIN do gestor alterado');
+      closeOv(); showToast('PIN alterado com sucesso');
+      return true;
+    });
   }
   renderStep();
 }
@@ -8889,7 +9002,7 @@ function _gsNormalizarBackup(obj){
 // Aplica o backup MESCLANDO. Retorna um resumo do que entrou.
 async function _gsAplicarBackup(obj, origem){
   const n = _gsNormalizarBackup(obj);
-  const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0, ignorados:0 };
+  const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0, pinGestor:0, ignorados:0 };
 
   // 1) Hospedagens — só as que faltam (as do aparelho vencem)
   try {
@@ -8995,10 +9108,27 @@ async function _gsAplicarBackup(obj, origem){
     }
   } catch(e){ console.warn('[IMPORT] turnos:', e); }
 
+  // 7) v1.9.4.13 — PIN do gestor: o snapshot SEMPRE o carregou (`_gsSnapshotLocalStorage`),
+  // mas nada o reaplicava — num aparelho restaurado o PIN voltava ausente. Agora entra,
+  // e SÓ quando o aparelho não tem um utilizável: o do aparelho sempre vence (mesma
+  // regra de mesclagem do resto). Não destrutivo por construção.
+  try {
+    if(!_gsPinGuardado()){
+      const pinBk = n.ls ? n.ls[GESTAO_PIN_KEY] : null;
+      if(pinBk){
+        let limpo = String(pinBk).trim();
+        if(limpo.length>1 && limpo.charAt(0)==='"' && limpo.charAt(limpo.length-1)==='"') limpo=limpo.slice(1,-1).trim();
+        limpo = limpo.replace(/\D/g,'');
+        if(limpo.length===4 && _gsPinGravar(limpo)) res.pinGestor = 1;
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] PIN do gestor:', e); }
+
   try { _atualizarContadores(); } catch(e){}
   try { if(typeof addLogSistema === 'function') addLogSistema(
     'Importação (' + (origem||'arquivo') + '): +' + res.hospedagens + ' hosp., +' + res.usuarios +
-    ' func., +' + res.vistorias + ' vist., +' + res.anexosItens + ' anexos, +' + res.historico + ' eventos'); } catch(e){}
+    ' func., +' + res.vistorias + ' vist., +' + res.anexosItens + ' anexos, +' + res.historico + ' eventos' +
+    (res.pinGestor ? ', PIN do gestor restaurado' : '')); } catch(e){}
   return res;
 }
 
@@ -9059,7 +9189,7 @@ function _gsConfirmarImportacao(obj, nomeArq){
     if(!b) return;
     b.onclick = function(){
       // PIN do gestor antes de mexer nos dados
-      const pinSalvo = localStorage.getItem(GESTAO_PIN_KEY);
+      const pinSalvo = _gsPinGuardado();   // v1.9.4.13: leitura normalizada/fail-safe
       const aplicar = async function(){
         showToast('Importando...',3000);
         const res = await _gsAplicarBackup(obj, nomeArq);
@@ -9132,7 +9262,7 @@ async function _gsChecarIntegridade(){
           showToast('✅ Restaurado: +'+res.anexosItens+' anexos, +'+res.vistorias+' vistorias, +'+res.usuarios+' funcionários',6000);
           closeOv();
         };
-        const pinSalvo = localStorage.getItem(GESTAO_PIN_KEY);
+        const pinSalvo = _gsPinGuardado();   // v1.9.4.13: leitura normalizada/fail-safe
         if(!pinSalvo){ aplicar(); return; }
         showEntrarPIN(function(){ aplicar(); });
       };
@@ -12576,7 +12706,7 @@ window.delAtt = function(id, fp, idx, containerId){
     const bN=document.getElementById('da-nao'); if(bN) bN.onclick=_reabrir;
     const bS=document.getElementById('da-sim'); if(bS) bS.onclick=function(){
       // 2) Exclusão protegida: precisa de PIN configurado
-      const pinSalvo = localStorage.getItem(GESTAO_PIN_KEY);
+      const pinSalvo = _gsPinGuardado();   // v1.9.4.13: leitura normalizada/fail-safe
       if(!pinSalvo){
         showM(`<div class="mt">🔒 Exclusão protegida</div>
           <div class="ms" style="margin-bottom:12px">Para excluir anexos é preciso configurar um PIN de Gestão.<br>Vá em <strong>Gestão → Alterar PIN</strong>. A exclusão de anexos é sempre protegida.</div>
