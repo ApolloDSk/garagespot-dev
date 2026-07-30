@@ -107,6 +107,12 @@ html.font-large{zoom:1.13}
 .apt-lbl.ob{color:#A32D2D}
 .apt-lbl.dup{color:#BF360C}
 .id-lbl{color:#ccc;display:block;line-height:1;font-size:.7vw}
+/* v1.9.4.16: na vaga OCUPADA a identificação era #ccc (quase invisível) e ficava
+   empilhada acima do apto. Agora vai para o CANTO SUPERIOR ESQUERDO da célula,
+   com contraste legível. A vaga LIVRE segue como estava (identificação central,
+   que ali é o conteúdo principal). */
+.vv,.corr{position:relative}
+.id-lbl.occ{position:absolute;top:2px;left:3px;color:#5A6B7D;font-weight:700;letter-spacing:.2px;line-height:1;font-size:clamp(6px,.72vw,11px);pointer-events:none}
 /* Parte 3 v1.9.4.9: rótulo "check-out" (vermelho sólido) abaixo do número, fonte MENOR
    que o número, clean (sem fundo) e responsivo — para aptos com check-out previsto hoje. */
 .co-lbl{display:block;color:#C53030;font-weight:700;line-height:1;text-transform:lowercase;letter-spacing:.2px;margin-top:1px;font-size:clamp(6.5px,.85vw,12px)}
@@ -182,6 +188,7 @@ html.font-large{zoom:1.13}
   .top-strip{flex-direction:column}
   .apt-lbl{font-size:2.5vw}
   .id-lbl{font-size:1.2vw}
+  .id-lbl.occ{font-size:clamp(7px,1.15vw,12px)}
   .co-lbl{font-size:clamp(7px,1.5vw,12px)}
 }
 
@@ -303,6 +310,7 @@ html.font-large{zoom:1.13}
   .clk{display:none}
   .apt-lbl{font-size:2.5vw}
   .id-lbl{font-size:1.2vw}
+  .id-lbl.occ{font-size:clamp(7px,1.15vw,12px)}
   .co-lbl{font-size:clamp(7px,1.5vw,12px)}
 }
 /* ── VISTORIA ── */
@@ -1298,7 +1306,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.15';
+const GS_VERSION = 'v1.9.4.16';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-07-30';
 
@@ -1323,6 +1331,46 @@ function _localISO(dt){
   }catch(e){ return ''; }
 }
 function _hojeLocalISO(){ return _localISO(new Date()); }
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.16 — REAVALIAÇÃO NA VIRADA DA MEIA-NOITE (local)
+// ════════════════════════════════════════════════════════════════════════
+// O rótulo "check-out" do mapa só era recalculado dentro de `ref(id)`, ou seja,
+// dependia de alguém tocar no app. O hotel opera 24h: às 00h01 o mapa precisa
+// mostrar quem sai HOJE sem esperar interação. Agenda um refresh no próximo
+// meia-noite LOCAL e se reagenda todo dia.
+// Fail-safe: um único timer (nunca vaza), qualquer falha não quebra o mapa.
+let _gsTimerMeiaNoite = null;
+function _msAteProximaMeiaNoiteLocal(){
+  try{
+    const agora=new Date();
+    const amanha=new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()+1, 0, 0, 3, 0);
+    const ms=amanha.getTime()-agora.getTime();
+    // +3s de folga; limita a 25h por segurança contra relógio maluco
+    return (ms>0 && ms<25*60*60*1000) ? ms : 60*60*1000;
+  }catch(e){ return 60*60*1000; }
+}
+function _agendarViradaDoDia(){
+  try{
+    if(_gsTimerMeiaNoite){ clearTimeout(_gsTimerMeiaNoite); _gsTimerMeiaNoite=null; }
+    _gsTimerMeiaNoite=setTimeout(function(){
+      _gsTimerMeiaNoite=null;
+      try{ _reavaliarRotulosDoDia(); }catch(e){ console.warn('[virada] reavaliação falhou:',e&&e.message); }
+      _agendarViradaDoDia();          // reagenda para o dia seguinte
+    }, _msAteProximaMeiaNoiteLocal());
+  }catch(e){ console.warn('[virada] agendamento falhou:',e&&e.message); }
+}
+// Redesenha só o que depende do dia: as vagas ocupadas e os contadores do Painel.
+function _reavaliarRotulosDoDia(){
+  try{
+    Object.keys(S).forEach(function(id){
+      try{ if(S[id] && S[id].status==='occupied') ref(id); }catch(e){}
+    });
+  }catch(e){}
+  try{ if(typeof _atualizarContadores==='function') _atualizarContadores(); }catch(e){}
+  try{ if(typeof renderPainelDia==='function' && document.getElementById('tela-painel')) renderPainelDia(); }catch(e){}
+  console.log('[virada] rótulos do dia reavaliados —', _hojeLocalISO());
+}
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.10 — BUG A: GUARDA DE INICIALIZAÇÃO (perda silenciosa de dados)
@@ -1656,7 +1704,9 @@ function ref(id){
         coLbl='<span class="co-lbl">check-out</span>';
       }
     }catch(e){}
-    td.innerHTML=`<span class="id-lbl">${id}</span><span class="apt-lbl${aptCls?' '+aptCls:''}">${d.apt}</span>${coLbl}`;
+    // v1.9.4.16: `occ` leva a identificação da vaga para o canto superior esquerdo
+    // com contraste legível (era #ccc empilhado acima do apto).
+    td.innerHTML=`<span class="id-lbl occ">${id}</span><span class="apt-lbl${aptCls?' '+aptCls:''}">${d.apt}</span>${coLbl}`;
   }
   if(d.status==='occupied'){refRecarga(id);refVistoria(id);}
 }
@@ -3506,7 +3556,7 @@ function executarRestore(){
 }
 
 function showM(h){document.getElementById('mc').innerHTML=h;document.getElementById('ov').classList.add('on');}
-window.closeOv=function(){document.getElementById('ov').classList.remove('on');document.getElementById('mc').innerHTML='';if(typeof _gestaoEsconderBack==='function')_gestaoEsconderBack();};
+window.closeOv=function(){document.getElementById('ov').classList.remove('on');document.getElementById('mc').innerHTML='';if(typeof _gestaoEsconderBack==='function')_gestaoEsconderBack();if(typeof _gestaoPararVoltar==='function')_gestaoPararVoltar();};
 
 // Parte 4 v1.9.4.6: botão flutuante "← Gestão" persistente (sobrevive a re-renders do #mc)
 // mostrado enquanto uma opção de Gestão está aberta; retorna ao menu principal de Gestão.
@@ -3515,6 +3565,82 @@ function _gestaoAbrir(fnName){
   if(typeof fn !== 'function'){ console.warn('[gestao] opção inexistente:', fnName); return; }
   try { fn(); } catch(e){ console.error('[gestao] erro abrindo', fnName, e); }
   _gestaoMostrarBack();
+  _gestaoVoltarNoModal();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.16 — "← Voltar" DENTRO dos sub-modais de Gestão
+// ════════════════════════════════════════════════════════════════════════
+// A v1.9.4.6 trouxe o FAB flutuante "← Gestão", mas dentro do modal só havia
+// "Fechar" — que sai de tudo. Aqui um "← Voltar" é INJETADO ao lado do
+// "Fechar" de qualquer sub-modal aberto pela Gestão, sem precisar editar cada
+// tela (eram 6+, e cada edição seria mais uma cópia divergente).
+// Um MutationObserver reinjeta quando o sub-modal se re-renderiza (a lista de
+// usuários, por exemplo, redesenha o #mc inteiro). Tudo fail-safe.
+let _gestaoObs = null;
+function _gestaoVoltarNoModal(){
+  try{
+    _gestaoInjetarVoltar();
+    if(_gestaoObs) return;
+    const mc=document.getElementById('mc');
+    if(!mc || typeof MutationObserver!=='function') return;
+    _gestaoObs=new MutationObserver(function(){
+      try{ _gestaoInjetarVoltar(); }catch(e){}
+    });
+    _gestaoObs.observe(mc,{childList:true});
+  }catch(e){ console.warn('[gestao] voltar no modal falhou:',e&&e.message); }
+}
+function _gestaoPararVoltar(){
+  try{ if(_gestaoObs){ _gestaoObs.disconnect(); _gestaoObs=null; } }catch(e){}
+}
+function _gestaoInjetarVoltar(){
+  try{
+    const mc=document.getElementById('mc');
+    if(!mc) return;
+    if(mc.querySelector('#gestao-voltar-modal')) return;          // já tem
+    if(/⚙ Gestão/.test(mc.innerHTML)) return;                     // é o próprio menu
+    // Já existe um "← Voltar" próprio da tela (ex.: histórico do funcionário volta
+    // para a lista dele)? Então não se intromete — aquele destino é o certo ali.
+    const btns=Array.prototype.slice.call(mc.querySelectorAll('button'));
+    if(btns.some(function(b){ return /←\s*voltar/i.test(b.textContent||''); })) return;
+
+    // Âncora: "Fechar" (telas de consulta) ou "Cancelar" (telas de formulário).
+    // "Fechar", "✕ Fechar", "Cancelar"… — casa pelo fim do rótulo, sem exigir
+    // que o texto seja exatamente a palavra (vários modais trazem um ícone antes).
+    const rotuloEh=function(b, palavra){
+      const t=String(b.textContent||'').trim();
+      return t.length<=14 && new RegExp(palavra+'\\s*$','i').test(t);
+    };
+    const fechar=btns.filter(function(b){ return rotuloEh(b,'fechar'); }).pop();
+    const cancelar=fechar?null:btns.filter(function(b){ return rotuloEh(b,'cancelar'); }).pop();
+    const ancora=fechar||cancelar;
+    if(!ancora || !ancora.parentNode) return;
+
+    const voltar=document.createElement('button');
+    voltar.id='gestao-voltar-modal';
+    voltar.className='bcx';
+    voltar.textContent='← Voltar';
+    voltar.onclick=function(){ if(typeof _mostrarMenuGestao==='function') _mostrarMenuGestao(); };
+
+    if(fechar){
+      // consulta: lado a lado com o Fechar
+      voltar.style.cssText=(fechar.getAttribute('style')||'')+';color:#185FA5;border-color:#185FA5';
+      const linha=document.createElement('div');
+      linha.style.cssText='display:flex;gap:7px;width:100%';
+      fechar.parentNode.insertBefore(linha,fechar);
+      linha.appendChild(voltar);
+      linha.appendChild(fechar);
+      voltar.style.flex='1'; fechar.style.flex='1';
+      voltar.style.width='auto'; fechar.style.width='auto';
+    } else {
+      // formulário (Cancelar + Salvar): um terceiro botão na mesma linha ficaria
+      // apertado no tablet — vai largura cheia ACIMA da linha de ações.
+      voltar.style.cssText='width:100%;margin-top:8px;color:#185FA5;border-color:#185FA5';
+      const linhaAcoes=cancelar.parentNode;
+      if(linhaAcoes && linhaAcoes.parentNode) linhaAcoes.parentNode.insertBefore(voltar, linhaAcoes.nextSibling);
+      else cancelar.parentNode.insertBefore(voltar, cancelar);
+    }
+  }catch(e){ console.warn('[gestao] injeção do Voltar falhou:',e&&e.message); }
 }
 function _gestaoMostrarBack(){
   let b=document.getElementById('gestao-back-fab');
@@ -6419,7 +6545,7 @@ function gerarPDFVistoria(id){
       const {jsPDF}=window.jspdf;
       const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
       // Página 1 — Documento da vistoria (PNG composto) ou fallback texto
-      let y=_pdfHeader(doc,'Vistoria de Veiculo',
+      let y=_pdfHeader(doc,'Vistoria de Veículo',
         (v.numero||v.id||'')+' · '+fmtDt(v.ts_criada||v.ts_finalizacao||Date.now())+
         (v.ts_assinada?' · Assinada':' · Pendente assinatura'));
       if(v.documento_final_b64){
@@ -6452,7 +6578,7 @@ function gerarPDFVistoria(id){
           try{
             doc.addPage();
             const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
-            let yF=_pdfHeader(doc,'Foto do Veiculo',dataFmt+(foto.name?' · '+foto.name:''));
+            let yF=_pdfHeader(doc,'Foto do Veículo',dataFmt+(foto.name?' · '+foto.name:''));
             const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
             doc.addImage(foto.data||foto.base64Original,fmt,10,yF,190,240);
             _pdfFooter(doc);
@@ -12483,28 +12609,185 @@ function _pdfAddImagemAjustada(doc, item, original, tipoOriginal, cache, x, y, m
 }
 
 // ── BUILDERS DE PDF (jsPDF) ───────────────────────────────────────────────
-function _pdfHeader(doc, titulo, subtitulo){
-  const L=10,W=190;
-  doc.setFillColor(24,95,165);
-  doc.rect(L,10,W,14,'F');
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(12);
-  doc.setTextColor(255,255,255);
-  doc.text('GarageSpot',L+3,19);
-  doc.setFontSize(9);
-  doc.text(titulo,L+W,15,{align:'right'});
-  if(subtitulo){ doc.setFontSize(7.5); doc.text(subtitulo,L+W,21,{align:'right'}); }
-  doc.setTextColor(0,0,0);
-  return 28; // próximo Y
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.16 — IDENTIDADE VISUAL DO DOCUMENTO
+// ════════════════════════════════════════════════════════════════════════
+// Só APRESENTAÇÃO. Todo o pipeline de performance da v1.9.4.12 (compressão,
+// preparação assíncrona, proporção preservada, rodapé em passada única,
+// salvar + duas opções) continua exatamente como estava.
+//
+// ACENTOS: a helvetica padrão do jsPDF usa WinAnsi e TEM os glifos PT-BR —
+// medido: getTextWidth('Movimentação') === getTextWidth('Movimentacao'). Os
+// rótulos saíam sem acento porque estavam escritos sem acento NO CÓDIGO.
+// Escrever com acento resolve; NÃO embutir fonte Unicode (seriam ~300KB no
+// HTML e um PDF mais pesado no tablet — o oposto do que a 4.12 conquistou).
+const PDF_COR = {
+  marinho:[21,62,107], acento:[46,109,180], texto:[27,36,48], rotulo:[108,120,133],
+  linha:[228,232,238], painel:[246,248,251], vermelho:[192,57,43], verde:[30,142,90],
+  ambar:[176,124,17], teal:[17,122,122], roxo:[92,53,176], branco:[255,255,255],
+};
+const PDF_L = 10, PDF_W = 190;
+
+// Barra superior de marca — vai em TODAS as páginas.
+function _pdfBarraMarca(doc, tipoPagina, contexto){
+  doc.setFillColor.apply(doc, PDF_COR.marinho);
+  doc.rect(PDF_L, 10, PDF_W, 13, 'F');
+  doc.setTextColor.apply(doc, PDF_COR.branco);
+  doc.setFont('helvetica','bold'); doc.setFontSize(11.5);
+  doc.text('GarageSpot', PDF_L+4, 18.4);
+  if(tipoPagina){
+    doc.setFontSize(8.5);
+    doc.text(String(tipoPagina), PDF_L+PDF_W-4, contexto?16.2:19, {align:'right'});
+  }
+  if(contexto){
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
+    doc.text(_pdfCortar(doc, String(contexto), 120), PDF_L+PDF_W-4, 20.6, {align:'right'});
+  }
+  doc.setTextColor.apply(doc, PDF_COR.texto);
+  return 29;
 }
+
+// Corta com reticências para nunca invadir a área da marca.
+function _pdfCortar(doc, txt, maxMm){
+  try{
+    if(doc.getTextWidth(txt)<=maxMm) return txt;
+    let s=txt;
+    while(s.length>4 && doc.getTextWidth(s+'…')>maxMm) s=s.slice(0,-1);
+    return s+'…';
+  }catch(e){ return txt; }
+}
+
+// Cabeçalho do documento (página 1): logo do Hotel Gumz + eyebrow + título,
+// e à direita o bloco de referência. Reusa o asset que já existe no app.
+function _pdfCabecalhoDoc(doc, y, o){
+  o=o||{};
+  let yLogo=y;
+  try{
+    if(typeof LOGO_CLIENTE_B64!=='undefined' && LOGO_CLIENTE_B64){
+      // 356×102 → mantém a proporção
+      doc.addImage(LOGO_CLIENTE_B64,'JPEG',PDF_L,yLogo,34,9.74);
+    }
+  }catch(e){ console.warn('[PDF] logo não pôde ser inserida:',e&&e.message); }
+  let yT=yLogo+16;
+  if(o.eyebrow){
+    doc.setFont('helvetica','bold'); doc.setFontSize(7);
+    doc.setTextColor.apply(doc, PDF_COR.rotulo);
+    doc.text(String(o.eyebrow).toUpperCase(), PDF_L, yT, {charSpace:0.4});
+    yT+=5.5;
+  }
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.setTextColor.apply(doc, PDF_COR.texto);
+  doc.text(String(o.titulo||''), PDF_L, yT);
+
+  // Bloco de referência à direita
+  const refs=(o.refs||[]).filter(Boolean);
+  if(refs.length){
+    let yR=yLogo+2;
+    refs.forEach(function(par){
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
+      doc.setTextColor.apply(doc, PDF_COR.rotulo);
+      doc.text(String(par[0]).toUpperCase(), PDF_L+PDF_W, yR, {align:'right', charSpace:0.3});
+      doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.setTextColor.apply(doc, PDF_COR.texto);
+      doc.text(String(par[1]||'—'), PDF_L+PDF_W, yR+4.6, {align:'right'});
+      yR+=10;
+    });
+  }
+  yT+=4;
+  doc.setDrawColor.apply(doc, PDF_COR.acento); doc.setLineWidth(0.8);
+  doc.line(PDF_L, yT, PDF_L+26, yT);
+  doc.setLineWidth(0.2);
+  doc.setTextColor.apply(doc, PDF_COR.texto);
+  return Math.max(yT+8, yLogo+34);
+}
+
+// Selo de status (ex.: "Check-out concluído").
+function _pdfSelo(doc, x, y, texto, rgb){
+  doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+  const w=doc.getTextWidth(texto)+7;
+  doc.setFillColor(rgb[0],rgb[1],rgb[2]);
+  doc.roundedRect(x-w, y, w, 6.4, 1.6, 1.6, 'F');
+  doc.setTextColor.apply(doc, PDF_COR.branco);
+  doc.text(texto, x-w/2, y+4.4, {align:'center'});
+  doc.setTextColor.apply(doc, PDF_COR.texto);
+  return w;
+}
+
+// Compatibilidade: `_pdfHeader(doc,titulo,subtitulo)` segue valendo para os
+// relatórios e páginas internas — agora com a barra de marca nova.
+function _pdfHeader(doc, titulo, subtitulo){
+  return _pdfBarraMarca(doc, titulo, subtitulo);
+}
+
+// v1.9.4.12: passada ÚNICA (era O(N²) e sobrepunha o texto). v1.9.4.16: filete
+// acima e "Página X de N".
 function _pdfFooter(doc){
   const pageCount=doc.internal.getNumberOfPages();
+  const quando=fmtDt(Date.now());
   for(let i=1;i<=pageCount;i++){
     doc.setPage(i);
-    doc.setFontSize(7); doc.setTextColor(170,170,170);
-    doc.text('GarageSpot · Hotel Gumz · '+fmtDt(Date.now())+' · Pag. '+i+'/'+pageCount,105,290,{align:'center'});
-    doc.setTextColor(0,0,0);
+    doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
+    doc.line(PDF_L,285,PDF_L+PDF_W,285);
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
+    doc.setTextColor.apply(doc, PDF_COR.rotulo);
+    doc.text('GarageSpot · Hotel Gumz · '+quando, PDF_L, 289.5);
+    doc.text('Página '+i+' de '+pageCount, PDF_L+PDF_W, 289.5, {align:'right'});
+    doc.setTextColor.apply(doc, PDF_COR.texto);
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.16 — MAPA ÚNICO de rótulos de movimentação (documento)
+// ════════════════════════════════════════════════════════════════════════
+// O `tLabel` do PDF era uma cópia reduzida (10 tipos) e o que faltava caía no
+// fallback `ev.tipo`, imprimindo a string interna crua ("vistoria_criada").
+// Aqui está a lista COMPLETA e acentuada, com a cor do marcador por tipo.
+const MOV_LABEL = {
+  checkin:'Check-in', checkout:'Check-out',
+  saida_passeio:'Saída a passeio', retorno_passeio:'Retorno do passeio',
+  edicao:'Edição de dados', movimentacao_vaga:'Designação/mudança de vaga',
+  tornar_grande:'Vaga ampliada (carro grande)', tornar_pequeno:'Vaga reduzida (carro pequeno)',
+  merge_lateral:'Mesclagem lateral', desfaz_merge_lateral:'Mesclagem desfeita',
+  vistoria_criada:'Vistoria criada', vistoria_vinculada:'Vistoria vinculada',
+  vistoria_editada:'Vistoria editada', vistoria_assinada:'Vistoria assinada',
+  vistoria_deletada:'Vistoria excluída', vistoria_adicional_criada:'Vistoria adicional',
+  recarga_iniciada:'Recarga iniciada', recarga_encerrada:'Recarga encerrada',
+  recarga_editada:'Período de recarga editado',
+  exclusao_anexo:'Exclusão de anexo',
+};
+const MOV_COR = {
+  checkin:PDF_COR.verde, movimentacao_vaga:PDF_COR.verde,
+  checkout:PDF_COR.marinho,
+  vistoria_criada:PDF_COR.acento, vistoria_vinculada:PDF_COR.acento,
+  vistoria_editada:PDF_COR.acento, vistoria_assinada:PDF_COR.acento,
+  vistoria_deletada:PDF_COR.vermelho, vistoria_adicional_criada:PDF_COR.acento,
+  saida_passeio:PDF_COR.ambar, retorno_passeio:PDF_COR.teal,
+  exclusao_anexo:PDF_COR.vermelho,
+  recarga_iniciada:PDF_COR.ambar, recarga_encerrada:PDF_COR.teal,
+  recarga_editada:PDF_COR.roxo, edicao:PDF_COR.roxo,
+};
+// Último recurso: tipo desconhecido vira texto legível em vez de `snake_case`.
+function _movLabel(tipo){
+  if(!tipo) return '—';
+  if(MOV_LABEL[tipo]) return MOV_LABEL[tipo];
+  try{
+    const s=String(tipo).replace(/_/g,' ').trim();
+    return s.charAt(0).toUpperCase()+s.slice(1);
+  }catch(e){ return String(tipo); }
+}
+function _movCor(tipo){ return MOV_COR[tipo] || PDF_COR.rotulo; }
+
+// Duração legível entre dois instantes (para "Permanência").
+function _pdfPermanencia(ini, fim){
+  try{
+    if(!ini) return '—';
+    const ms=(fim||Date.now())-ini;
+    if(ms<0) return '—';
+    const min=Math.floor(ms/60000), d=Math.floor(min/1440), h=Math.floor((min%1440)/60), m=min%60;
+    if(d>0) return d+(d===1?' dia':' dias')+(h>0?' e '+h+'h':'');
+    if(h>0) return h+'h'+(m>0?' '+m+'min':'');
+    return min+' min';
+  }catch(e){ return '—'; }
 }
 
 // v1.9.4.12: `imgCache` (opcional) traz as imagens já comprimidas por
@@ -12520,47 +12803,88 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
   const tsCO=(hist||[]).slice().reverse().find(e=>e.tipo==='checkout')?.ts;
   const periodo=tsCI?fmtDt(tsCI)+(tsCO?' a '+fmtDt(tsCO):''):'';
   const subtitulo=(hospNum?hospNum+' · ':'')+'Apt. '+apt+(dv.guest?' · '+dv.guest:'')+( periodo?' · '+periodo:'');
-  let y=_pdfHeader(doc,'Registro de Movimentacao',subtitulo);
+  let y=_pdfBarraMarca(doc,'Comprovante de Check-out',subtitulo);
 
-  // Info box
-  doc.setFillColor(242,246,252); doc.rect(L,y,W,22,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
-  const row=(label,val,yy)=>{
-    doc.setFont('helvetica','bold'); doc.text(label,L+3,yy);
-    doc.setFont('helvetica','normal'); doc.text(String(val||'—'),L+28,yy);
-  };
-  row('Veiculo:',[dv.model,dv.color,dv.plate].filter(Boolean).join(' · ')||'Nao informado',y+7);
-  row('Hospede:',dv.guest||'Nao informado',y+13);
-  row('Periodo:',periodo||'Em andamento',y+19);
-  y+=26;
+  // Cabeçalho do documento: logo do Hotel Gumz + título + bloco de referência
+  y=_pdfCabecalhoDoc(doc,y,{
+    eyebrow:'Registro de Movimentação',
+    titulo:'Comprovante de Check-out',
+    refs:[['Hospedagem',hospNum||'—'],['Apartamento',apt||'—'],['Emitido em',fmtDt(Date.now())]],
+  });
+  if(tsCO){ _pdfSelo(doc, L+W, y-6, 'Check-out concluído', PDF_COR.verde); y+=4; }
 
-  // Events table
-  const tLabel={checkin:'Check-in',saida_passeio:'Saida Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edicao',movimentacao_vaga:'Mudanca Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge'};
-  const tColorRGB={checkin:[15,110,86],saida_passeio:[133,79,11],retorno_passeio:[24,95,165],checkout:[163,45,45],edicao:[85,85,85],movimentacao_vaga:[92,53,176],tornar_grande:[24,95,165],tornar_pequeno:[15,110,86],merge_lateral:[133,79,11],desfaz_merge_lateral:[136,136,136]};
+  // ── Card de resumo ──────────────────────────────────────────────────────
+  const vagaFinal=(hist||[]).slice().reverse().find(function(e){return e&&e.vaga;});
+  const resumo=[
+    ['Veículo',[dv.model,dv.color,dv.plate].filter(Boolean).join(' · ')||'Não informado'],
+    ['Hóspede',dv.guest||'Não informado'],
+    ['Vaga final',(vagaFinal&&vagaFinal.vaga)||'—'],
+    ['Entrada',tsCI?fmtDt(tsCI):'—'],
+    ['Saída',tsCO?fmtDt(tsCO):'Em andamento'],
+    ['Permanência',_pdfPermanencia(tsCI,tsCO)],
+  ];
+  const cardH=26;
+  doc.setFillColor.apply(doc, PDF_COR.painel);
+  doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
+  doc.roundedRect(L,y,W,cardH,2,2,'FD');
+  const colW=W/3;
+  resumo.forEach(function(par,i){
+    const cx=L+4+(i%3)*colW, cy=y+7+Math.floor(i/3)*11;
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5);
+    doc.setTextColor.apply(doc, PDF_COR.rotulo);
+    doc.text(String(par[0]).toUpperCase(), cx, cy, {charSpace:0.3});
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.setTextColor.apply(doc, PDF_COR.texto);
+    doc.text(_pdfCortar(doc,String(par[1]),colW-8), cx, cy+5);
+  });
+  y+=cardH+9;
+
+  // ── Tabela de movimentações ─────────────────────────────────────────────
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.setTextColor.apply(doc, PDF_COR.rotulo);
+  doc.text('MOVIMENTAÇÕES', L, y, {charSpace:0.4});
+  y+=3;
+
+  // v1.9.4.16: o rótulo é desenhado UMA vez, pelo próprio autoTable. Antes, o
+  // `didDrawCell` pintava um badge e RE-DESENHAVA o texto que o autoTable já
+  // havia desenhado — daí "Check-inCheck-in". Agora o hook só pinta o marcador
+  // colorido à esquerda; o texto vem do corpo da tabela, com recuo para o ponto.
   doc.autoTable({
     startY:y,
-    head:[['Data/Hora','Tipo','Vaga','Usuario']],
-    body:(hist||[]).map(ev=>[fmtDt(ev.ts),tLabel[ev.tipo]||ev.tipo,ev.vaga||'',ev.usuario||'']),
-    theme:'striped',
-    headStyles:{fillColor:[24,95,165],textColor:255,fontSize:8,fontStyle:'bold'},
-    styles:{fontSize:8,cellPadding:2.5},
-    columnStyles:{0:{cellWidth:40},1:{cellWidth:32},2:{cellWidth:16},3:{cellWidth:102}},
+    head:[['Data / Hora','Movimentação','Vaga','Responsável']],
+    body:(hist||[]).map(function(ev){
+      const resp=[ev.usuario||'—',ev.cargo||''].filter(Boolean).join(' · ');
+      const via=(ev.tipo==='exclusao_anexo')?' (via PIN)':'';
+      return [fmtDt(ev.ts),'   '+_movLabel(ev.tipo),ev.vaga||'—',resp+via];
+    }),
+    theme:'plain',
+    headStyles:{fillColor:PDF_COR.marinho,textColor:255,fontSize:7.5,fontStyle:'bold',cellPadding:{top:2.6,bottom:2.6,left:2.5,right:2.5}},
+    styles:{fontSize:8,cellPadding:{top:2.4,bottom:2.4,left:2.5,right:2.5},textColor:PDF_COR.texto,lineColor:PDF_COR.linha,lineWidth:{bottom:0.1}},
+    alternateRowStyles:{fillColor:[250,251,253]},
+    columnStyles:{
+      0:{cellWidth:36,font:'courier',fontSize:7.5},   // horário alinhado (tabular)
+      1:{cellWidth:58},
+      2:{cellWidth:16,halign:'center',fontStyle:'bold'},
+      3:{cellWidth:80,fontSize:7.5},
+    },
     margin:{left:L,right:L},
-    didDrawCell:(data)=>{
-      if(data.section==='body'&&data.column.index===1){
-        const tipo=(hist||[])[data.row.index]?.tipo;
-        const rgb=tColorRGB[tipo];
-        if(rgb){
-          const x=data.cell.x+1,y2=data.cell.y+1,w=data.cell.width-2,h=data.cell.height-2;
-          doc.setFillColor(...rgb);
-          doc.roundedRect(x,y2,w,h,1,1,'F');
-          doc.setTextColor(255,255,255);
-          doc.setFontSize(7);
-          doc.text(tLabel[tipo]||tipo,x+w/2,y2+h/2+2.5,{align:'center'});
-          doc.setTextColor(0,0,0);
+    didDrawCell:function(data){
+      try{
+        if(data.section!=='body') return;
+        // marcador colorido do tipo
+        if(data.column.index===1){
+          const ev=(hist||[])[data.row.index];
+          const rgb=_movCor(ev&&ev.tipo);
+          doc.setFillColor(rgb[0],rgb[1],rgb[2]);
+          doc.circle(data.cell.x+4, data.cell.y+data.cell.height/2, 1.15, 'F');
         }
-      }
-    }
+        // "etiqueta" da vaga
+        if(data.column.index===2 && data.cell.raw && data.cell.raw!=='—'){
+          doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
+          doc.roundedRect(data.cell.x+1.6, data.cell.y+1.4, data.cell.width-3.2, data.cell.height-2.8, 1, 1, 'S');
+        }
+      }catch(e){}
+    },
   });
 
   // Bug C v1.9.4.3.1: páginas adicionais com vistorias + fotos AGRUPADAS por vistoria.
@@ -12594,6 +12918,9 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
     // Conjuntos auxiliares para intercalar
     const numerosVist = new Set(vistorias.map(function(v){ return v && v.numero; }).filter(Boolean));
     const fotosUsadas = new Set();
+    // v1.9.4.16: contador "Foto X de N" (só apresentação; não altera a ordem)
+    let _fotoSeq = 0;
+    const _fotoTotal = Array.isArray(fotos) ? fotos.length : 0;
 
     function _emitirFoto(foto){
       try{
@@ -12611,12 +12938,35 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
         if(dataFmt) partes.push(dataFmt);
         if(funcF) partes.push(funcF);
         const legenda = partes.join(' · ') || (foto.name || 'Foto');
-        let yF=_pdfHeader(doc,'Foto do Veiculo', legenda);
+        let yF=_pdfBarraMarca(doc,'Foto do Veículo', legenda);
+        // v1.9.4.16: contador + moldura + barra de legenda
+        _fotoSeq++;
+        doc.setFont('helvetica','bold'); doc.setFontSize(7);
+        doc.setTextColor.apply(doc, PDF_COR.rotulo);
+        doc.text('FOTO '+_fotoSeq+(_fotoTotal?' DE '+_fotoTotal:''), PDF_L, yF+1, {charSpace:0.4});
+        yF+=5;
+        const molduraH=232;
+        doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.4);
+        doc.roundedRect(PDF_L, yF, PDF_W, molduraH, 2, 2, 'S');
         // v1.9.4.12: imagem comprimida + proporção preservada. O rodapé NÃO é
         // carimbado aqui — _pdfFooter percorre TODAS as páginas, então chamá-lo a
         // cada foto era trabalho O(N²) e sobrepunha o texto várias vezes na mesma
         // página. Agora é uma única passada, no fim.
-        _pdfAddImagemAjustada(doc, foto, imgData, foto.type, imgCache, 10, yF, 190, 240);
+        _pdfAddImagemAjustada(doc, foto, imgData, foto.type, imgCache, PDF_L+3, yF+3, PDF_W-6, molduraH-20);
+        // barra de legenda no pé da moldura
+        const yL=yF+molduraH-13;
+        doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
+        doc.line(PDF_L+3, yL, PDF_L+PDF_W-3, yL);
+        const legCampos=[['Veículo',(modeloF+' '+corF).trim()||'—'],['Data',dataFmt||'—'],['Responsável',funcF||'—']];
+        legCampos.forEach(function(par,i){
+          const cx=PDF_L+4+i*((PDF_W-8)/3);
+          doc.setFont('helvetica','bold'); doc.setFontSize(6);
+          doc.setTextColor.apply(doc, PDF_COR.rotulo);
+          doc.text(String(par[0]).toUpperCase(), cx, yL+4.5, {charSpace:0.3});
+          doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+          doc.setTextColor.apply(doc, PDF_COR.texto);
+          doc.text(_pdfCortar(doc,String(par[1]),(PDF_W-8)/3-4), cx, yL+8.8);
+        });
         fotosUsadas.add(foto);
         console.log('[BUG C] foto OK no PDF:', foto.name);
       }catch(e){
@@ -12630,8 +12980,32 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
         if(vist.documento_final_b64){
           doc.addPage();
           const tit='Vistoria '+(vist.tipo||'entrada')+' · '+(vist.numero||vist.id||'—')+' · '+fmtDt(vist.ts_finalizacao||vist.ts_criada||Date.now());
-          let yV=_pdfHeader(doc,'Vistoria',tit);
-          _pdfAddImagemAjustada(doc, vist, vist.documento_final_b64, 'png', imgCache, 10, yV, 190, 240);
+          let yV=_pdfBarraMarca(doc,'Termo de Vistoria',tit);
+          // v1.9.4.16: faixa de identificação + selo de avaria acima do diagrama.
+          // O diagrama, a declaração e a assinatura já vêm compostos na imagem
+          // (`documento_final_b64`) — aqui só se acrescenta a identificação.
+          const nAv=((vist.danos||vist.avarias||[]).length)||0;
+          const campos=[['Apartamento',vist.apt||apt||'—'],
+                        ['Modelo / Cor',[vist.modelo,vist.cor].filter(Boolean).join(' · ')||'—'],
+                        ['Funcionário responsável',vist.funcionario||'—'],
+                        ['Data',fmtDt(vist.ts_finalizacao||vist.ts_criada||Date.now())]];
+          doc.setFillColor.apply(doc, PDF_COR.painel);
+          doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
+          doc.roundedRect(PDF_L,yV,PDF_W,15,2,2,'FD');
+          campos.forEach(function(par,i){
+            const cx=PDF_L+4+i*((PDF_W-8)/4);
+            doc.setFont('helvetica','bold'); doc.setFontSize(6);
+            doc.setTextColor.apply(doc, PDF_COR.rotulo);
+            doc.text(String(par[0]).toUpperCase(), cx, yV+5, {charSpace:0.3});
+            doc.setFont('helvetica','normal'); doc.setFontSize(8);
+            doc.setTextColor.apply(doc, PDF_COR.texto);
+            doc.text(_pdfCortar(doc,String(par[1]),(PDF_W-8)/4-4), cx, yV+10.5);
+          });
+          yV+=19;
+          _pdfSelo(doc, PDF_L+PDF_W, yV-4.5,
+            nAv>0?('Com avaria · '+nAv):'Sem avaria',
+            nAv>0?PDF_COR.vermelho:PDF_COR.verde);
+          _pdfAddImagemAjustada(doc, vist, vist.documento_final_b64, 'png', imgCache, PDF_L, yV+4, PDF_W, 232);
         }
       }catch(e){ console.error('[BUG C] erro vistoria',vist&&vist.numero,e); }
       // 2) fotos vinculadas a esta vistoria (na ordem em que foram tiradas)
@@ -12670,7 +13044,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
       try{
         const imgData=rc.data||rc.base64Original; if(!imgData) continue;
         doc.addPage();
-        let yR=_pdfHeader(doc,'Recarga', rc.name||'Comprovante de recarga');
+        let yR=_pdfBarraMarca(doc,'Comprovante de Recarga', rc.name||'Comprovante de recarga');
         _pdfAddImagemAjustada(doc, rc, imgData, rc.type, imgCache, 10, yR, 190, 240);
         recargasUsadas.add(rc);
       }catch(e){ console.error('[recarga PDF] erro', rc&&rc.name, e); }
@@ -12701,15 +13075,15 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
         const imgData=an.data||an.base64Original;
         if(an.isImg && imgData){
           doc.addPage();
-          let yA=_pdfHeader(doc,'Anexo', an.name||'Anexo');
+          let yA=_pdfBarraMarca(doc,'Anexo', an.name||'Anexo');
           _pdfAddImagemAjustada(doc, an, imgData, an.type, imgCache, 10, yA, 190, 240);
         } else {
           doc.addPage();
-          let yA=_pdfHeader(doc,'Anexo (documento)', an.name||'Documento anexado');
+          let yA=_pdfBarraMarca(doc,'Anexo (documento)', an.name||'Documento anexado');
           doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0); doc.setFontSize(10);
           doc.text('Tipo: '+(an.type||'desconhecido'), 12, yA+4);
           doc.text('Nome: '+(an.name||'—'), 12, yA+12);
-          const obs=doc.splitTextToSize('Anexo da hospedagem que nao pode ser incorporado como imagem neste PDF. O arquivo original esta preservado nos anexos do GarageSpot.', 186);
+          const obs=doc.splitTextToSize('Anexo da hospedagem que não pôde ser incorporado como imagem neste PDF. O arquivo original está preservado nos anexos do GarageSpot.', 186);
           doc.text(obs, 12, yA+24);
         }
       }catch(e){ console.error('[Parte5] erro anexo restante', an&&an.name, e); }
@@ -12760,12 +13134,13 @@ function buildRelMovimentacoesDoc(evts, deVal, ateVal){
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
   const ci=evts.filter(e=>e.tipo==='checkin').length;
   const co=evts.filter(e=>e.tipo==='checkout').length;
-  let y=_pdfHeader(doc,'Relatorio de Movimentacoes',periodo+' · CI:'+ci+' CO:'+co+' Total:'+evts.length);
-  const tLabel={checkin:'Check-in',saida_passeio:'Saida Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edicao',movimentacao_vaga:'Mudanca Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge'};
+  let y=_pdfHeader(doc,'Relatório de Movimentações',periodo+' · CI:'+ci+' CO:'+co+' Total:'+evts.length);
+  // v1.9.4.16: mapa ÚNICO (era uma cópia ASCII e incompleta)
+  const tLabel=MOV_LABEL;
   doc.autoTable({
     startY:y,
-    head:[['Data/Hora','Tipo','Apt','Hospedagem','Usuario']],
-    body:evts.map(ev=>[fmtDt(ev.ts),tLabel[ev.tipo]||ev.tipo,'Apt. '+(ev.apt||''),ev.hospedagem||'',ev.usuario||'']),
+    head:[['Data / Hora','Movimentação','Apt','Hospedagem','Responsável']],
+    body:evts.map(ev=>[fmtDt(ev.ts),_movLabel(ev.tipo),'Apt. '+(ev.apt||''),ev.hospedagem||'',ev.usuario||'']),
     theme:'striped',
     headStyles:{fillColor:[24,95,165],textColor:255,fontSize:8},
     styles:{fontSize:7.5,cellPadding:2},
@@ -12781,15 +13156,15 @@ function buildRelOcupacaoDoc(dadosOcup, hospsP, deVal, ateVal){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
-  let y=_pdfHeader(doc,'Relatorio de Ocupacao',periodo);
+  let y=_pdfHeader(doc,'Relatório de Ocupação',periodo);
   // Stats
   doc.setFontSize(8.5); doc.setFont('helvetica','bold');
-  doc.text('Ocupacao media: '+dadosOcup.pct+'%   Check-ins: '+dadosOcup.ci+'   Check-outs: '+dadosOcup.co,13,y+6);
+  doc.text('Ocupação média: '+dadosOcup.pct+'%   Check-ins: '+dadosOcup.ci+'   Check-outs: '+dadosOcup.co,13,y+6);
   y+=14;
   // Hospedagens table
   doc.autoTable({
     startY:y,
-    head:[['GS','Apt','Hospede','Check-in','Check-out','Status']],
+    head:[['GS','Apt','Hóspede','Check-in','Check-out','Status']],
     body:hospsP.map(h=>[h.numero||'',h.apt||'',h.guest||'—',fmtDt(h.checkin_ts),h.checkout_ts?fmtDt(h.checkout_ts):'Ativo',h.checkout_ts?'Saiu':'Ativo']),
     theme:'striped',
     headStyles:{fillColor:[24,95,165],textColor:255,fontSize:8},
@@ -12807,10 +13182,10 @@ function buildRelPorAptoDoc(hosps, aptVal, deVal, ateVal){
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
   const subtitulo=(aptVal?'Apt. '+aptVal+' · ':'')+periodo;
-  let y=_pdfHeader(doc,'Relatorio por Apartamento',subtitulo);
+  let y=_pdfHeader(doc,'Relatório por Apartamento',subtitulo);
   doc.autoTable({
     startY:y,
-    head:[['GS','Apt','Hospede','Veiculo','Check-in','Check-out']],
+    head:[['GS','Apt','Hóspede','Veículo','Check-in','Check-out']],
     body:hosps.map(h=>[h.numero||'',h.apt||'',h.guest||'—',[h.model,h.color,h.plate].filter(Boolean).join(' ')||'—',fmtDt(h.checkin_ts),h.checkout_ts?fmtDt(h.checkout_ts):'Ativo']),
     theme:'striped',
     headStyles:{fillColor:[24,95,165],textColor:255,fontSize:8},
@@ -12827,8 +13202,9 @@ function buildRelTurnoDoc(evts, deVal, ateVal, turnosSel){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
-  const tLabel={checkin:'Check-in',saida_passeio:'Saida',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edicao',movimentacao_vaga:'Mov.Vaga',tornar_grande:'Tornar Gr.',tornar_pequeno:'Tornar Peq.',merge_lateral:'Merge',desfaz_merge_lateral:'Desfaz'};
-  let y=_pdfHeader(doc,'Relatorio por Turno',periodo+' · '+(turnosSel||TURNOS.map(t=>t.nome)).join(', '));
+  // v1.9.4.16: mapa ÚNICO (era uma cópia ASCII e incompleta)
+  const tLabel=MOV_LABEL;
+  let y=_pdfHeader(doc,'Relatório por Turno',periodo+' · '+(turnosSel||TURNOS.map(t=>t.nome)).join(', '));
   TURNOS.filter(t=>!turnosSel||turnosSel.includes(t.nome)).forEach(t=>{
     const evsTurno=evts.filter(ev=>getTurnoDoEvento(ev.ts)===t.nome);
     if(evsTurno.length===0) return;
@@ -12837,8 +13213,8 @@ function buildRelTurnoDoc(evts, deVal, ateVal, turnosSel){
     y+=9;
     doc.autoTable({
       startY:y, didDrawPage:(d)=>{ y=d.cursor.y; },
-      head:[['Data/Hora','Tipo','Apt','Usuario']],
-      body:evsTurno.map(ev=>[fmtDt(ev.ts),tLabel[ev.tipo]||ev.tipo,'Apt. '+(ev.apt||''),ev.usuario||'']),
+      head:[['Data / Hora','Movimentação','Apt','Responsável']],
+      body:evsTurno.map(ev=>[fmtDt(ev.ts),_movLabel(ev.tipo),'Apt. '+(ev.apt||''),ev.usuario||'']),
       theme:'striped',
       headStyles:{fillColor:[230,240,252],textColor:[24,95,165],fontSize:7.5,fontStyle:'bold'},
       styles:{fontSize:7.5,cellPadding:2},
@@ -14047,6 +14423,9 @@ checkLicense().then(async (ativo)=>{
       try { _normalizarHospedagens(); } catch(e){ console.warn('[BUG B] normalização pós-init:', e); }
       try { _atualizarContadores(); } catch(e){ console.warn('[BUG A] contadores pós-init:', e); }
       console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
+      // v1.9.4.16: o hotel opera 24h — o rótulo "check-out" passa a virar sozinho
+      // à meia-noite local, sem depender de interação.
+      try { _agendarViradaDoDia(); } catch(e){ console.warn('[virada] não agendou:', e); }
       navTo('painel');
       // v1.9.4.11 (Parte 6): guarda de integridade — só OFERECE restaurar, e só
       // em queda catastrófica frente ao último backup completo. Fail-safe.
