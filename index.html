@@ -1298,9 +1298,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.13';
+const GS_VERSION = 'v1.9.4.14';
 const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-07-29';
+const GS_BUILD_TS = '2026-07-30';
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
+// ════════════════════════════════════════════════════════════════════════
+// `new Date().toISOString().slice(0,10)` devolve o dia em **UTC**. No Brasil
+// (UTC−3), das 21h à meia-noite local o UTC já está no DIA SEGUINTE — era isso
+// que fazia o rótulo "check-out" do mapa aparecer um dia adiantado (mostrava
+// quem sai amanhã e escondia quem sai hoje) e o Painel contar o dia errado.
+// `saida_prevista` é 'AAAA-MM-DD' vindo de <input type="date">, ou seja, uma
+// data de CALENDÁRIO sem hora nem fuso — comparar com UTC é sempre errado.
+//
+// REGRA: para "hoje"/"amanhã" use SEMPRE estes helpers. Não voltar a usar
+// `toISOString()` para montar dia de calendário.
+function _localISO(dt){
+  try{
+    const d = (dt instanceof Date) ? dt : new Date(dt);
+    if(isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth()+1), dd = String(d.getDate());
+    return d.getFullYear() + '-' + (mm.length<2?'0':'') + mm + '-' + (dd.length<2?'0':'') + dd;
+  }catch(e){ return ''; }
+}
+function _hojeLocalISO(){ return _localISO(new Date()); }
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.10 — BUG A: GUARDA DE INICIALIZAÇÃO (perda silenciosa de dados)
@@ -1621,12 +1643,16 @@ function ref(id){
   } else {
     const aptCls=isDup(d.apt)?'dup':(OB.has(id)?'ob':'');
     // Parte 3 v1.9.4.9: rótulo "check-out" para aptos com saída prevista HOJE e ainda não
-    // concluída. Mesma noção de "hoje" do painel (toISOString().slice(0,10)). Some quando
-    // o check-out é feito (a vaga fica livre) — robusto a hospedagem ausente.
+    // concluída. Some quando o check-out é feito (a vaga fica livre) — robusto a
+    // hospedagem ausente.
+    // v1.9.4.14: "hoje" pelo CALENDÁRIO LOCAL (`_hojeLocalISO`). Antes era
+    // `toISOString()` (UTC) e o rótulo saía um dia adiantado depois das 21h.
+    // Data ausente/inválida → sem rótulo (nunca quebra o mapa).
     let coLbl='';
     try{
       const gs=d.hospedagem; const h=gs?HOSPEDAGENS[gs]:null;
-      if(h && !h.checkout_ts && h.saida_prevista && h.saida_prevista===new Date().toISOString().slice(0,10)){
+      const hoje=_hojeLocalISO();
+      if(h && !h.checkout_ts && h.saida_prevista && hoje && h.saida_prevista===hoje){
         coLbl='<span class="co-lbl">check-out</span>';
       }
     }catch(e){}
@@ -2672,7 +2698,7 @@ function _perguntarSaidaPrevista(apt, onOk, onVoltar){
   const mc=document.getElementById('mc');
   if(!mc){ if(typeof onOk==='function') onOk(''); return; }
   const hoje=new Date();
-  const hojeISOv=hoje.toISOString().slice(0,10);
+  const hojeISOv=_localISO(hoje);   // v1.9.4.14: dia LOCAL (UTC deixava escolher só amanhã à noite)
   mc.innerHTML=`
     <div class="mt">📅 Data de saída prevista</div>
     <div class="ms" style="margin-bottom:10px">Apartamento <strong>${_vtEsc(String(apt||''))}</strong> — quando o hóspede faz o check-out?</div>
@@ -3141,6 +3167,15 @@ function showDet(id, fromPasseio){
   const isLarge = d.size==='large';
 
   const hospedagemNum = d.hospedagem || '';
+  // v1.9.4.14: a data de check-out (`saida_prevista`) mora em HOSPEDAGENS, não em
+  // S/PASSEIO — por isso nunca aparecia aqui, mesmo já sendo gravada desde a
+  // v1.9.4.11 (Bug B). É só exibição: lê e formata, não grava nada.
+  // Hospedagem antiga sem o campo → '—' (via `_fmtDataExibicao`), sem quebrar.
+  let saidaDet = '—';
+  try{
+    const _h = hospedagemNum ? HOSPEDAGENS[hospedagemNum] : null;
+    saidaDet = _fmtDataExibicao(_h && _h.saida_prevista);
+  }catch(e){}
   const rows = fromPasseio
     ? [
         ['Apartamento', apt],
@@ -3149,6 +3184,7 @@ function showDet(id, fromPasseio){
         ['Modelo / Cor', modelCor],
         ['Placa',        d.plate||'—'],
         ['Hóspede',      d.guest||'—'],
+        ['Data de check-out', saidaDet],
         ...(isLarge ? [['Veículo', '🚐 Carro grande']] : []),
         ['Observações',  d.obs||'—'],
         ['Status',       status],
@@ -3160,6 +3196,7 @@ function showDet(id, fromPasseio){
         ['Modelo / Cor', modelCor],
         ['Placa',        d.plate||'—'],
         ['Hóspede',      d.guest||'—'],
+        ['Data de check-out', saidaDet],
         ...(isLarge ? [['Veículo', '🚐 Carro grande']] : []),
         ['Observações',  d.obs||'—'],
         ['Status',       status],
@@ -4474,7 +4511,7 @@ function renderPainelDia(){
 
 function renderAgrupadoresPainel(){
   const startDay=(function(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
-  const hojeISO=new Date().toISOString().slice(0,10);
+  const hojeISO=_hojeLocalISO();   // v1.9.4.14: dia LOCAL, não UTC
 
   let checkinsHoje=0, checkoutsHoje=0, movtotaisHoje=0;
   let semVaga=0, semAssin=0, atrasados=0;
@@ -4647,7 +4684,7 @@ function _vagaIdDoGs(gs){
 function renderExpansaoHoje(filtro){
   filtro=filtro||'tudo';
   const startDay=(function(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
-  const hojeISO=new Date().toISOString().slice(0,10);
+  const hojeISO=_hojeLocalISO();   // v1.9.4.14: dia LOCAL, não UTC
   const checkins=[], checkoutsHoje=[], checkoutsAtrasados=[];
   for(const gs in HOSPEDAGENS){
     const h=HOSPEDAGENS[gs]; if(!h) continue;
@@ -4811,7 +4848,7 @@ window._modalCheckoutAtrasado = function(gs){
 window._abrirDatePickerNovaData = function(gs){
   const amanha=new Date();
   amanha.setDate(amanha.getDate()+1);
-  const minStr=amanha.toISOString().slice(0,10);
+  const minStr=_localISO(amanha);   // v1.9.4.14: dia LOCAL, não UTC
   const input=document.createElement('input');
   input.type='date';
   input.min=minStr;
@@ -8232,7 +8269,7 @@ function abrirDetalhesAguardando(gs){
     ['Modelo / Cor',[h.model,h.color].filter(Boolean).join(' · ')||'—'],
     ['Placa',h.plate||'—'],
     ['Hóspede',h.guest||'—'],
-    ['Saída prevista',h.saida_prevista||'—'],
+    ['Data de check-out',_fmtDataExibicao(h.saida_prevista)],   // v1.9.4.14: DD/MM/AAAA (era ISO cru)
     ['Operador check-in',h.usuario_checkin||'—'],
     ['Entrada',tsFmt],
     ['Status','⏳ Aguardando vaga'],
