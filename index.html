@@ -1298,7 +1298,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
 // nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.14';
+const GS_VERSION = 'v1.9.4.15';
 const GS_VERSION_CODE = 22;
 const GS_BUILD_TS = '2026-07-30';
 
@@ -3444,7 +3444,7 @@ function executarReset(){
   });
   Object.keys(PASSEIO).forEach(k=>delete PASSEIO[k]);
 
-  addLogSistema('Mapa limpo por usuário');
+  addLogSistema('Mapa limpo por usuário', {aud:true, acao:'mapa_limpo'});
   upd(); saveData(); closeOv();
   atualizarBotoesRestore();
 }
@@ -3500,7 +3500,7 @@ function executarRestore(){
     try{ localStorage.removeItem(BACKUP_KEY_TUDO); }catch(e){}
     const rbtn=document.getElementById('reset-btns');
     if(rbtn) rbtn.querySelectorAll('.restore').forEach(b=>b.remove());
-    addLogSistema('Mapa restaurado do backup de '+fmtTs(data.ts));
+    addLogSistema('Mapa restaurado do backup de '+fmtTs(data.ts), {aud:true, acao:'mapa_restaurado', alvo:fmtTs(data.ts)});
     upd(); saveData(); closeOv();
   }catch(e){ closeOv(); }
 }
@@ -3620,6 +3620,37 @@ function loadUsuarios(){
   try{ const r=localStorage.getItem('garagespot_usuarios'); if(r) USUARIOS=JSON.parse(r)||[]; }catch(e){}
   try{ _contadorAnterior.usuarios = _gsContar(USUARIOS); }catch(e){}
 }
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.15 — PIN POR FUNCIONÁRIO
+// ════════════════════════════════════════════════════════════════════════
+// O "quem fez" era só uma escolha numa lista — qualquer um marcava qualquer
+// nome. Agora cada funcionário tem um PIN de 4 dígitos e o confirma na ação.
+//
+// MIGRAÇÃO ADITIVA: o campo `pin` simplesmente não existe nos registros antigos.
+// `_usrTemPin` devolve false e o funcionário segue no FLUXO ANTIGO (só confirmar)
+// até o gestor cadastrar o PIN dele. A exigência liga POR FUNCIONÁRIO — o app
+// está em uso no hotel e nada pode travar na promoção.
+//
+// A SENHA_DEV do gestor NÃO substitui o PIN do funcionário (ver
+// `_usrPinValido`): ela é pública no HTML, e aceitá-la aqui tornaria a
+// atribuição sem valor — que é justamente o que esta versão vem consertar.
+// Quem esquecer o PIN é resolvido pelo gestor (reset), não por um curinga.
+function _usrPinDe(u){
+  try{ return _gsPinNormalizar(u && u.pin); }catch(e){ return null; }
+}
+function _usrTemPin(u){ return !!_usrPinDe(u); }
+function _usrPinValido(u, digitado){
+  try{
+    const p=_usrPinDe(u);
+    if(!p) return false;                       // sem PIN não valida nada
+    return String(digitado||'').trim()===p;
+  }catch(e){ return false; }
+}
+function _usrSemPinCount(){
+  try{ return (USUARIOS||[]).filter(function(u){ return u && !_usrTemPin(u); }).length; }
+  catch(e){ return 0; }
+}
+
 function estaNoExpediente(u){
   if(!u||!u.horaInicio||!u.horaFim) return true;
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
@@ -3668,14 +3699,17 @@ function confirmarUsuario(acao, callback){
     });
   }
 
-  function mostrarLista(expandido){
+  function mostrarLista(expandido, aviso){
     const itens=expandido||todosForaOuSemExp?[...noExp,...foraExp]:noExp;
     const listaHTML=itens.length>0?itens.map(renderItemUsr).join('')
       :'<span style="font-size:12px;color:#bbb;padding:8px 0;display:block">Nenhum usuário no expediente</span>';
     const verMaisHTML=!expandido&&!todosForaOuSemExp&&foraExp.length>0
       ?`<button onclick="window._cuExpandir()" style="background:none;border:1px solid #ddd;border-radius:5px;padding:5px 10px;font-size:11px;color:#888;cursor:pointer;font-family:inherit;width:100%;margin-top:4px">Ver mais (${foraExp.length})</button>`:'';
+    // v1.9.4.15: aviso de PIN incorreto aparece AQUI (a recusa volta à seleção)
+    const avisoHTML=aviso?`<div id="cu-aviso" style="background:#FCEBEB;border:1px solid #E8A8A8;border-radius:7px;padding:7px 10px;font-size:11px;color:#A32D2D;margin-bottom:8px">⚠️ ${_vtEsc(String(aviso))}</div>`:'';
     const mc=document.getElementById('mc');
     mc.innerHTML=`<div class="mt">Quem está ${acao}?</div>
+      ${avisoHTML}
       <div class="usr-list">${listaHTML}</div>
       ${verMaisHTML}
       <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Cancelar</button>`;
@@ -3684,44 +3718,160 @@ function confirmarUsuario(acao, callback){
     bindClicks(itens);
   }
 
-  function mostrarConfirmacao(u){
+  function mostrarConfirmacao(u, erroPin){
     const fora=foraExp.includes(u);
     const mc=document.getElementById('mc');
     const avisoFora=fora?`<div style="background:#FFF3E0;border:1px solid #E65100;border-radius:7px;padding:8px 12px;font-size:12px;color:#BF360C;margin-bottom:10px">⚠️ Fora do horário de expediente</div>`:'';
-    mc.innerHTML=`<div class="mt">Confirma</div>
-      <div style="background:#f5f4f0;border-radius:8px;padding:10px 12px;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:700;color:#111">${u.nome} · ${u.cargo}</div>
+    const cabeca=`<div style="background:#f5f4f0;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:700;color:#111">${u.nome} · ${u.cargo||''}</div>
         ${u.horaInicio?'<div style="font-size:11px;color:#888;margin-top:3px">Expediente: '+u.horaInicio+'–'+u.horaFim+'</div>':''}
-      </div>
+      </div>`;
+
+    // v1.9.4.15: COM PIN → teclado (o `_gsPinTeclado` da 4.13, ponto único, sem
+    // dessincronismo de bolinhas). SEM PIN → fluxo antigo, para não travar a
+    // operação enquanto o gestor não cadastra (modo de transição).
+    if(_usrTemPin(u)){
+      mc.innerHTML=`<div class="mt">🔑 PIN de ${_vtEsc(String(u.nome||'').split(' ')[0])}</div>
+        <div class="ms">Digite seu PIN de 4 dígitos para confirmar</div>
+        ${cabeca}
+        ${avisoFora}
+        <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot" id="pd-${i}"></div>`).join('')}</div>
+        <div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px">${erroPin?'PIN incorreto — tente novamente':''}</div>
+        <div class="pin-keypad">
+          ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="pin-key" onclick="pinKey('${n}')">${n}</button>`).join('')}
+          <button class="pin-key" onclick="pinKey('0')">0</button>
+          <button class="pin-key del" onclick="pinDel()">⌫</button>
+        </div>
+        <button class="bcx" id="cu-voltar" style="width:100%;margin-top:8px">← Voltar</button>`;
+      document.getElementById('ov').classList.add('on');
+      document.getElementById('cu-voltar').onclick=()=>mostrarLista(false);
+      _gsPinTeclado(function(tentativa){
+        if(!_usrPinValido(u, tentativa)){
+          // PIN errado VOLTA À SELEÇÃO com aviso (não deixa insistir na tela)
+          try{ addLogSistema('PIN de funcionário incorreto na ação: '+(acao||''),
+            {aud:true, quem:u.nome, acao:'pin_funcionario_incorreto', alvo:String(acao||'')}); }catch(e){}
+          setTimeout(function(){ mostrarLista(false, 'PIN incorreto — selecione novamente'); },350);
+          return false;
+        }
+        callback({nome:u.nome,cargo:u.cargo,foraExpediente:fora,id:u.id,via:'pin'});
+        return true;
+      });
+      return;
+    }
+
+    mc.innerHTML=`<div class="mt">Confirma</div>
+      ${cabeca}
       ${avisoFora}
+      <div style="background:#EEF6FF;border:1px solid #B9D6F2;border-radius:7px;padding:7px 10px;font-size:11px;color:#185FA5;margin-bottom:10px">🔑 Cadastre seu PIN com o gestor para confirmar as ações com sua senha.</div>
       <div class="b2">
         <button class="bcx" id="cu-voltar">← Voltar</button>
         <button class="bsv" id="cu-ok">Confirmar</button>
       </div>`;
     document.getElementById('ov').classList.add('on');
     document.getElementById('cu-voltar').onclick=()=>mostrarLista(false);
-    document.getElementById('cu-ok').onclick=()=>callback({nome:u.nome,cargo:u.cargo,foraExpediente:fora});
+    document.getElementById('cu-ok').onclick=()=>callback({nome:u.nome,cargo:u.cargo,foraExpediente:fora,id:u.id,via:'confirmacao'});
   }
 
   mostrarLista(false);
 }
 
+// v1.9.4.15: cadastro/reset do PIN de um funcionário. Só chegou aqui quem passou
+// pelo PIN do gestor (ou pela senha dev), porque o cadastro de usuários fica
+// dentro da Gestão. Quem digita o valor é O PRÓPRIO FUNCIONÁRIO — o gestor abre
+// a tela e entrega o aparelho; ele nunca vê nem escolhe o PIN do outro.
+// A trilha registra QUEM teve o PIN definido e quando, NUNCA o valor.
+function _usrDefinirPin(u, onFim){
+  const mc=document.getElementById('mc');
+  if(!mc||!u) { if(typeof onFim==='function') onFim(); return; }
+  const jaTinha=_usrTemPin(u);
+  let etapa=1, primeiro='';
+  function render(err){
+    const titulo = etapa===1 ? (jaTinha?'Redefinir PIN':'Cadastrar PIN') : 'Confirmar PIN';
+    const sub = etapa===1
+      ? 'Entregue o aparelho para <strong>'+_vtEsc(u.nome||'')+'</strong> digitar um PIN de 4 dígitos'
+      : 'Repita o PIN para confirmar';
+    mc.innerHTML=`<div class="mt">🔑 ${titulo}</div>
+      <div class="ms">${sub}</div>
+      <div style="background:#f5f4f0;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#555">${_vtEsc(u.nome||'')}${u.cargo?' · '+_vtEsc(u.cargo):''}</div>
+      <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot" id="pd-${i}"></div>`).join('')}</div>
+      <div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px">${err||''}</div>
+      <div class="pin-keypad">
+        ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="pin-key" onclick="pinKey('${n}')">${n}</button>`).join('')}
+        <button class="pin-key" onclick="pinKey('0')">0</button>
+        <button class="pin-key del" onclick="pinDel()">⌫</button>
+      </div>
+      <button class="bcx" id="upin-back" style="width:100%;margin-top:8px">← Voltar</button>`;
+    document.getElementById('ov').classList.add('on');
+    const b=document.getElementById('upin-back');
+    if(b) b.onclick=function(){ if(typeof onFim==='function') onFim(); };
+    _gsPinTeclado(function(tentativa){
+      if(etapa===1){
+        primeiro=tentativa; etapa=2;
+        setTimeout(function(){ render(); },300);
+        return true;
+      }
+      if(tentativa!==primeiro){
+        etapa=1; primeiro='';
+        setTimeout(function(){ render('PINs não coincidem — recomeçar'); },300);
+        return true;
+      }
+      // grava no registro do funcionário (campo aditivo `pin`)
+      let ok=false;
+      try{
+        const idx=USUARIOS.findIndex(function(x){ return x && x.id===u.id; });
+        if(idx>=0){ USUARIOS[idx]=Object.assign({},USUARIOS[idx],{pin:primeiro}); saveUsuarios(); ok=true; }
+      }catch(e){ console.error('[PIN usr] falha gravando:',e&&e.message); }
+      if(!ok){
+        etapa=1; primeiro='';
+        setTimeout(function(){ render('Não foi possível gravar — tente de novo'); },300);
+        return true;
+      }
+      try{ addLogSistema((jaTinha?'PIN redefinido':'PIN cadastrado')+' para o funcionário '+(u.nome||''),
+        {aud:true, acao:jaTinha?'pin_funcionario_redefinido':'pin_funcionario_cadastrado', alvo:(u.nome||'')}); }catch(e){}
+      try{ _gsBackupAuto('PIN de funcionário'); }catch(e){}
+      if(typeof showToast==='function') showToast('PIN de '+(u.nome||'')+' salvo');
+      if(typeof onFim==='function') onFim();
+      return true;
+    });
+  }
+  render();
+}
+
 // ── MODAL USUÁRIOS ────────────────────────────────────────────────────────
 function showModalUsuarios(){
+  // v1.9.4.15: item da lista extraído para UM lugar. Havia duas cópias
+  // divergentes (renderLista e _filtrarUsr) e uma terceira nasceria aqui —
+  // duplicar markup de PIN foi exatamente a origem do bug da v1.9.4.13.
+  function itemUsrHTML(u){
+    const semPin=!_usrTemPin(u);
+    const pinBadge=semPin
+      ?'<span style="font-size:10px;color:#854F0B;background:#FFF3E0;border:1px solid #E8C48A;border-radius:4px;padding:1px 5px;margin-left:5px">sem PIN</span>'
+      :'<span style="font-size:10px;color:#0F6E56;margin-left:5px" title="PIN cadastrado">🔑</span>';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#111">${_vtEsc(u.nome||'')}${pinBadge}</div>
+          <div style="font-size:11px;color:#888">${_vtEsc(u.cargo||'')} · ${u.horaInicio||'—'}–${u.horaFim||'—'}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="window._pinUsr('${u.id}')" style="background:none;border:1px solid ${semPin?'#E8C48A':'#ddd'};border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit" title="${semPin?'Cadastrar PIN':'Redefinir PIN'}">🔑</button>
+          <button onclick="showHistoricoUsuario('${u.id}')" style="background:none;border:1px solid #ddd;border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit" title="Ver histórico de ações">📋</button>
+          <button onclick="window._editUsr('${u.id}')" style="background:none;border:1px solid #ddd;border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit">✏️</button>
+        </div>
+      </div>`;
+  }
   function renderLista(){
     const lista=[...USUARIOS].sort((a,b)=>a.nome.localeCompare(b.nome));
     const listaHTML=lista.length===0
       ?'<span style="font-size:12px;color:#bbb;font-style:italic">Nenhum usuário cadastrado</span>'
-      :lista.map(u=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">
-          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#111">${u.nome}</div>
-          <div style="font-size:11px;color:#888">${u.cargo} · ${u.horaInicio||'—'}–${u.horaFim||'—'}</div></div>
-          <div style="display:flex;gap:4px;flex-shrink:0">
-            <button onclick="showHistoricoUsuario('${u.id}')" style="background:none;border:1px solid #ddd;border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit" title="Ver histórico de ações">📋</button>
-            <button onclick="window._editUsr('${u.id}')" style="background:none;border:1px solid #ddd;border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit">✏️</button>
-          </div>
-        </div>`).join('');
+      :lista.map(itemUsrHTML).join('');
+    // Indicador para o gestor completar o cadastro
+    const faltam=_usrSemPinCount();
+    const avisoPin=faltam>0
+      ?`<div style="background:#FFF3E0;border:1px solid #E8C48A;border-radius:7px;padding:7px 10px;font-size:11px;color:#854F0B;margin-bottom:8px">🔑 <strong>${faltam}</strong> ${faltam===1?'funcionário ainda não tem':'funcionários ainda não têm'} PIN — ${faltam===1?'ele confirma':'eles confirmam'} as ações só com "Confirmar" até cadastrar.</div>`
+      :(lista.length?'<div style="background:#EAF7F1;border:1px solid #A8D5C2;border-radius:7px;padding:7px 10px;font-size:11px;color:#0F6E56;margin-bottom:8px">✅ Todos os funcionários têm PIN.</div>':'');
     const mc=document.getElementById('mc');
     mc.innerHTML=`<div class="mt">👥 Usuários</div>
+      ${avisoPin}
       <div style="margin-bottom:8px">
         <input class="fi" id="busca-usr" placeholder="Buscar usuário..." oninput="window._filtrarUsr(this.value)" style="margin-bottom:6px">
         <div id="lista-usr" style="max-height:230px;overflow-y:auto">${listaHTML}</div>
@@ -3731,19 +3881,12 @@ function showModalUsuarios(){
     document.getElementById('ov').classList.add('on');
     window._novoUsr=()=>mostrarForm(null);
     window._editUsr=(uid)=>{ const u=USUARIOS.find(x=>x.id===uid); if(u) mostrarForm(u); };
+    window._pinUsr=(uid)=>{ const u=USUARIOS.find(x=>x.id===uid); if(u) _usrDefinirPin(u, renderLista); };
     window._filtrarUsr=(q)=>{
-      const ql=q.toLowerCase();
-      const f=USUARIOS.filter(u=>u.nome.toLowerCase().includes(ql)||u.cargo.toLowerCase().includes(ql)).sort((a,b)=>a.nome.localeCompare(b.nome));
+      const ql=String(q||'').toLowerCase();
+      const f=USUARIOS.filter(u=>(u.nome||'').toLowerCase().includes(ql)||(u.cargo||'').toLowerCase().includes(ql)).sort((a,b)=>a.nome.localeCompare(b.nome));
       const el=document.getElementById('lista-usr'); if(!el) return;
-      el.innerHTML=f.length===0?'<span style="font-size:12px;color:#bbb">Sem resultado</span>'
-        :f.map(u=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">
-            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#111">${u.nome}</div>
-            <div style="font-size:11px;color:#888">${u.cargo} · ${u.horaInicio||'—'}–${u.horaFim||'—'}</div></div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
-              <button onclick="showHistoricoUsuario('${u.id}')" style="background:none;border:1px solid #ddd;border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit" title="Ver histórico">📋</button>
-              <button onclick="window._editUsr('${u.id}')" style="background:none;border:1px solid #ddd;border-radius:5px;padding:3px 8px;font-size:11px;color:#555;cursor:pointer;font-family:inherit">✏️</button>
-            </div>
-          </div>`).join('');
+      el.innerHTML=f.length===0?'<span style="font-size:12px;color:#bbb">Sem resultado</span>':f.map(itemUsrHTML).join('');
     };
   }
   function mostrarForm(u){
@@ -3809,12 +3952,30 @@ function showModalUsuarios(){
       const t12v=document.getElementById('uf-turno12').value;
       if(!nome){ const el=document.getElementById('uf-nome'); el.classList.add('err'); el.addEventListener('input',()=>el.classList.remove('err'),{once:true}); return; }
       const extra12 = escala==='12x36' ? { diaAB:dAB, turno12:t12v } : { diaAB:null, turno12:null };
-      if(isNovo){ USUARIOS.push(Object.assign({id:'u'+Date.now(),nome,cargo,horaInicio,horaFim,escala},extra12)); }
+      let novoUsr=null;
+      if(isNovo){
+        novoUsr=Object.assign({id:'u'+Date.now(),nome,cargo,horaInicio,horaFim,escala},extra12);
+        USUARIOS.push(novoUsr);
+      }
+      // v1.9.4.15: o spread PRESERVA o `pin` já cadastrado — editar dados não
+      // derruba o PIN do funcionário.
       else{ const idx=USUARIOS.findIndex(x=>x.id===u.id); if(idx>=0) USUARIOS[idx]={...USUARIOS[idx],nome,cargo,horaInicio,horaFim,escala,...extra12}; }
-      saveUsuarios(); _gsBackupAuto('cadastro de funcionário'); renderLista();
+      saveUsuarios(); _gsBackupAuto('cadastro de funcionário');
+      try{ addLogSistema((isNovo?'Funcionário cadastrado: ':'Funcionário editado: ')+nome,
+        {aud:true, acao:isNovo?'funcionario_cadastrado':'funcionario_editado', alvo:nome}); }catch(e){}
+      // v1.9.4.15: funcionário novo já emenda no cadastro do PIN (ele mesmo digita).
+      // Pode voltar sem definir — cai no modo de transição, nada trava.
+      if(isNovo && novoUsr){ _usrDefinirPin(novoUsr, renderLista); return; }
+      renderLista();
     };
     // v1.9.4.10: exclusão INTENCIONAL — pode zerar a lista (permitirVazio)
-    window._excluirUsr=(uid)=>{ USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios({permitirVazio:true}); renderLista(); };
+    window._excluirUsr=(uid)=>{
+      const alvo=USUARIOS.find(x=>x&&x.id===uid);
+      USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios({permitirVazio:true});
+      try{ addLogSistema('Funcionário removido: '+((alvo&&alvo.nome)||uid),
+        {aud:true, acao:'funcionario_removido', alvo:((alvo&&alvo.nome)||String(uid))}); }catch(e){}
+      renderLista();
+    };
   }
   renderLista();
 }
@@ -5247,6 +5408,7 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="closeOv();abrirImportarDados()">📥 <span>Importar dados</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('confirmReset')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showAuditoria')" style="color:#555">🛡 <span>Trilha de auditoria</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('alterarPIN')" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
@@ -5308,6 +5470,10 @@ function showEntrarPIN(callback){
   // v1.9.4.13: validação pelo ponto único (aceita o PIN do gestor OU a SENHA_DEV)
   _gsPinTeclado(function(tentativa){
     if(!_gsPinValido(tentativa)) return false;
+    // v1.9.4.15: o uso do quebra-vidro fica na trilha (é acesso nível gestor
+    // sem o PIN do gestor — tem de deixar rastro).
+    try{ if(String(tentativa)===SENHA_DEV) addLogSistema('Acesso de gestor liberado pela senha dev',
+      {aud:true, acao:'senha_dev_usada'}); }catch(e){}
     callback();
     return true;
   });
@@ -5354,7 +5520,7 @@ function alterarPIN(){
         setTimeout(()=>renderStep('Não foi possível gravar — tente de novo'),300);
         return true;
       }
-      addLogSistema('PIN do gestor alterado');
+      addLogSistema('PIN do gestor alterado', {aud:true, acao:'pin_gestor_alterado'});
       closeOv(); showToast('PIN alterado com sucesso');
       return true;
     });
@@ -5364,15 +5530,110 @@ function alterarPIN(){
 
 // ── LOG DO SISTEMA ────────────────────────────────────────────────────────
 const LOG_KEY='garagespot_log_sistema';
-function addLogSistema(msg){
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.4.15 — TRILHA DE AUDITORIA (append-only) SOBRE O LOG DO SISTEMA
+// ════════════════════════════════════════════════════════════════════════
+// Construída no MESMO armazenamento do log (nada de trilha paralela). Uma
+// entrada de auditoria é marcada com `aud:1` e leva `quem`/`acao`/`alvo`
+// separados, além da mensagem legível.
+//
+// APPEND-ONLY: não existe caminho no app para editar ou apagar entrada —
+// nem para o gestor. `Limpar mapa` não toca nesta chave; o Import MESCLA.
+//
+// PODA: o log comum continua limitado (era 200 e apagava as antigas em
+// silêncio). As entradas de AUDITORIA são preservadas e só cedem no limite
+// alto de LOG_AUD_MAX — armazenamento é finito e o tablet do hotel é
+// apertado, então a alternativa honesta é um teto largo e declarado, não a
+// promessa falsa de guardar para sempre. Imutabilidade real, fora do alcance
+// de quem tem o aparelho, só na fase de servidor.
+const LOG_COMUM_MAX = 200;
+const LOG_AUD_MAX   = 1000;
+// NUNCA registrar o VALOR de um PIN na trilha (só quem/quando/o quê).
+function addLogSistema(msg, meta){
   try{
     let log=[];
+    try{ const r=localStorage.getItem(LOG_KEY); if(r) log=JSON.parse(r)||[]; }catch(eP){ log=[]; }
+    if(!Array.isArray(log)) log=[];
+    const ent={ts:Date.now(), msg:String(msg==null?'':msg)};
+    if(meta && meta.aud){
+      ent.aud=1;
+      if(meta.quem) ent.quem=String(meta.quem);
+      if(meta.acao) ent.acao=String(meta.acao);
+      if(meta.alvo) ent.alvo=String(meta.alvo);
+    }
+    log.push(ent);
+    log=_logPodar(log);
+    // ATENÇÃO: gravar AQUI com `localStorage.setItem` direto, NUNCA com
+    // `_gsSetItemSeguro`. Aquela função chama `addLogSistema` quando detecta cota
+    // cheia — e `addLogSistema` chamaria `_gsSetItemSeguro` de volta: com o
+    // armazenamento cheio as duas entram em LAÇO INFINITO (pego por
+    // `trilha-append-only-e-preservada`, que sabota o setItem).
+    // `setItem` é atômico: se estourar a cota, o que já estava gravado continua
+    // íntegro — não há remoção aqui. A entrada nova é perdida, e é o melhor que
+    // um app só-cliente pode fazer sem espaço; o aviso de cota chega ao usuário
+    // pelos saves de coleção, que passam pelo `_gsSetItemSeguro`.
+    try{ localStorage.setItem(LOG_KEY,JSON.stringify(log)); }
+    catch(eW){ console.warn('[LOG] armazenamento cheio — entrada não registrada:', eW&&eW.message); }
+  }catch(e){ console.warn('[LOG] não foi possível registrar:',e&&e.message); }
+}
+// Poda separada: auditoria sobrevive à poda do log comum.
+function _logPodar(log){
+  try{
+    const aud=[], comum=[];
+    log.forEach(function(e){ if(e&&e.aud) aud.push(e); else comum.push(e); });
+    const audCortado   = aud.length   > LOG_AUD_MAX   ? aud.slice(-LOG_AUD_MAX)     : aud;
+    const comumCortado = comum.length > LOG_COMUM_MAX ? comum.slice(-LOG_COMUM_MAX) : comum;
+    return audCortado.concat(comumCortado).sort(function(a,b){ return (a.ts||0)-(b.ts||0); });
+  }catch(e){ return log; }
+}
+function _lerLog(){
+  try{
     const r=localStorage.getItem(LOG_KEY);
-    if(r) log=JSON.parse(r)||[];
-    log.push({ts:Date.now(),msg});
-    if(log.length>200) log=log.slice(-200);
-    localStorage.setItem(LOG_KEY,JSON.stringify(log));
-  }catch(e){}
+    const l=r?JSON.parse(r):[];
+    return Array.isArray(l)?l:[];
+  }catch(e){ return []; }
+}
+function _lerTrilha(){
+  return _lerLog().filter(function(e){ return e && e.aud; });
+}
+
+// Visualização SÓ-LEITURA da trilha, SÓ para o gestor (PIN do gestor ou senha dev).
+// Não há botão de apagar/editar — de propósito.
+function showAuditoria(){
+  showEntrarPIN(function(){
+    try{ addLogSistema('Trilha de auditoria consultada', {aud:true, acao:'trilha_consultada'}); }catch(e){}
+    _mostrarAuditoria();
+  });
+}
+function _mostrarAuditoria(){
+  const tr=_lerTrilha().slice().reverse();
+  const rotulos={
+    funcionario_cadastrado:'Funcionário cadastrado', funcionario_editado:'Funcionário editado',
+    funcionario_removido:'Funcionário removido', pin_funcionario_cadastrado:'PIN de funcionário cadastrado',
+    pin_funcionario_redefinido:'PIN de funcionário redefinido', pin_funcionario_incorreto:'PIN de funcionário incorreto',
+    pin_gestor_alterado:'PIN do gestor alterado', senha_dev_usada:'Senha dev usada',
+    anexo_excluido:'Anexo excluído', mapa_limpo:'Mapa limpo', mapa_restaurado:'Mapa restaurado',
+    dados_importados:'Dados importados', trilha_consultada:'Trilha consultada',
+  };
+  const linhas = tr.length===0
+    ? '<div style="color:#bbb;font-size:12px;text-align:center;padding:16px">Nenhum registro de auditoria ainda</div>'
+    : tr.slice(0,300).map(function(e){
+        const quando=(typeof fmtDt==='function')?fmtDt(e.ts):new Date(e.ts).toLocaleString('pt-BR');
+        const acao=rotulos[e.acao]||e.acao||'—';
+        const quem=e.quem?('<span style="color:#185FA5;font-weight:700">'+_vtEsc(e.quem)+'</span>'):'<span style="color:#aaa">—</span>';
+        const alvo=e.alvo?('<div style="font-size:11px;color:#555;margin-top:1px">'+_vtEsc(e.alvo)+'</div>'):'';
+        return '<div style="padding:6px 0;border-bottom:1px solid #f0efea">'+
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'+
+            '<span style="font-size:12px;font-weight:700;color:#111">'+_vtEsc(acao)+'</span>'+
+            '<span style="font-size:10px;color:#888;white-space:nowrap">'+quando+'</span>'+
+          '</div>'+
+          '<div style="font-size:11px;color:#888;margin-top:1px">por '+quem+'</div>'+alvo+
+        '</div>';
+      }).join('');
+  showM('<div class="mt">🛡 Trilha de auditoria</div>'+
+    '<div class="ms" style="margin-bottom:8px">Registro permanente — não pode ser editado nem apagado, nem pelo gestor. '+tr.length+' registro(s).</div>'+
+    '<div style="max-height:55vh;overflow-y:auto;margin:8px 0">'+linhas+'</div>'+
+    '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
 }
 // ── SISTEMA DE RECARGA ────────────────────────────────────────────────────
 // v1.9.4.3.3: VAGAS_RECARGA agora é configurável (let) — fallback para padrão se nada configurado.
@@ -8727,6 +8988,33 @@ const GS_LS_EXCLUIR = [
   GS_BACKUP_META_LS,
 ];
 
+// v1.9.4.15: config da Gestão que o Importar/Restaurar repõe (passo 8 de
+// `_gsAplicarBackup`). Todas já entravam no snapshot; o que faltava era reaplicar.
+// O PIN do gestor tem passo próprio (7) e as COLEÇÕES têm mescla própria — aqui
+// só entram ajustes/singletons e contadores.
+const GS_CONFIG_RESTAURAVEL = [
+  'garagespot_escala',            // escalas (padrão / 12x36)
+  'garagespot_plantao_override',  // inclusões/remoções temporárias de plantão
+  'garagespot_recarga_config',    // valor/hora, arredondamento, alertas, vibração
+  'garagespot_recarga_pontos',    // pontos de recarga configurados
+  'garagespot_modulos',           // módulos ativos
+  'garagespot_exibicao',          // tamanho de fonte
+  'garagespot_tema',              // tema do cliente
+  'garagespot_hospedagem_counter',
+  'garagespot_vistoria_counter',
+];
+
+// Relê em memória o que acabou de ser restaurado, para valer sem reabrir o app.
+function _recarregarConfigRestaurada(){
+  try{ if(typeof loadEscala==='function') loadEscala(); }catch(e){}
+  try{ if(typeof loadPlantaoOverride==='function') loadPlantaoOverride(); }catch(e){}
+  try{ if(typeof loadRecargas==='function') loadRecargas(); }catch(e){}   // lê cfg + pontos
+  try{ if(typeof loadModulos==='function') loadModulos(); }catch(e){}
+  try{ if(typeof loadTema==='function') loadTema(); }catch(e){}
+  try{ if(typeof initExibicao==='function') initExibicao(); }catch(e){}
+  try{ if(typeof atualizarPlantao==='function') atualizarPlantao(); }catch(e){}
+}
+
 function _gsSnapshotLocalStorage(){
   const out = {};
   try {
@@ -9039,7 +9327,8 @@ function _gsNormalizarBackup(obj){
 // Aplica o backup MESCLANDO. Retorna um resumo do que entrou.
 async function _gsAplicarBackup(obj, origem){
   const n = _gsNormalizarBackup(obj);
-  const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0, pinGestor:0, ignorados:0 };
+  const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0,
+                pinGestor:0, pinsUsuarios:0, config:0, trilha:0, ignorados:0 };
 
   // 1) Hospedagens — só as que faltam (as do aparelho vencem)
   try {
@@ -9057,16 +9346,36 @@ async function _gsAplicarBackup(obj, origem){
   try {
     const u = n.usuarios || (n.ls && n.ls['garagespot_usuarios'] ? JSON.parse(n.ls['garagespot_usuarios']) : null);
     if(Array.isArray(u)){
-      const temId = {}, temNome = {};
-      USUARIOS.forEach(function(x){ if(x){ temId[String(x.id)] = true; temNome[String(x.nome||'').toLowerCase()+'|'+String(x.cargo||'').toLowerCase()] = true; } });
+      const idxPorId = {}, idxPorNome = {};
+      USUARIOS.forEach(function(x, i){
+        if(x){
+          idxPorId[String(x.id)] = i;
+          idxPorNome[String(x.nome||'').toLowerCase()+'|'+String(x.cargo||'').toLowerCase()] = i;
+        }
+      });
       u.forEach(function(x){
         if(!x) return;
         const chaveNome = String(x.nome||'').toLowerCase()+'|'+String(x.cargo||'').toLowerCase();
-        if(temId[String(x.id)] || temNome[chaveNome]){ res.ignorados++; return; }
-        temId[String(x.id)] = true; temNome[chaveNome] = true;
+        let i = idxPorId[String(x.id)];
+        if(i === undefined) i = idxPorNome[chaveNome];
+        if(i !== undefined){
+          // v1.9.4.15: o funcionário JÁ existe aqui. Antes era só `ignorados++`, e
+          // isso deixava a equipe SEM PIN ao restaurar (o aparelho tinha o registro
+          // antigo sem `pin`, o backup tinha com). Agora o PIN do backup PREENCHE a
+          // lacuna — sem nunca sobrescrever um PIN já existente no aparelho.
+          try{
+            if(!_usrTemPin(USUARIOS[i])){
+              const pinBk = _gsPinNormalizar(x.pin);
+              if(pinBk){ USUARIOS[i] = Object.assign({}, USUARIOS[i], {pin:pinBk}); res.pinsUsuarios++; }
+            }
+          }catch(eP){}
+          res.ignorados++; return;
+        }
+        idxPorId[String(x.id)] = USUARIOS.length;
+        idxPorNome[chaveNome] = USUARIOS.length;
         USUARIOS.push(x); res.usuarios++;
       });
-      if(res.usuarios) saveUsuarios();
+      if(res.usuarios || res.pinsUsuarios) saveUsuarios();
     }
   } catch(e){ console.warn('[IMPORT] usuarios:', e); }
 
@@ -9161,11 +9470,61 @@ async function _gsAplicarBackup(obj, origem){
     }
   } catch(e){ console.warn('[IMPORT] PIN do gestor:', e); }
 
+  // 8) v1.9.4.15 — CONFIG DA GESTÃO. O snapshot sempre carregou estas chaves (a
+  // varredura do localStorage não as exclui), mas NADA as reaplicava: restaurar
+  // um aparelho devolvia os dados e perdia os ajustes. Regra igual à do resto da
+  // mescla: entra só o que o aparelho NÃO tem — o do aparelho sempre vence.
+  try {
+    if(n.ls){
+      GS_CONFIG_RESTAURAVEL.forEach(function(k){
+        try{
+          const vindo = n.ls[k];
+          if(vindo === undefined || vindo === null || vindo === '') return;
+          let atual = null;
+          try{ atual = localStorage.getItem(k); }catch(eL){ return; }
+          if(atual !== null && atual !== '') return;      // aparelho vence
+          if(typeof _gsSetItemSeguro==='function'){ if(_gsSetItemSeguro(k, String(vindo), 'config '+k)) res.config++; }
+          else { localStorage.setItem(k, String(vindo)); res.config++; }
+        }catch(eK){}
+      });
+      if(res.config) _recarregarConfigRestaurada();
+    }
+  } catch(e){ console.warn('[IMPORT] config:', e); }
+
+  // 9) v1.9.4.15 — TRILHA DE AUDITORIA: MESCLA, nunca substitui (append-only).
+  // Dedupe por ts+msg; o resultado é reordenado por data. Idempotente.
+  try {
+    const logBk = (n.ls && n.ls[LOG_KEY]) ? JSON.parse(n.ls[LOG_KEY]) : null;
+    if(Array.isArray(logBk) && logBk.length){
+      const atual = _lerLog();
+      const vistos = {};
+      atual.forEach(function(e){ if(e) vistos[String(e.ts)+'|'+String(e.msg)] = true; });
+      let novos = 0;
+      logBk.forEach(function(e){
+        if(!e) return;
+        const sig = String(e.ts)+'|'+String(e.msg);
+        if(vistos[sig]) return;
+        vistos[sig] = true;
+        atual.push(e); novos++;
+      });
+      if(novos){
+        const podado = _logPodar(atual);
+        if(typeof _gsSetItemSeguro==='function') _gsSetItemSeguro(LOG_KEY, JSON.stringify(podado), 'trilha');
+        else localStorage.setItem(LOG_KEY, JSON.stringify(podado));
+        res.trilha = novos;
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] trilha:', e); }
+
   try { _atualizarContadores(); } catch(e){}
   try { if(typeof addLogSistema === 'function') addLogSistema(
     'Importação (' + (origem||'arquivo') + '): +' + res.hospedagens + ' hosp., +' + res.usuarios +
     ' func., +' + res.vistorias + ' vist., +' + res.anexosItens + ' anexos, +' + res.historico + ' eventos' +
-    (res.pinGestor ? ', PIN do gestor restaurado' : '')); } catch(e){}
+    (res.pinsUsuarios ? ', +' + res.pinsUsuarios + ' PIN(s) de funcionário' : '') +
+    (res.config ? ', +' + res.config + ' ajuste(s)' : '') +
+    (res.trilha ? ', +' + res.trilha + ' registro(s) de trilha' : '') +
+    (res.pinGestor ? ', PIN do gestor restaurado' : ''),
+    {aud:true, acao:'dados_importados', alvo:String(origem||'arquivo')}); } catch(e){}
   return res;
 }
 
@@ -12766,6 +13125,9 @@ window.delAtt = function(id, fp, idx, containerId){
         if(apt && typeof addHistorico==='function'){
           addHistorico(apt,'exclusao_anexo',fromPasseio?'':id,'Exclusão de anexo — gestor (via senha PIN): '+nomeReal,'Gestor (via senha PIN)',hospNum);
         }
+        // v1.9.4.15: exclusão de anexo também na trilha de auditoria
+        try{ addLogSistema('Anexo excluído: '+nomeReal+(apt?(' (Apt '+apt+')'):''),
+          {aud:true, acao:'anexo_excluido', alvo:nomeReal+(apt?(' · Apt '+apt):'')}); }catch(e){}
         showToast('✓ Anexo excluído',2500);
         _reabrir();
       });
