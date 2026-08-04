@@ -1304,11 +1304,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 
 <script>
-// v1.9.4.10: string de versão atualizada. versionCode permanece 22 no JS (sem APK build
-// nesta release — correções 100% HTML/CSS/JS). O versionCode NATIVO do APK do hotel é 23.
-const GS_VERSION = 'v1.9.4.16';
-const GS_VERSION_CODE = 22;
-const GS_BUILD_TS = '2026-07-30';
+// v1.9.5.0: PRIMEIRA mudança NATIVA desde a 4.7 (plugin de login Google) → APK
+// rebuildado. O versionCode do JS volta a bater com o do `android/app/build.gradle`
+// (24) — desde a 4.10 ele ficava em 22 porque as releases eram só HTML/CSS/JS.
+const GS_VERSION = 'v1.9.5.0';
+const GS_VERSION_CODE = 24;
+const GS_BUILD_TS = '2026-08-04';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -4785,7 +4786,7 @@ function renderPainelDia(){
 
   <!-- v1.9.4.2: versão visível no rodapé do Painel + 5 toques abre painel de debug -->
   <div id="gs-versao-rodape" onclick="_debugVersaoTap()" style="text-align:center;font-size:10px;color:#aaa;padding:10px 0 16px;font-family:inherit;cursor:pointer;user-select:none">
-    GarageSpot ${GS_VERSION} · build ${GS_BUILD_TS} · versionCode ${GS_VERSION_CODE}
+    GarageSpot ${GS_VERSION} · <span id="gs-ambiente-rodape">${_gsAmbiente().rotulo}</span> · build ${GS_BUILD_TS} · versionCode ${GS_VERSION_CODE}
   </div>`;
 
   // v1.9.4.1.3: recalcular contadores dos agrupadores após renderizar
@@ -9086,7 +9087,15 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   _gsBackupAuto('designação '+p.gs); // v1.9.4.11
 }
 // ── BACKUP LOCAL ──────────────────────────────────────────────────────────
-let DRIVE_STATUS = {conectado:false,email:'',ultimo_backup:null,falha_backup:false};
+// ATENÇÃO (v1.9.5.0): `ultimo_backup` e `falha_backup` são do BACKUP LOCAL — estão
+// aqui desde a v1.6 e são lidos pelo Painel e por `_renderBackupStatus`. A nuvem
+// (Fase 2) usa campos PRÓPRIOS `nuvem_*`; não reaproveitar os de cima, senão uma
+// falha de rede passaria a acusar "backup local falhou" (e vice-versa).
+let DRIVE_STATUS = {
+  conectado:false, email:'', ultimo_backup:null, falha_backup:false,     // LOCAL
+  nuvem_conectada:false, nuvem_email:'', nuvem_ultimo_backup:null,       // NUVEM
+  nuvem_falha:false, nuvem_ultimo_erro:'', nuvem_pasta_id:'', nuvem_enviados:0,
+};
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
 function saveDriveStatus(){ try{localStorage.setItem(DRIVE_STATUS_LS,JSON.stringify(DRIVE_STATUS));}catch(e){} }
@@ -9299,6 +9308,11 @@ async function fazerBackupLocal(motivo, opts){
     saveDriveStatus();
     // Bug latente v1.9.4.1.8: era logSistema (não definido) — causava ReferenceError em cada backup/designação
     if(typeof addLogSistema === 'function') addLogSistema('Backup ('+snap.tipo+'): '+(motivo||'manual')+' — '+nome);
+    // v1.9.5.0 — NUVEM: espelha no Drive só a cadência COMPLETA (a leve roda a cada
+    // mudança; subir tudo isso viraria centenas de arquivos por dia na conta do
+    // hotel). Fire-and-forget: o backup local ACIMA já está gravado, então nenhuma
+    // falha de rede daqui para baixo pode afetá-lo.
+    if(comFotos) _gdEspelharNoDrive(nome, json, motivo);
     return {ok:true,nome,tipo:snap.tipo,contagens:snap.contagens};
   }catch(e){
     DRIVE_STATUS.falha_backup=true;
@@ -9732,6 +9746,436 @@ function _gsConfirmarImportacao(obj, nomeArq){
       showEntrarPIN(function(){ aplicar(); });
     };
   },50);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.5.0 — FASE 2: NUVEM (GOOGLE DRIVE)  ·  backup + restauração
+// ════════════════════════════════════════════════════════════════════════════
+// O QUE ESTA FASE É: recuperação. Se o tablet morrer ou for perdido, instala-se o
+// app num aparelho novo, loga com a MESMA conta Google do hotel e restaura tudo.
+// O QUE ELA NÃO É: sincronização multi-dispositivo (isso é a Fase 3, com servidor).
+//
+// O BACKUP LOCAL CONTINUA IGUAL. A nuvem é ADICIONAL — nada é apagado do aparelho
+// por causa dela. (A mudança para "nuvem primária", a organização em pastas
+// Ano > Mês/Ano > Apartamento e o upload dos PDFs ficam para a v1.9.5.1, depois de
+// validarmos no aparelho que o upload funciona.)
+//
+// 🔒 SEGURANÇA — POR QUE NÃO HÁ CLIENT SECRET AQUI:
+// o login usa o Google Sign-In NATIVO em `mode:'online'`, que devolve um
+// ACCESS TOKEN pronto. Token de acesso não se troca por nada — quem o emite é o
+// Google, para este pacote (`com.apollods.garagespot`) + este SHA-1, conferidos
+// pelo próprio sistema. O client secret só seria necessário no modo "offline" do
+// plugin, que devolve um `serverAuthCode` para um BACKEND trocar por tokens — e é
+// exatamente esse modo que NÃO usamos. Os dois Client IDs abaixo são públicos por
+// natureza (vão no APK e no tráfego). O SECRET NUNCA ENTRA NO HTML NEM NO REPO.
+const GD_WEB_CLIENT_ID     = '1033748409208-agsiv4ape8a15iffcqrdrqpgjqktl7um.apps.googleusercontent.com';
+const GD_ANDROID_CLIENT_ID = '1033748409208-cucf9rddoqoevbk066ldrtjvfu1jlqs7.apps.googleusercontent.com';
+// `drive.file` = o app só enxerga o que ELE MESMO criou. É escopo não-sensível
+// (sem verificação pesada do Google) e o app não consegue ler o Drive do hotel.
+const GD_SCOPES     = ['https://www.googleapis.com/auth/drive.file'];
+const GD_PASTA_NOME = 'GarageSpot Backups';
+const GD_MIME_PASTA = 'application/vnd.google-apps.folder';
+const GD_API        = 'https://www.googleapis.com/drive/v3';
+const GD_API_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+// O token vive só nesta sessão. Renovado bem antes da validade real (1h).
+const GD_TOKEN_TTL  = 50 * 60 * 1000;
+
+// ⚠️ O access token NUNCA é gravado (nem localStorage, nem IndexedDB, nem backup).
+// Só existe nesta variável, em memória, e morre com o processo.
+let _gdTokenCache = null;   // {token, ts}
+let _gdIniciado   = false;
+let _gdEnviando   = false;  // trava contra uploads concorrentes
+
+function _gdPlugin(){
+  try{ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SocialLogin) || null; }
+  catch(e){ return null; }
+}
+// Sem plugin (navegador/Playwright) ou sem `fetch` (WebView muito antigo) a nuvem
+// simplesmente não existe — o app segue inteiro, com o backup local.
+function _gdDisponivel(){
+  try{ return !!_gdPlugin() && typeof fetch === 'function'; }catch(e){ return false; }
+}
+function _gdConectado(){
+  try{ return !!(DRIVE_STATUS && DRIVE_STATUS.nuvem_conectada); }catch(e){ return false; }
+}
+
+function _gdMarcarFalha(msg){
+  try{
+    DRIVE_STATUS.nuvem_falha = true;
+    DRIVE_STATUS.nuvem_ultimo_erro = String(msg == null ? '' : msg).slice(0, 180);
+    saveDriveStatus();
+  }catch(e){}
+}
+function _gdLimparFalha(){
+  try{
+    DRIVE_STATUS.nuvem_falha = false;
+    DRIVE_STATUS.nuvem_ultimo_erro = '';
+    saveDriveStatus();
+  }catch(e){}
+}
+
+async function _gdInicializar(){
+  const p = _gdPlugin();
+  if(!p) throw new Error('login Google indisponível neste aparelho');
+  if(_gdIniciado) return;
+  // O Android Client ID NÃO entra aqui de propósito: no Android o Google resolve o
+  // cliente pelo nome do pacote + SHA-1 da assinatura, registrados no Console. O que
+  // o plugin precisa é do WEB client id (papel de serverClientId).
+  await p.initialize({ google: { webClientId: GD_WEB_CLIENT_ID, mode: 'online' } });
+  _gdIniciado = true;
+}
+
+// Login interativo. Devolve {token, email}.
+async function _gdLoginInterativo(){
+  await _gdInicializar();
+  const p = _gdPlugin();
+  const r = await p.login({ provider: 'google', options: { scopes: GD_SCOPES, forceRefreshToken: true } });
+  const res = (r && r.result) || r || {};
+  if(res.responseType === 'offline' || res.serverAuthCode){
+    // Trava de segurança: modo offline exigiria o client secret num backend.
+    throw new Error('login retornou em modo offline — configuração inválida');
+  }
+  const token = res.accessToken && res.accessToken.token;
+  if(!token) throw new Error('login não devolveu token de acesso');
+  _gdTokenCache = { token: token, ts: Date.now() };
+  return { token: token, email: (res.profile && res.profile.email) || '' };
+}
+
+// Token válido, renovando em silêncio quando dá. `interativo=false` nunca abre tela
+// (é o caminho do backup automático — não pode roubar o foco de quem está operando).
+async function _gdObterToken(interativo){
+  if(_gdTokenCache && (Date.now() - _gdTokenCache.ts) < GD_TOKEN_TTL) return _gdTokenCache.token;
+  const p = _gdPlugin();
+  if(!p) throw new Error('login Google indisponível neste aparelho');
+  await _gdInicializar();
+  // No Android o SO cacheia o token; `getAuthorizationCode` é o caminho recomendado
+  // pelo plugin para obter um token válido sem interação.
+  try{
+    const a = await p.getAuthorizationCode({ provider: 'google' });
+    if(a && a.accessToken){ _gdTokenCache = {token:a.accessToken, ts:Date.now()}; return a.accessToken; }
+  }catch(e){ /* segue para o refresh */ }
+  try{
+    await p.refresh({ provider: 'google', options: { scopes: GD_SCOPES } });
+    const a2 = await p.getAuthorizationCode({ provider: 'google' });
+    if(a2 && a2.accessToken){ _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
+  }catch(e){ /* segue para o login */ }
+  if(!interativo) throw new Error('sessão do Google expirou — reconecte em Backup e Conexões');
+  const r = await _gdLoginInterativo();
+  return r.token;
+}
+
+// Chamada HTTP ao Drive. 401/403 vira erro marcado, para o retry saber que é sessão.
+async function _gdFetch(url, opts, token){
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + token });
+  const r = await fetch(url, Object.assign({}, opts, { headers: headers }));
+  if(r.status === 401 || r.status === 403){
+    const e = new Error('o Google recusou a autorização (' + r.status + ')');
+    e.gdAuth = true;
+    throw e;
+  }
+  if(!r.ok){
+    let det = '';
+    try{ det = String(await r.text() || '').slice(0, 180); }catch(e2){}
+    throw new Error('Drive respondeu ' + r.status + (det ? ' — ' + det : ''));
+  }
+  return r;
+}
+
+// Executa `fn(token)`; se a sessão tiver caído, descarta o token e tenta MAIS UMA vez.
+async function _gdComToken(fn, interativo){
+  let token = await _gdObterToken(interativo);
+  try{
+    return await fn(token);
+  }catch(e){
+    if(!e || !e.gdAuth) throw e;
+    _gdTokenCache = null;
+    token = await _gdObterToken(interativo);
+    return await fn(token);
+  }
+}
+
+// Escapa aspas simples para a sintaxe de busca do Drive.
+function _gdEscQ(s){ return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+// Acha (ou cria) a pasta do app. O id é lembrado, mas SEMPRE revalidado — a pasta
+// pode ter sido movida para a lixeira pelo dono da conta.
+async function _gdGarantirPasta(token){
+  const idLembrado = (DRIVE_STATUS && DRIVE_STATUS.nuvem_pasta_id) || '';
+  if(idLembrado){
+    try{
+      const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(idLembrado) + '?fields=id,trashed', {method:'GET'}, token);
+      const j = await r.json();
+      if(j && j.id && !j.trashed) return j.id;
+    }catch(e){ if(e && e.gdAuth) throw e; }
+  }
+  const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(GD_PASTA_NOME) + "' and trashed=false";
+  const r2 = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) + '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token);
+  const j2 = await r2.json();
+  if(j2 && j2.files && j2.files.length){
+    DRIVE_STATUS.nuvem_pasta_id = j2.files[0].id; saveDriveStatus();
+    return j2.files[0].id;
+  }
+  const r3 = await _gdFetch(GD_API + '/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: GD_PASTA_NOME, mimeType: GD_MIME_PASTA }),
+  }, token);
+  const j3 = await r3.json();
+  if(!j3 || !j3.id) throw new Error('não foi possível criar a pasta no Drive');
+  DRIVE_STATUS.nuvem_pasta_id = j3.id; saveDriveStatus();
+  return j3.id;
+}
+
+// Upload multipart (metadados + conteúdo numa requisição só).
+async function _gdEnviarArquivo(token, pastaId, nome, texto){
+  const lim = 'gsbnd' + Date.now() + Math.random().toString(36).slice(2, 8);
+  const meta = JSON.stringify({ name: nome, parents: [pastaId], mimeType: 'application/json' });
+  const corpo =
+    '--' + lim + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n' +
+    '--' + lim + '\r\nContent-Type: application/json\r\n\r\n' + texto + '\r\n' +
+    '--' + lim + '--';
+  const r = await _gdFetch(GD_API_UPLOAD + '/files?uploadType=multipart&fields=id,name,size,createdTime', {
+    method: 'POST',
+    headers: { 'Content-Type': 'multipart/related; boundary=' + lim },
+    body: corpo,
+  }, token);
+  return await r.json();
+}
+
+async function _gdListarArquivos(token, pastaId){
+  const q = "'" + _gdEscQ(pastaId) + "' in parents and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&orderBy=createdTime desc&pageSize=100&fields=files(id,name,size,createdTime)', {method:'GET'}, token);
+  const j = await r.json();
+  return (j && j.files) || [];
+}
+
+async function _gdBaixarArquivo(token, id){
+  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?alt=media', {method:'GET'}, token);
+  return await r.text();
+}
+
+// ── Parte 3 — conectar / desconectar ───────────────────────────────────────
+// Config sensível: pede o PIN do gestor e deixa rastro na trilha, como a exclusão
+// de anexo e o Importar.
+function conectarGoogleDrive(){
+  if(!_gdDisponivel()){
+    showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
+    return;
+  }
+  showEntrarPIN(function(){
+    (async function(){
+      showToast('Abrindo o login do Google…', 2500);
+      try{
+        const r = await _gdLoginInterativo();
+        DRIVE_STATUS.nuvem_conectada = true;
+        DRIVE_STATUS.nuvem_email = r.email || '';
+        DRIVE_STATUS.nuvem_pasta_id = '';
+        saveDriveStatus();
+        _gdLimparFalha();
+        try{ await _gdComToken(function(t){ return _gdGarantirPasta(t); }, true); }catch(eP){ _gdMarcarFalha(eP && eP.message); }
+        addLogSistema('Google Drive conectado' + (r.email ? ' (' + r.email + ')' : ''),
+          {aud:true, acao:'drive_conectado', alvo:(r.email||'—')});
+        showToast('✅ Google Drive conectado' + (r.email ? ' · ' + r.email : ''), 4000);
+      }catch(e){
+        const m = (e && e.message) || String(e);
+        _gdMarcarFalha(m);
+        addLogSistema('Falha ao conectar o Google Drive: ' + m, {aud:true, acao:'drive_conexao_falhou'});
+        showToast('⚠️ Não foi possível conectar: ' + m + ' · O backup local continua normal.', 6000);
+      }
+      _gdReabrirConexoes();
+    })();
+  });
+}
+
+function desconectarGoogleDrive(){
+  showEntrarPIN(function(){
+    (async function(){
+      const antes = DRIVE_STATUS.nuvem_email || '';
+      try{ const p = _gdPlugin(); if(p) await p.logout({ provider: 'google' }); }
+      catch(e){ console.warn('[DRIVE] logout:', e && e.message); }
+      _gdTokenCache = null;
+      DRIVE_STATUS.nuvem_conectada = false;
+      DRIVE_STATUS.nuvem_email = '';
+      DRIVE_STATUS.nuvem_pasta_id = '';
+      saveDriveStatus();
+      _gdLimparFalha();
+      addLogSistema('Google Drive desconectado' + (antes ? ' (' + antes + ')' : ''),
+        {aud:true, acao:'drive_desconectado', alvo:(antes||'—')});
+      showToast('Google Drive desconectado. Os backups já enviados continuam no Drive.', 5000);
+      _gdReabrirConexoes();
+    })();
+  });
+}
+
+// ── Parte 4 — backup na nuvem ──────────────────────────────────────────────
+// Sobe o MESMO conteúdo do backup local completo (dados + fotos). Mantém TODAS as
+// cópias — poda só manual, pelo gestor, igual à regra do local.
+async function _gdEnviarBackup(nome, json, motivo, interativo){
+  if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste aparelho'};
+  if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
+  if(_gdEnviando)      return {ok:false, erro:'já há um envio em andamento'};
+  _gdEnviando = true;
+  try{
+    const r = await _gdComToken(async function(token){
+      const pasta = await _gdGarantirPasta(token);
+      return await _gdEnviarArquivo(token, pasta, nome, json);
+    }, !!interativo);
+    DRIVE_STATUS.nuvem_ultimo_backup = Date.now();
+    DRIVE_STATUS.nuvem_enviados = (DRIVE_STATUS.nuvem_enviados || 0) + 1;
+    saveDriveStatus();
+    _gdLimparFalha();
+    addLogSistema('Backup na nuvem: ' + (motivo || 'automático') + ' — ' + nome);
+    return {ok:true, nome:nome, id:(r && r.id) || ''};
+  }catch(e){
+    const m = (e && e.message) || String(e);
+    _gdMarcarFalha(m);
+    addLogSistema('Backup na nuvem falhou (' + (motivo || 'automático') + '): ' + m);
+    return {ok:false, erro:m};
+  }finally{
+    _gdEnviando = false;
+  }
+}
+
+// Chamado DEPOIS de o backup local já estar gravado. Não retorna promessa ao
+// chamador de propósito: falha de rede não pode atrasar nem afetar o backup local.
+function _gdEspelharNoDrive(nome, json, motivo){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    _gdEnviarBackup(nome, json, motivo, false)
+      .catch(function(e){ console.warn('[DRIVE] espelhamento falhou:', e && e.message); });
+  }catch(e){ console.warn('[DRIVE] espelhamento não agendado:', e && e.message); }
+}
+
+async function fazerBackupNuvemAgora(){
+  if(!_gdDisponivel()){
+    showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000);
+    return;
+  }
+  if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return; }
+  showToast('Enviando backup para o Google Drive…', 3000);
+  const snap = _gsMontarSnapshot(true);
+  const val = _gsValidarSnapshot(snap);
+  if(!val.ok){ showToast('⚠️ Envio abortado: ' + val.motivo, 5000); return; }
+  const d = new Date();
+  const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') +
+             '_' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0') + 'm' + String(d.getSeconds()).padStart(2,'0');
+  const nome = 'backup_completo_' + ds + '.json';
+  const r = await _gdEnviarBackup(nome, JSON.stringify(snap), 'Manual', true);
+  if(r.ok) showToast('✅ Backup enviado para o Drive: ' + r.nome, 5000);
+  else     showToast('⚠️ Não foi enviado: ' + r.erro + ' · O backup local está intacto.', 6000);
+  _gdReabrirConexoes();
+}
+
+// ── Parte 5 — restaurar da nuvem ───────────────────────────────────────────
+// Mesma regra do Importar local: MESCLA, nunca substitui. O do aparelho vence.
+function abrirRestaurarNuvem(){
+  if(!_gdDisponivel()){ showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000); return; }
+  if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return; }
+  showM(`<div class="mt">☁️ Restaurar da nuvem</div>
+    <div class="ms" id="gd-rest-ms">Buscando backups no Google Drive…</div>
+    <div id="gd-rest-lista" style="max-height:48vh;overflow-y:auto;margin:8px 0"></div>
+    <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`);
+  (async function(){
+    let arquivos = [];
+    try{
+      arquivos = await _gdComToken(async function(token){
+        const pasta = await _gdGarantirPasta(token);
+        return await _gdListarArquivos(token, pasta);
+      }, true);
+    }catch(e){
+      const m = (e && e.message) || String(e);
+      _gdMarcarFalha(m);
+      const ms = document.getElementById('gd-rest-ms');
+      if(ms) ms.textContent = 'Não foi possível listar: ' + m;
+      return;
+    }
+    const ms = document.getElementById('gd-rest-ms');
+    const box = document.getElementById('gd-rest-lista');
+    if(!box) return;
+    if(!arquivos.length){
+      if(ms) ms.textContent = 'Nenhum backup na nuvem ainda.';
+      box.innerHTML = `<div style="color:#bbb;font-size:12px">Use "Fazer backup na nuvem agora" para enviar o primeiro.</div>`;
+      return;
+    }
+    if(ms) ms.textContent = arquivos.length + ' backup(s) na nuvem · o mais recente primeiro';
+    box.innerHTML = arquivos.map(function(f){
+      const kb = f.size ? (Math.round(Number(f.size)/1024) + ' KB') : '—';
+      const dt = f.createdTime ? (typeof fmtDt==='function' ? fmtDt(new Date(f.createdTime).getTime()) : f.createdTime) : '—';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f0efea">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_vtEsc(String(f.name||''))}</div>
+          <div style="font-size:11px;color:#888">${_vtEsc(String(dt))} · ${kb}</div>
+        </div>
+        <button class="bsv" style="padding:5px 10px;font-size:11px" onclick="_gdRestaurarArquivo('${_vtEsc(String(f.id||''))}','${_vtEsc(String(f.name||''))}')">Restaurar</button>
+      </div>`;
+    }).join('');
+  })();
+}
+
+function _gdRestaurarArquivo(id, nome){
+  if(!id) return;
+  showEntrarPIN(function(){
+    (async function(){
+      showToast('Baixando backup da nuvem…', 3000);
+      let obj = null;
+      try{
+        const txt = await _gdComToken(function(token){ return _gdBaixarArquivo(token, id); }, true);
+        obj = JSON.parse(String(txt || ''));
+      }catch(e){
+        const m = (e && e.message) || String(e);
+        _gdMarcarFalha(m);
+        showToast('⚠️ Não foi possível baixar: ' + m, 6000);
+        return;
+      }
+      showToast('Restaurando (mesclando)…', 3000);
+      const res = await _gsAplicarBackup(obj, 'nuvem:' + (nome || id));
+      try{ if(typeof upd==='function') upd(); }catch(e){}
+      try{ if(typeof renderPainelDia==='function') renderPainelDia(); }catch(e){}
+      addLogSistema('Restauração da nuvem: ' + (nome || id),
+        {aud:true, acao:'drive_restaurado', alvo:String(nome||id)});
+      showM(`<div class="mt">✅ Restauração concluída</div>
+        <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome||id))}</div>
+        <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
+          <div>+ ${res.hospedagens} hospedagens</div>
+          <div>+ ${res.usuarios} funcionários</div>
+          <div>+ ${res.vistorias} vistorias</div>
+          <div>+ ${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
+          <div>+ ${res.historico} eventos de histórico</div>
+          <div style="color:#888;margin-top:6px">${res.ignorados} registro(s) já existiam e foram preservados.</div>
+        </div>
+        <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
+    })();
+  });
+}
+
+// Re-renderiza "Backup e Conexões" se ele estiver aberto (status muda ali).
+function _gdReabrirConexoes(){
+  try{
+    const ov = document.getElementById('ov');
+    if(!ov || !ov.classList.contains('on')) return;
+    const t = document.getElementById('mc').querySelector('.mt');
+    if(t && t.textContent.indexOf('Conexões') >= 0) showConexoes();
+  }catch(e){}
+}
+
+// ── Parte 6 — ambiente (Dev × Hotel Gumz) ──────────────────────────────────
+// Mesma fonte de verdade do `_isDevEnv` do kill switch, para os dois nunca
+// discordarem. `href` opcional só para teste.
+function _gsAmbiente(href){
+  try{
+    const u = String(href != null ? href : (location.href || '')).toLowerCase();
+    if(u.indexOf('garagespot-hotelgumz') >= 0) return {chave:'hotel', rotulo:'Hotel Gumz'};
+    if(u.indexOf('garagespot-dev') >= 0)       return {chave:'dev',   rotulo:'Dev'};
+    if(href == null){
+      const h = (location.hostname || '').toLowerCase();
+      if(h === 'localhost' || h === '127.0.0.1' || h === '') return {chave:'local', rotulo:'Dev'};
+    } else {
+      if(u.indexOf('localhost') >= 0 || u.indexOf('127.0.0.1') >= 0) return {chave:'local', rotulo:'Dev'};
+    }
+  }catch(e){}
+  return {chave:'hotel', rotulo:'Hotel Gumz'};
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -11440,6 +11884,55 @@ function _renderBackupStatus(){
   </div>`;
 }
 
+// v1.9.5.0 — bloco da NUVEM. Separado de `_renderBackupStatus` de propósito: são
+// duas redes independentes, e misturar os dois estados foi o que a decisão de
+// campos separados no DRIVE_STATUS veio impedir.
+function _renderNuvemStatus(){
+  const disp = _gdDisponivel();
+  const conectado = _gdConectado();
+  const email = DRIVE_STATUS.nuvem_email || '';
+  const ult = DRIVE_STATUS.nuvem_ultimo_backup;
+  const ultStr = ult ? fmtDt(ult) : 'Nunca';
+  const falha = DRIVE_STATUS.nuvem_falha;
+  const erro = DRIVE_STATUS.nuvem_ultimo_erro || '';
+  if(!disp){
+    return `<div id="nuvem-box" style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="color:#aaa;font-size:18px">○</span>
+        <div><div style="font-weight:600;color:#555">Google Drive</div>
+        <div style="color:#999">Indisponível fora do aplicativo</div></div>
+      </div>
+      <div style="color:#bbb;font-size:11px;line-height:1.5">O login do Google é nativo — funciona no <strong>APK instalado</strong>. O backup local segue normal aqui.</div>
+    </div>`;
+  }
+  if(!conectado){
+    return `<div id="nuvem-box" style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="color:#aaa;font-size:18px">○</span>
+        <div><div style="font-weight:600;color:#555">Não conectado</div>
+        <div style="color:#999">Backup de recuperação no Drive do hotel</div></div>
+      </div>
+      ${falha?`<div style="color:#A32D2D;font-size:11px;margin-bottom:6px">⚠️ ${_vtEsc(erro)}</div>`:''}
+      <button class="bsv" id="btn-drive-conectar" onclick="conectarGoogleDrive()" style="width:100%">🔗 Conectar Google Drive</button>
+      <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">Pede o <strong>PIN do gestor</strong>. O app só enxerga os arquivos que ele mesmo criar (escopo <code>drive.file</code>).</div>
+    </div>`;
+  }
+  return `<div id="nuvem-box" style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="color:#0F6E56;font-size:18px">●</span>
+      <div style="min-width:0"><div style="font-weight:600;color:#0F6E56">Conectado</div>
+      <div style="color:#666;overflow:hidden;text-overflow:ellipsis">${_vtEsc(email||'conta Google')}</div></div>
+    </div>
+    ${falha?`<div style="color:#A32D2D;font-weight:600;margin-bottom:6px">⚠️ Último envio falhou — ${_vtEsc(erro)}</div>`:''}
+    <div style="color:#666">Último backup na nuvem: <strong id="nuvem-ultimo">${_vtEsc(ultStr)}</strong></div>
+    <div style="color:#aaa;font-size:11px;margin-top:4px">Pasta <strong>${_vtEsc(GD_PASTA_NOME)}</strong> · ${DRIVE_STATUS.nuvem_enviados||0} envio(s) nesta instalação</div>
+    <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
+    <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
+    <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
+    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. Nenhuma cópia é apagada automaticamente.</div>
+  </div>`;
+}
+
 function showConexoes(){
   const mc=document.getElementById('mc');
   const ult=DRIVE_STATUS.ultimo_backup;
@@ -11452,17 +11945,8 @@ function showConexoes(){
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:8px 11px;font-size:11px;color:#0F6E56;margin-top:8px;line-height:1.5">
       O backup completo inclui <strong>fotos, vistorias, funcionários</strong> e todo o resto. A importação <strong>soma</strong> — nunca apaga o que está no aparelho.
     </div>
-    <div class="gestao-menu-sep" style="margin-top:14px">Google Drive</div>
-    <div style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <span style="color:#aaa;font-size:18px">○</span>
-        <div>
-          <div style="font-weight:600;color:#555">Google Drive</div>
-          <div style="color:#999">Em breve — integração em desenvolvimento</div>
-        </div>
-      </div>
-      <div style="color:#bbb;font-size:11px;line-height:1.5">A sincronização automática com Google Drive será disponibilizada em versão futura.</div>
-    </div>
+    <div class="gestao-menu-sep" style="margin-top:14px">Google Drive (nuvem)</div>
+    ${_renderNuvemStatus()}
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
