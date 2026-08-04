@@ -1306,9 +1306,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script>
 // v1.9.5.0: PRIMEIRA mudança NATIVA desde a 4.7 (plugin de login Google) → APK
 // rebuildado. O versionCode do JS volta a bater com o do `android/app/build.gradle`
-// (24) — desde a 4.10 ele ficava em 22 porque as releases eram só HTML/CSS/JS.
+// (25) — desde a 4.10 ele ficava em 22 porque as releases eram só HTML/CSS/JS.
+// vc25: fix nativo do gancho da MainActivity (login Google com escopos). A build
+// boa se distingue da quebrada (vc24) pelo versionCode no rodapé.
 const GS_VERSION = 'v1.9.5.0';
-const GS_VERSION_CODE = 24;
+const GS_VERSION_CODE = 25;
 const GS_BUILD_TS = '2026-08-04';
 
 // ════════════════════════════════════════════════════════════════════════
