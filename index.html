@@ -1309,9 +1309,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // (25) — desde a 4.10 ele ficava em 22 porque as releases eram só HTML/CSS/JS.
 // vc25: fix nativo do gancho da MainActivity (login Google com escopos). A build
 // boa se distingue da quebrada (vc24) pelo versionCode no rodapé.
-const GS_VERSION = 'v1.9.5.0';
+// v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
+// chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
+// nativo mudou, e o APK vc25 instalado segue valendo.
+const GS_VERSION = 'v1.9.5.1';
 const GS_VERSION_CODE = 25;
-const GS_BUILD_TS = '2026-08-04';
+const GS_BUILD_TS = '2026-08-05';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -4782,6 +4785,7 @@ function renderPainelDia(){
       <div style="flex:1;min-width:100px;text-align:right">
         <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">☁️ Backup</div>
         <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?'Hoje às '+fmtHr(lastBkp):'Sem backup'}</div>
+        ${_gdRodapeHTML()}
       </div>
     </div>
   </div>
@@ -9097,6 +9101,10 @@ let DRIVE_STATUS = {
   conectado:false, email:'', ultimo_backup:null, falha_backup:false,     // LOCAL
   nuvem_conectada:false, nuvem_email:'', nuvem_ultimo_backup:null,       // NUVEM
   nuvem_falha:false, nuvem_ultimo_erro:'', nuvem_pasta_id:'', nuvem_enviados:0,
+  // v1.9.5.1: DIAGNÓSTICO do último erro de nuvem. Sem isto, um 403 aparece como
+  // "403" e cada iteração vira adivinhação — foi exatamente o que travou a rodada
+  // anterior. Campo ADITIVO: aparelho antigo simplesmente não tem a chave.
+  nuvem_erro_detalhe:null,   // {ts,etapa,status,reason,message,via,escopos,url}
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
@@ -9787,6 +9795,33 @@ const GD_TOKEN_TTL  = 50 * 60 * 1000;
 let _gdTokenCache = null;   // {token, ts}
 let _gdIniciado   = false;
 let _gdEnviando   = false;  // trava contra uploads concorrentes
+let _gdTokenVia   = '';     // v1.9.5.1: por qual caminho o token atual foi obtido
+
+// v1.9.5.1 — TETO DE TEMPO PARA A CADEIA NATIVA/REDE.
+// A trava `_gdEnviando` SEMPRE foi liberada num `finally` — o que prendia era um
+// `await` que nunca assentava: no 403 o retry escalava para `p.login()`, e quando o
+// intent de consentimento não voltava (o "Cannot get getAuthorizationResultFromIntent"),
+// a promise ficava pendente para sempre e a trava junto. Um teto resolve a classe
+// inteira do problema, sem depender de qual chamada nativa travou.
+const GD_TIMEOUT_MS = 45 * 1000;
+function _gdComTeto(promessa, oQue, ms){
+  const teto = ms || GD_TIMEOUT_MS;
+  return new Promise(function(resolve, reject){
+    let vivo = true;
+    const t = setTimeout(function(){
+      if(!vivo) return;
+      vivo = false;
+      const e = new Error('tempo esgotado ' + (oQue || 'na nuvem') + ' (' + Math.round(teto/1000) + 's)');
+      e.gdTimeout = true;
+      reject(e);
+    }, teto);
+    Promise.resolve(promessa).then(function(v){
+      if(!vivo) return; vivo = false; clearTimeout(t); resolve(v);
+    }, function(e){
+      if(!vivo) return; vivo = false; clearTimeout(t); reject(e);
+    });
+  });
+}
 
 function _gdPlugin(){
   try{ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SocialLogin) || null; }
@@ -9801,10 +9836,13 @@ function _gdConectado(){
   try{ return !!(DRIVE_STATUS && DRIVE_STATUS.nuvem_conectada); }catch(e){ return false; }
 }
 
-function _gdMarcarFalha(msg){
+function _gdMarcarFalha(msg, detalhe){
   try{
     DRIVE_STATUS.nuvem_falha = true;
     DRIVE_STATUS.nuvem_ultimo_erro = String(msg == null ? '' : msg).slice(0, 180);
+    // v1.9.5.1: guarda o diagnóstico junto, quando houver. Nunca sobrescreve com
+    // vazio — um erro genérico depois de um detalhado não pode apagar a evidência.
+    if(detalhe) DRIVE_STATUS.nuvem_erro_detalhe = detalhe;
     saveDriveStatus();
   }catch(e){}
 }
@@ -9812,8 +9850,46 @@ function _gdLimparFalha(){
   try{
     DRIVE_STATUS.nuvem_falha = false;
     DRIVE_STATUS.nuvem_ultimo_erro = '';
+    DRIVE_STATUS.nuvem_erro_detalhe = null;
     saveDriveStatus();
   }catch(e){}
+}
+
+// v1.9.5.1 — DIAGNÓSTICO DO 403 (o item que destrava tudo o resto).
+//
+// Até a v1.9.5.0 o `_gdFetch` lançava no 401/403 ANTES de ler o corpo, então o
+// motivo real do Google era descartado e sobrava "403" mudo. `error.errors[].reason`
+// é o que distingue causas que exigem ações OPOSTAS:
+//   insufficientPermissions/insufficientScopes → token sem `drive.file`
+//   accessNotConfigured  → Drive API desligada no projeto
+//   appNotAuthorizedToFile → arquivo que o app não criou (fora do drive.file)
+//   rateLimitExceeded/userRateLimitExceeded → cota
+function _gdParseErroGoogle(txt){
+  const out = { reason:'', message:'', corpo: String(txt == null ? '' : txt).slice(0, 600) };
+  try{
+    const j = JSON.parse(txt);
+    const e = j && j.error;
+    if(e){
+      out.message = String(e.message || '');
+      if(e.errors && e.errors.length && e.errors[0]) out.reason = String(e.errors[0].reason || '');
+      if(!out.reason && e.status) out.reason = String(e.status);
+    }
+  }catch(e){ /* corpo não-JSON: o texto cru já foi preservado */ }
+  return out;
+}
+
+// Pergunta ao Google QUAIS escopos o token realmente carrega. É a evidência
+// decisiva entre "o app não pediu" e "o Google não concedeu" — e não custa nada:
+// endpoint público, sem autenticação, e qualquer falha aqui é engolida (é sonda de
+// diagnóstico, nunca pode derrubar um backup).
+async function _gdEscoposDoToken(token){
+  try{
+    if(!token || typeof fetch !== 'function') return '';
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + encodeURIComponent(token));
+    if(!r.ok) return '(tokeninfo respondeu ' + r.status + ')';
+    const j = await r.json();
+    return String((j && j.scope) || '');
+  }catch(e){ return ''; }
 }
 
 async function _gdInicializar(){
@@ -9852,48 +9928,81 @@ async function _gdObterToken(interativo){
   await _gdInicializar();
   // No Android o SO cacheia o token; `getAuthorizationCode` é o caminho recomendado
   // pelo plugin para obter um token válido sem interação.
+  //
+  // ⚠️ v1.9.5.1 — ATENÇÃO AO DIAGNOSTICAR 403: `getAuthorizationCode` devolve o token
+  // PERSISTIDO e só confere se ele não expirou — NÃO confere escopos (fonte do
+  // plugin 8.3.39, GoogleProvider.java:1021-1061). Um token emitido sem `drive.file`
+  // passa por válido aqui e só falha lá na frente, no upload. Por isso registramos
+  // por qual caminho o token veio: sem isso não dá para separar "o app não pediu o
+  // escopo" de "o Google não concedeu".
   try{
     const a = await p.getAuthorizationCode({ provider: 'google' });
-    if(a && a.accessToken){ _gdTokenCache = {token:a.accessToken, ts:Date.now()}; return a.accessToken; }
+    if(a && a.accessToken){ _gdTokenVia = 'getAuthorizationCode'; _gdTokenCache = {token:a.accessToken, ts:Date.now()}; return a.accessToken; }
   }catch(e){ /* segue para o refresh */ }
   try{
     await p.refresh({ provider: 'google', options: { scopes: GD_SCOPES } });
     const a2 = await p.getAuthorizationCode({ provider: 'google' });
-    if(a2 && a2.accessToken){ _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
+    if(a2 && a2.accessToken){ _gdTokenVia = 'refresh+getAuthorizationCode'; _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
   }catch(e){ /* segue para o login */ }
   if(!interativo) throw new Error('sessão do Google expirou — reconecte em Backup e Conexões');
   const r = await _gdLoginInterativo();
+  _gdTokenVia = 'login';
   return r.token;
 }
 
 // Chamada HTTP ao Drive. 401/403 vira erro marcado, para o retry saber que é sessão.
-async function _gdFetch(url, opts, token){
+//
+// v1.9.5.1: o corpo do erro é lido ANTES de lançar — inclusive no 401/403, onde
+// antes era descartado. O erro carrega `gdDet` com etapa/status/reason/message, que
+// sobe intacto até o card de nuvem.
+async function _gdFetch(url, opts, token, etapa){
   opts = opts || {};
   const headers = Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + token });
   const r = await fetch(url, Object.assign({}, opts, { headers: headers }));
+  if(r.ok) return r;
+
+  let txt = '';
+  try{ txt = await r.text(); }catch(e2){}
+  const g = _gdParseErroGoogle(txt);
+  const det = {
+    ts: Date.now(),
+    etapa: etapa || 'chamada ao Drive',
+    status: r.status,
+    reason: g.reason,
+    message: g.message || g.corpo,
+    // só o caminho, sem querystring — evita despejar id de pasta/arquivo na tela
+    url: String(url).split('?')[0],
+  };
+
   if(r.status === 401 || r.status === 403){
-    const e = new Error('o Google recusou a autorização (' + r.status + ')');
+    const e = new Error('o Google recusou a autorização (' + r.status +
+      (g.reason ? ' · ' + g.reason : '') + ')');
     e.gdAuth = true;
+    e.gdDet = det;
     throw e;
   }
-  if(!r.ok){
-    let det = '';
-    try{ det = String(await r.text() || '').slice(0, 180); }catch(e2){}
-    throw new Error('Drive respondeu ' + r.status + (det ? ' — ' + det : ''));
-  }
-  return r;
+  const e2 = new Error('Drive respondeu ' + r.status + (g.message ? ' — ' + g.message : ''));
+  e2.gdDet = det;
+  throw e2;
 }
 
 // Executa `fn(token)`; se a sessão tiver caído, descarta o token e tenta MAIS UMA vez.
+//
+// v1.9.5.1: o retry NUNCA escala para login interativo por conta própria. Antes, um
+// 403 no upload virava `p.login()` — abrindo a tela de consentimento do Google no
+// meio de um backup, inclusive num backup AUTOMÁTICO, roubando o foco de quem está
+// operando o mapa. E se aquele intent não voltasse, prendia a trava de envio.
+// Reconectar passou a ser ação EXPLÍCITA do usuário em Backup e Conexões.
 async function _gdComToken(fn, interativo){
-  let token = await _gdObterToken(interativo);
+  let token = await _gdComTeto(_gdObterToken(interativo), 'ao obter o token');
   try{
-    return await fn(token);
+    return await _gdComTeto(fn(token), 'na chamada ao Drive');
   }catch(e){
     if(!e || !e.gdAuth) throw e;
     _gdTokenCache = null;
-    token = await _gdObterToken(interativo);
-    return await fn(token);
+    // segunda e última tentativa, sempre NÃO-interativa
+    token = await _gdComTeto(_gdObterToken(false), 'ao renovar o token');
+    return await _gdComTeto(fn(token), 'na chamada ao Drive');
   }
 }
 
@@ -9906,13 +10015,13 @@ async function _gdGarantirPasta(token){
   const idLembrado = (DRIVE_STATUS && DRIVE_STATUS.nuvem_pasta_id) || '';
   if(idLembrado){
     try{
-      const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(idLembrado) + '?fields=id,trashed', {method:'GET'}, token);
+      const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(idLembrado) + '?fields=id,trashed', {method:'GET'}, token, 'revalidar a pasta');
       const j = await r.json();
       if(j && j.id && !j.trashed) return j.id;
     }catch(e){ if(e && e.gdAuth) throw e; }
   }
   const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(GD_PASTA_NOME) + "' and trashed=false";
-  const r2 = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) + '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token);
+  const r2 = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) + '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token, 'procurar a pasta');
   const j2 = await r2.json();
   if(j2 && j2.files && j2.files.length){
     DRIVE_STATUS.nuvem_pasta_id = j2.files[0].id; saveDriveStatus();
@@ -9922,7 +10031,7 @@ async function _gdGarantirPasta(token){
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: GD_PASTA_NOME, mimeType: GD_MIME_PASTA }),
-  }, token);
+  }, token, 'criar a pasta');
   const j3 = await r3.json();
   if(!j3 || !j3.id) throw new Error('não foi possível criar a pasta no Drive');
   DRIVE_STATUS.nuvem_pasta_id = j3.id; saveDriveStatus();
@@ -9941,20 +10050,20 @@ async function _gdEnviarArquivo(token, pastaId, nome, texto){
     method: 'POST',
     headers: { 'Content-Type': 'multipart/related; boundary=' + lim },
     body: corpo,
-  }, token);
+  }, token, 'enviar o arquivo');
   return await r.json();
 }
 
 async function _gdListarArquivos(token, pastaId){
   const q = "'" + _gdEscQ(pastaId) + "' in parents and trashed=false";
   const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
-    '&spaces=drive&orderBy=createdTime desc&pageSize=100&fields=files(id,name,size,createdTime)', {method:'GET'}, token);
+    '&spaces=drive&orderBy=createdTime desc&pageSize=100&fields=files(id,name,size,createdTime)', {method:'GET'}, token, 'listar backups');
   const j = await r.json();
   return (j && j.files) || [];
 }
 
 async function _gdBaixarArquivo(token, id){
-  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?alt=media', {method:'GET'}, token);
+  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?alt=media', {method:'GET'}, token, 'baixar backup da nuvem');
   return await r.text();
 }
 
@@ -10019,22 +10128,42 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
   if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
   if(_gdEnviando)      return {ok:false, erro:'já há um envio em andamento'};
   _gdEnviando = true;
+  _gdTokenVia = '';
   try{
+    // `interativo` NÃO é mais repassado: um envio de backup nunca abre a tela de
+    // consentimento sozinho (v1.9.5.1). Se o token não serve, o envio falha,
+    // registra o motivo e o card manda reconectar.
     const r = await _gdComToken(async function(token){
       const pasta = await _gdGarantirPasta(token);
       return await _gdEnviarArquivo(token, pasta, nome, json);
-    }, !!interativo);
+    }, false);
     DRIVE_STATUS.nuvem_ultimo_backup = Date.now();
     DRIVE_STATUS.nuvem_enviados = (DRIVE_STATUS.nuvem_enviados || 0) + 1;
     saveDriveStatus();
     _gdLimparFalha();
+    _gdFalhasSeguidas = 0;
     addLogSistema('Backup na nuvem: ' + (motivo || 'automático') + ' — ' + nome);
     return {ok:true, nome:nome, id:(r && r.id) || ''};
   }catch(e){
     const m = (e && e.message) || String(e);
-    _gdMarcarFalha(m);
-    addLogSistema('Backup na nuvem falhou (' + (motivo || 'automático') + '): ' + m);
-    return {ok:false, erro:m};
+    const det = Object.assign({ ts: Date.now(), etapa: 'envio do backup', via: _gdTokenVia || '(desconhecido)' },
+      (e && e.gdDet) || { status: 0, reason: (e && e.gdTimeout) ? 'timeout' : '', message: m });
+    det.via = _gdTokenVia || '(desconhecido)';
+    // Sonda de escopos: só quando o Google recusou a autorização — é aí que a
+    // pergunta "esse token tem drive.file?" decide o diagnóstico. Nunca derruba o
+    // fluxo: `_gdEscoposDoToken` engole os próprios erros.
+    if(e && e.gdAuth){
+      try{
+        const t = _gdTokenCache && _gdTokenCache.token;
+        if(t) det.escopos = await _gdEscoposDoToken(t);
+      }catch(e3){}
+    }
+    _gdMarcarFalha(m, det);
+    _gdFalhasSeguidas++;
+    _gdAgendarRetentativa();
+    addLogSistema('Backup na nuvem falhou (' + (motivo || 'automático') + '): ' + m +
+      (det.reason ? ' [' + det.reason + ']' : '') + (det.via ? ' via ' + det.via : ''));
+    return {ok:false, erro:m, detalhe:det};
   }finally{
     _gdEnviando = false;
   }
@@ -10048,6 +10177,44 @@ function _gdEspelharNoDrive(nome, json, motivo){
     _gdEnviarBackup(nome, json, motivo, false)
       .catch(function(e){ console.warn('[DRIVE] espelhamento falhou:', e && e.message); });
   }catch(e){ console.warn('[DRIVE] espelhamento não agendado:', e && e.message); }
+}
+
+// ── v1.9.5.1 — REAGENDAMENTO APÓS FALHA ────────────────────────────────────
+// Sem isto, uma falha deixava a nuvem parada até alguém lembrar de apertar o botão
+// — que foi o que aconteceu no teste do aparelho (local em dia, nuvem em "Nunca").
+//
+// A retentativa NÃO gera backup local novo: ela reenvia o último snapshot COMPLETO
+// que já está no IndexedDB. Assim a cadência do backup local fica exatamente como
+// era — a regra de não mexer no local vale também para o que o retry faz.
+//
+// Espaçamento exponencial (5min → 10 → 20 → 40 → teto de 60min) para não martelar
+// a API: um 403 de permissão não se resolve por insistência, e a cota é do hotel.
+let _gdFalhasSeguidas = 0;
+let _gdProxTentativaTs = 0;
+const GD_RETRY_BASE_MS = 5 * 60 * 1000;
+const GD_RETRY_MAX_MS  = 60 * 60 * 1000;
+
+function _gdAgendarRetentativa(){
+  const espera = Math.min(GD_RETRY_BASE_MS * Math.pow(2, Math.max(0, _gdFalhasSeguidas - 1)), GD_RETRY_MAX_MS);
+  _gdProxTentativaTs = Date.now() + espera;
+}
+
+// Chamado pelo tique periódico. Fail-safe: qualquer erro aqui é engolido — a nuvem
+// nunca pode derrubar o app nem atrapalhar quem está operando o mapa.
+async function _gdTentarPendente(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(!DRIVE_STATUS.nuvem_falha) return;          // nada pendente
+    if(_gdEnviando) return;                        // envio vivo, não empilha
+    if(Date.now() < _gdProxTentativaTs) return;    // ainda no intervalo de espera
+    const snap = await _gsLerSnapshotIDB();
+    if(!snap) return;                              // sem snapshot completo, nada a reenviar
+    const d = new Date(snap.ts || Date.now());
+    const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') +
+               '_' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0') + 'm' + String(d.getSeconds()).padStart(2,'0');
+    const r = await _gdEnviarBackup('backup_completo_' + ds + '.json', JSON.stringify(snap), 'Retentativa automática', false);
+    if(!r.ok) _gdAgendarRetentativa();
+  }catch(e){ console.warn('[DRIVE] retentativa não rodou:', e && e.message); }
 }
 
 async function fazerBackupNuvemAgora(){
@@ -10064,9 +10231,19 @@ async function fazerBackupNuvemAgora(){
   const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') +
              '_' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0') + 'm' + String(d.getSeconds()).padStart(2,'0');
   const nome = 'backup_completo_' + ds + '.json';
-  const r = await _gdEnviarBackup(nome, JSON.stringify(snap), 'Manual', true);
-  if(r.ok) showToast('✅ Backup enviado para o Drive: ' + r.nome, 5000);
-  else     showToast('⚠️ Não foi enviado: ' + r.erro + ' · O backup local está intacto.', 6000);
+  // v1.9.5.1: ação explícita do usuário zera a espera do backoff — quem apertou o
+  // botão quer tentar AGORA, não daqui a 40 minutos.
+  _gdProxTentativaTs = 0;
+  const r = await _gdEnviarBackup(nome, JSON.stringify(snap), 'Manual', false);
+  if(r.ok){ showToast('✅ Backup enviado para o Drive: ' + r.nome, 5000); }
+  else {
+    // Quando o Google recusou a autorização, o caminho de saída é RECONECTAR — o
+    // envio não abre mais a tela de consentimento por conta própria.
+    const precisaReconectar = !!(r.detalhe && (r.detalhe.status === 401 || r.detalhe.status === 403));
+    showToast('⚠️ Não foi enviado: ' + r.erro +
+      (precisaReconectar ? ' · Toque em Desconectar e conecte de novo.' : '') +
+      ' · O backup local está intacto.', 7000);
+  }
   _gdReabrirConexoes();
 }
 
@@ -11886,6 +12063,80 @@ function _renderBackupStatus(){
   </div>`;
 }
 
+// ── v1.9.5.1 — INDICADOR DE NUVEM NO RODAPÉ DO PAINEL ──────────────────────
+// O rodapé mostrava SÓ o backup local, em verde, enquanto a nuvem estava em
+// "Nunca" — falsa sensação de segurança. Agora os dois aparecem, e o estado ruim
+// da nuvem fica visualmente distinto para o operador perceber e forçar o envio.
+//
+// A linha só existe onde a nuvem existe (APK com o plugin). No navegador e no
+// tablet do hotel — que ainda não tem nuvem — nada muda.
+const GD_ATRASO_MS = 24 * 60 * 60 * 1000;
+function _gdRodapeEstado(){
+  try{
+    if(!_gdDisponivel()) return null;
+    if(!_gdConectado())  return { classe:'alerta', txt:'Nuvem: não conectada' };
+    if(DRIVE_STATUS.nuvem_falha) return { classe:'ruim', txt:'Nuvem: falhando' };
+    const ult = DRIVE_STATUS.nuvem_ultimo_backup;
+    if(!ult) return { classe:'ruim', txt:'Nuvem: nunca enviada' };
+    if((Date.now() - ult) > GD_ATRASO_MS){
+      const h = Math.floor((Date.now() - ult) / (60*60*1000));
+      return { classe:'alerta', txt:'Nuvem: atrasada (há ' + h + 'h)' };
+    }
+    return { classe:'ok', txt:'Nuvem: ' + fmtHrCurta(ult) };
+  }catch(e){ return null; }
+}
+function fmtHrCurta(ts){
+  try{ return new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+  catch(e){ return '—'; }
+}
+function _gdRodapeHTML(){
+  const st = _gdRodapeEstado();
+  if(!st) return '';
+  const cor = st.classe === 'ok' ? '#0F6E56' : (st.classe === 'ruim' ? '#A32D2D' : '#B26A00');
+  const peso = st.classe === 'ok' ? '600' : '700';
+  return `<div id="rodape-nuvem" data-estado="${st.classe}" style="font-size:10px;color:${cor};font-weight:${peso};margin-top:2px">${_vtEsc(st.txt)}</div>`;
+}
+
+// v1.9.5.1 — DETALHE DO ÚLTIMO ERRO DE NUVEM, em texto copiável.
+// Fica DENTRO do card (sem modal, sem roubar foco). Um <details> fechado por
+// padrão: quem só quer operar não vê nada; quem está diagnosticando abre e copia.
+function _gdTextoDiagnostico(d){
+  if(!d) return '';
+  const linhas = [
+    'GarageSpot ' + GS_VERSION + ' (vc' + GS_VERSION_CODE + ') — erro de nuvem',
+    'quando: ' + (d.ts ? fmtDt(d.ts) : '—'),
+    'etapa: ' + (d.etapa || '—'),
+    'status HTTP: ' + (d.status || '—'),
+    'reason: ' + (d.reason || '—'),
+    'message: ' + (d.message || '—'),
+    'token via: ' + (d.via || '—'),
+    'escopos do token: ' + (d.escopos || '(não consultado)'),
+    'url: ' + (d.url || '—'),
+  ];
+  return linhas.join('\n');
+}
+function _gdCopiarDiagnostico(){
+  try{
+    const t = _gdTextoDiagnostico(DRIVE_STATUS.nuvem_erro_detalhe);
+    if(!t){ showToast('Sem detalhe para copiar.', 2500); return; }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ showToast('📋 Detalhe copiado.', 2500); },
+        function(){ showToast('Não consegui copiar — selecione o texto na tela.', 3500); });
+    } else {
+      showToast('Selecione o texto na tela para copiar.', 3500);
+    }
+  }catch(e){ showToast('Não consegui copiar.', 2500); }
+}
+function _gdDetalheErroHTML(){
+  const d = DRIVE_STATUS.nuvem_erro_detalhe;
+  if(!d) return '';
+  return `<details style="margin:0 0 8px 0">
+    <summary style="cursor:pointer;color:#A32D2D;font-size:11px">Ver detalhes do erro</summary>
+    <pre id="nuvem-erro-det" style="white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text;background:#fff;border:1px solid #e6e2d8;border-radius:6px;padding:8px;margin:6px 0 0;font-size:10px;line-height:1.5;color:#444;max-height:180px;overflow:auto">${_vtEsc(_gdTextoDiagnostico(d))}</pre>
+    <button class="bcx" onclick="_gdCopiarDiagnostico()" style="width:100%;margin-top:6px;font-size:11px">📋 Copiar detalhes</button>
+  </details>`;
+}
+
 // v1.9.5.0 — bloco da NUVEM. Separado de `_renderBackupStatus` de propósito: são
 // duas redes independentes, e misturar os dois estados foi o que a decisão de
 // campos separados no DRIVE_STATUS veio impedir.
@@ -11926,6 +12177,7 @@ function _renderNuvemStatus(){
       <div style="color:#666;overflow:hidden;text-overflow:ellipsis">${_vtEsc(email||'conta Google')}</div></div>
     </div>
     ${falha?`<div style="color:#A32D2D;font-weight:600;margin-bottom:6px">⚠️ Último envio falhou — ${_vtEsc(erro)}</div>`:''}
+    ${falha?_gdDetalheErroHTML():''}
     <div style="color:#666">Último backup na nuvem: <strong id="nuvem-ultimo">${_vtEsc(ultStr)}</strong></div>
     <div style="color:#aaa;font-size:11px;margin-top:4px">Pasta <strong>${_vtEsc(GD_PASTA_NOME)}</strong> · ${DRIVE_STATUS.nuvem_enviados||0} envio(s) nesta instalação</div>
     <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
@@ -14920,6 +15172,9 @@ checkLicense().then(async (ativo)=>{
       }, 1200);
       // v1.9.4.11 (Parte 4): backup periódico (leve; completo no máximo 1×/hora)
       try { setInterval(function(){ _gsBackupAuto('periódico'); }, 10 * 60 * 1000); } catch(e){}
+      // v1.9.5.1: retentativa da NUVEM no mesmo tique. Só age se houver falha
+      // pendente e o intervalo de espera já tiver passado — ver `_gdTentarPendente`.
+      try { setInterval(function(){ _gdTentarPendente(); }, 10 * 60 * 1000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
