@@ -1312,7 +1312,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
 // chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
 // nativo mudou, e o APK vc25 instalado segue valendo.
-const GS_VERSION = 'v1.9.5.2';
+const GS_VERSION = 'v1.9.5.3';
 const GS_VERSION_CODE = 25;
 const GS_BUILD_TS = '2026-08-06';
 
@@ -4794,10 +4794,17 @@ function renderPainelDia(){
             '<button onclick="showEditarPlantao()" style="margin-top:6px;font-size:10px;font-weight:700;color:#185FA5;background:#fff;border:1px solid #185FA5;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">✏️ Editar plantão</button>';
         })()}
       </div>
-      <div style="flex:1;min-width:100px;text-align:right">
+      <!-- v1.9.5.3: as três linhas viram um ATALHO que força o envio para a nuvem.
+           Sem PIN e sem registrar autor: forçar backup é precaução que qualquer
+           funcionário pode tomar. Conectar/desconectar continua só em Gestão. -->
+      <div id="rodape-backup-atalho" role="button" tabindex="0"
+           onclick="_gdForcarPeloRodape()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_gdForcarPeloRodape();}"
+           title="Tocar para enviar o backup para a nuvem agora"
+           style="flex:1;min-width:100px;text-align:right;cursor:pointer;user-select:none;-webkit-tap-highlight-color:rgba(24,95,165,.15);border:1px dashed #d7d2c6;border-radius:8px;padding:6px 8px;margin:-4px -4px -4px 0">
         <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">☁️ Backup</div>
         <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?'Hoje às '+fmtHr(lastBkp):'Sem backup'}</div>
         ${_gdRodapeHTML()}
+        <div id="rodape-backup-dica" style="font-size:9px;color:#9a9284;margin-top:3px;font-weight:600">toque para enviar ↑</div>
       </div>
     </div>
   </div>
@@ -9120,6 +9127,10 @@ let DRIVE_STATUS = {
   // v1.9.5.2: PDFs de fechamento que ainda não subiram. Só METADADOS — o arquivo
   // pesa MBs e já está no dispositivo. Campo ADITIVO: aparelho antigo não tem a chave.
   nuvem_pdfs_pendentes:[],   // [{nome, apt, checkin, ts}]
+  // v1.9.5.3: falha de REDE (transitória) é diferente de falha do Google. E
+  // `nuvem_pendente` marca envio ADIADO por condição ruim — nada disso alarma.
+  nuvem_falha_transitoria:false,
+  nuvem_pendente:false,
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
@@ -9798,6 +9809,8 @@ const GD_ANDROID_CLIENT_ID = '1033748409208-cucf9rddoqoevbk066ldrtjvfu1jlqs7.app
 // `drive.file` = o app só enxerga o que ELE MESMO criou. É escopo não-sensível
 // (sem verificação pesada do Google) e o app não consegue ler o Drive do hotel.
 const GD_SCOPES     = ['https://www.googleapis.com/auth/drive.file'];
+// v1.9.5.3: pasta PRINCIPAL na raiz do Drive; as duas de baixo vivem dentro dela.
+const GD_PASTA_RAIZ = 'GarageSpot';
 const GD_PASTA_NOME = 'GarageSpot Backups';
 const GD_MIME_PASTA = 'application/vnd.google-apps.folder';
 const GD_API        = 'https://www.googleapis.com/drive/v3';
@@ -9864,9 +9877,30 @@ function _gdConectado(){
   try{ return !!(DRIVE_STATUS && DRIVE_STATUS.nuvem_conectada); }catch(e){ return false; }
 }
 
-function _gdMarcarFalha(msg, detalhe){
+// v1.9.5.3 — reconhece falha de REDE (a requisição não chegou a sair) em vez de
+// resposta de erro do Google. `fetch` rejeita com TypeError nesses casos; a
+// mensagem varia por navegador/WebView, daí a lista.
+function _gdErroDeRede(e){
   try{
-    DRIVE_STATUS.nuvem_falha = true;
+    if(!e) return false;
+    if(e.gdAuth) return false;                       // veio com status HTTP → é do Google
+    if(e.gdDet && e.gdDet.status) return false;      // idem
+    if(e.gdTimeout) return true;                     // estourou o teto: tratar como transitório
+    const m = String(e.message || e).toLowerCase();
+    return e instanceof TypeError ||
+      m.indexOf('failed to fetch') >= 0 || m.indexOf('networkerror') >= 0 ||
+      m.indexOf('network request failed') >= 0 || m.indexOf('load failed') >= 0 ||
+      m.indexOf('conexão') >= 0 || m.indexOf('internet') >= 0;
+  }catch(_){ return false; }
+}
+
+// `transitorio=true` registra a falha (o detalhe continua copiável — foi ele que
+// permitiu diagnosticar o `Failed to fetch`) mas NÃO acende o alarme: quem decide
+// se alarma é `_gdRodapeEstado`, pelos limiares de persistência.
+function _gdMarcarFalha(msg, detalhe, transitorio){
+  try{
+    DRIVE_STATUS.nuvem_falha = !transitorio;
+    DRIVE_STATUS.nuvem_falha_transitoria = !!transitorio;
     DRIVE_STATUS.nuvem_ultimo_erro = String(msg == null ? '' : msg).slice(0, 180);
     // v1.9.5.1: guarda o diagnóstico junto, quando houver. Nunca sobrescreve com
     // vazio — um erro genérico depois de um detalhado não pode apagar a evidência.
@@ -9877,6 +9911,7 @@ function _gdMarcarFalha(msg, detalhe){
 function _gdLimparFalha(){
   try{
     DRIVE_STATUS.nuvem_falha = false;
+    DRIVE_STATUS.nuvem_falha_transitoria = false;
     DRIVE_STATUS.nuvem_ultimo_erro = '';
     DRIVE_STATUS.nuvem_erro_detalhe = null;
     saveDriveStatus();
@@ -10110,15 +10145,43 @@ async function _gdGarantirPastaEm(token, nome, paiId){
   return j2.id;
 }
 
-// Percorre/cria a árvore `raiz/seg1/seg2/…` e devolve o id da última pasta.
+// Percorre/cria a árvore `GarageSpot/seg1/seg2/…` e devolve o id da última pasta.
 // Criação SOB DEMANDA: nada é criado antes de existir um documento para guardar.
-async function _gdGarantirCaminho(token, raizNome, segmentos){
-  let paiId = await _gdGarantirPastaRaiz(token, raizNome);
+//
+// v1.9.5.3: TUDO passa a viver sob a pasta principal `GarageSpot` — antes as duas
+// pastas ficavam soltas na raiz do Drive do hotel.
+async function _gdGarantirCaminho(token, segmentos){
+  const raiz = await _gdGarantirPastaRaiz(token, GD_PASTA_RAIZ);
+  let paiId = raiz;
+  let primeiro = true;
   for(const seg of segmentos){
     if(!seg) continue;
-    paiId = await _gdGarantirPastaEm(token, seg, paiId);
+    // O PRIMEIRO segmento (`GarageSpot Backups` / `GarageSpot Hospedagens`) pode
+    // existir SOLTO na raiz do Drive, de instalações anteriores. Buscar só dentro
+    // de `GarageSpot` não o acharia e o app criaria uma DUPLICATA — com os backups
+    // antigos órfãos na pasta velha. Aqui a pasta existente é ADOTADA (movida),
+    // nunca recriada. Isso também torna a estrutura auto-corretiva se a migração
+    // ainda não tiver rodado.
+    paiId = primeiro ? await _gdAdotarOuCriarPrincipal(token, seg, raiz)
+                     : await _gdGarantirPastaEm(token, seg, paiId);
+    primeiro = false;
   }
   return paiId;
+}
+
+// Acha a pasta pelo nome em QUALQUER lugar; se estiver fora da raiz, move para
+// dentro dela. Se não existir, cria já no lugar certo.
+async function _gdAdotarOuCriarPrincipal(token, nome, raizId){
+  const achada = await _gdAcharPastaSolta(token, nome);
+  if(achada && achada.id !== raizId){
+    const pais = achada.parents || [];
+    if(pais.indexOf(raizId) < 0){
+      await _gdMover(token, achada.id, raizId, pais[0] || '');
+      try{ addLogSistema('Nuvem: pasta "' + nome + '" adotada e movida para ' + GD_PASTA_RAIZ); }catch(e){}
+    }
+    return achada.id;
+  }
+  return await _gdGarantirPastaEm(token, nome, raizId);
 }
 
 // Pasta de primeiro nível (sem pai declarado). Usada pelas DUAS raízes: a de
@@ -10149,22 +10212,12 @@ async function _gdGarantirPasta(token){
       if(j && j.id && !j.trashed) return j.id;
     }catch(e){ if(e && e.gdAuth) throw e; }
   }
-  const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(GD_PASTA_NOME) + "' and trashed=false";
-  const r2 = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) + '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token, 'procurar a pasta');
-  const j2 = await r2.json();
-  if(j2 && j2.files && j2.files.length){
-    DRIVE_STATUS.nuvem_pasta_id = j2.files[0].id; saveDriveStatus();
-    return j2.files[0].id;
-  }
-  const r3 = await _gdFetch(GD_API + '/files?fields=id', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: GD_PASTA_NOME, mimeType: GD_MIME_PASTA }),
-  }, token, 'criar a pasta');
-  const j3 = await r3.json();
-  if(!j3 || !j3.id) throw new Error('não foi possível criar a pasta no Drive');
-  DRIVE_STATUS.nuvem_pasta_id = j3.id; saveDriveStatus();
-  return j3.id;
+  // v1.9.5.3: a pasta de backups agora nasce DENTRO de `GarageSpot`. Se já existir
+  // solta na raiz (instalações anteriores), o id lembrado acima continua valendo e a
+  // migração a move — nada é recriado nem re-enviado.
+  const id = await _gdGarantirCaminho(token, [GD_PASTA_NOME]);
+  DRIVE_STATUS.nuvem_pasta_id = id; saveDriveStatus();
+  return id;
 }
 
 // Upload multipart (metadados + conteúdo numa requisição só).
@@ -10287,11 +10340,19 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
         if(t) det.escopos = await _gdEscoposDoToken(t);
       }catch(e3){}
     }
-    _gdMarcarFalha(m, det);
+    // v1.9.5.3 — REDE ≠ GOOGLE. Um `TypeError: Failed to fetch` não tem status,
+    // reason nem URL: a requisição nem chegou a sair. Isso é transitório por
+    // natureza (o caso real: o upload de ~10MB começava no `visibilitychange`
+    // 'hidden' e o Android suspendia o WebView no meio). Tratar isso como falha
+    // do Google fazia o rodapé gritar "falhando" por um tropeço normal — e o
+    // operador aprende a ignorar alarme que mente.
+    det.transitorio = _gdErroDeRede(e);
+    _gdMarcarFalha(m, det, det.transitorio);
     _gdFalhasSeguidas++;
     _gdAgendarRetentativa();
     addLogSistema('Backup na nuvem falhou (' + (motivo || 'automático') + '): ' + m +
-      (det.reason ? ' [' + det.reason + ']' : '') + (det.via ? ' via ' + det.via : ''));
+      (det.transitorio ? ' [rede — vai retentar]' : (det.reason ? ' [' + det.reason + ']' : '')) +
+      (det.via ? ' via ' + det.via : ''));
     return {ok:false, erro:m, detalhe:det};
   }finally{
     _gdEnviando = false;
@@ -10303,11 +10364,144 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
 function _gdEspelharNoDrive(nome, json, motivo){
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
+    // v1.9.5.3 — NÃO subir quando não há para onde subir. Três guardas:
+    //  1. app escondido: o backup do `visibilitychange` 'hidden' era exatamente o
+    //     momento em que o Android suspendia o WebView no meio de um upload de
+    //     ~10MB — origem medida do `Failed to fetch`. O snapshot completo já está
+    //     no IndexedDB, então `_gdTentarPendente` reenvia quando o app voltar.
+    //  2. offline declarado pelo próprio navegador.
+    //  3. app ainda inicializando (a conectividade pode não ter subido).
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden'){
+      _gdAdiarEnvio('app minimizado');
+      return;
+    }
+    if(typeof navigator !== 'undefined' && navigator.onLine === false){
+      _gdAdiarEnvio('sem conexão');
+      return;
+    }
+    if(typeof gsPronto === 'function' && !gsPronto()){
+      _gdAdiarEnvio('app inicializando');
+      return;
+    }
     // v1.9.5.2: o `nome` que chega é o do arquivo LOCAL (formato DD-MM-AA, que não
     // ordena). A nuvem usa o seu próprio padrão — o arquivo local segue intocado.
     _gdEnviarBackup(_gdNomeBackup(), json, motivo, false)
       .catch(function(e){ console.warn('[DRIVE] espelhamento falhou:', e && e.message); });
   }catch(e){ console.warn('[DRIVE] espelhamento não agendado:', e && e.message); }
+}
+
+// ── v1.9.5.3 — MIGRAÇÃO DA ESTRUTURA DE PASTAS ─────────────────────────────
+// Alvo:
+//   GarageSpot/
+//     GarageSpot Backups/
+//     GarageSpot Hospedagens/AAAA/Mmm-AAAA/Apt<n>/
+//
+// REGRA DE OURO: **mover e renomear, NUNCA recriar**. Mover é uma alteração de
+// metadados (`addParents`/`removeParents`) que preserva o ID e o conteúdo do
+// arquivo; recriar+reenviar duplicaria megabytes e arriscaria perder cópia. Com o
+// escopo `drive.file` o app tem acesso pleno ao que ele mesmo criou — e todas
+// estas pastas foram criadas por ele.
+//
+// Se QUALQUER passo falhar, a migração aborta e a estrutura antiga continua
+// funcionando: o app acha as pastas por nome/ID de qualquer jeito.
+const GD_MIGRACAO_LS = 'garagespot_drive_migracao_v1953';
+
+// Move uma pasta/arquivo para dentro de outro pai, sem tocar no conteúdo.
+async function _gdMover(token, id, novoPaiId, paiAtualId){
+  const url = GD_API + '/files/' + encodeURIComponent(id) +
+    '?addParents=' + encodeURIComponent(novoPaiId) +
+    (paiAtualId ? '&removeParents=' + encodeURIComponent(paiAtualId) : '') +
+    '&fields=id,parents';
+  const r = await _gdFetch(url, { method: 'PATCH' }, token, 'mover pasta');
+  return await r.json();
+}
+async function _gdRenomear(token, id, nome){
+  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,name', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nome }),
+  }, token, 'renomear pasta');
+  return await r.json();
+}
+// Pasta de primeiro nível pelo nome, SEM criar. Devolve {id, parents} ou null.
+async function _gdAcharPastaSolta(token, nome){
+  const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(nome) + "' and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&fields=files(id,name,parents)&pageSize=10', {method:'GET'}, token, 'procurar ' + nome);
+  const j = await r.json();
+  const f = (j && j.files) || [];
+  return f.length ? f[0] : null;
+}
+async function _gdFilhos(token, paiId){
+  const q = "'" + _gdEscQ(paiId) + "' in parents and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&fields=files(id,name,mimeType)&pageSize=200', {method:'GET'}, token, 'listar pasta');
+  const j = await r.json();
+  return (j && j.files) || [];
+}
+
+// `MM-AAAA` → `Mmm-AAAA`. Devolve '' se não for o formato antigo.
+function _gdMesAntigoParaNovo(nome){
+  const m = /^(\d{2})-(\d{4})$/.exec(String(nome || ''));
+  if(!m) return '';
+  return _gdMesAbrev(m[1], m[2]);
+}
+
+async function _gdMigrarEstrutura(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(localStorage.getItem(GD_MIGRACAO_LS) === 'ok') return;      // já rodou
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+    await _gdComToken(async function(token){
+      const raiz = await _gdGarantirPastaRaiz(token, GD_PASTA_RAIZ);
+
+      // 1) mover as duas pastas para dentro de `GarageSpot` (se ainda estiverem fora)
+      for(const nome of [GD_PASTA_NOME, GD_PASTA_HOSP]){
+        const p = await _gdAcharPastaSolta(token, nome);
+        if(!p || p.id === raiz) continue;
+        const pais = p.parents || [];
+        if(pais.indexOf(raiz) >= 0) continue;                      // já está no lugar
+        await _gdMover(token, p.id, raiz, pais[0] || '');
+        addLogSistema('Nuvem: pasta "' + nome + '" movida para dentro de ' + GD_PASTA_RAIZ);
+      }
+
+      // 2) renomear os meses `MM-AAAA` → `Mmm-AAAA`, dentro de cada ano
+      const hosp = await _gdAcharPastaSolta(token, GD_PASTA_HOSP);
+      if(hosp){
+        const anos = (await _gdFilhos(token, hosp.id)).filter(function(f){ return f.mimeType === GD_MIME_PASTA; });
+        for(const ano of anos){
+          const meses = (await _gdFilhos(token, ano.id)).filter(function(f){ return f.mimeType === GD_MIME_PASTA; });
+          for(const mes of meses){
+            const novo = _gdMesAntigoParaNovo(mes.name);
+            if(!novo) continue;                                    // já está no formato novo
+            const jaExiste = meses.filter(function(x){ return x.name === novo && x.id !== mes.id; })[0];
+            if(jaExiste){
+              // destino já existe: MOVE o conteúdo do antigo para lá. Não sobrescreve
+              // e não apaga a pasta antiga — esvaziada, ela fica visível para conferência
+              // (poda é v1.9.5.4, e apagar aqui seria justamente o que o prompt proíbe).
+              const filhos = await _gdFilhos(token, mes.id);
+              for(const f of filhos) await _gdMover(token, f.id, jaExiste.id, mes.id);
+              addLogSistema('Nuvem: conteúdo de "' + mes.name + '" movido para "' + novo + '" (' + filhos.length + ' item(ns))');
+            } else {
+              await _gdRenomear(token, mes.id, novo);
+              addLogSistema('Nuvem: pasta "' + mes.name + '" renomeada para "' + novo + '"');
+            }
+          }
+        }
+      }
+      return true;
+    }, false);
+
+    localStorage.setItem(GD_MIGRACAO_LS, 'ok');
+    addLogSistema('Nuvem: migração da estrutura de pastas concluída');
+  }catch(e){
+    // ABORTO SEGURO: não marca como concluída, não apaga nada. O app segue achando
+    // as pastas por nome, na estrutura em que elas estiverem.
+    console.warn('[DRIVE] migração abortada (estrutura antiga preservada):', e && e.message);
+    try{ addLogSistema('Nuvem: migração de pastas adiada — ' + ((e && e.message) || 'erro')); }catch(_){}
+  }
 }
 
 // ── v1.9.5.2 — PDFs DE FECHAMENTO NA NUVEM ─────────────────────────────────
@@ -10325,7 +10519,7 @@ const GD_PASTA_HOSP = 'GarageSpot Hospedagens';
 async function _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs){
   const pastas = _gdPastasHospedagem(apt, checkinTs);
   return await _gdComToken(async function(token){
-    const destino = await _gdGarantirCaminho(token, GD_PASTA_HOSP, pastas);
+    const destino = await _gdGarantirCaminho(token, [GD_PASTA_HOSP].concat(pastas));
     return await _gdEnviarArquivoBin(token, destino, nomeArquivo, b64, 'application/pdf');
   }, false);
 }
@@ -10422,6 +10616,18 @@ async function _gdTentarPDFsPendentes(){
 // a API: um 403 de permissão não se resolve por insistência, e a cota é do hotel.
 let _gdFalhasSeguidas = 0;
 let _gdProxTentativaTs = 0;
+
+// v1.9.5.3 — envio ADIADO (não é falha!). Marca que há algo para subir assim que
+// as condições voltarem, sem acender nada no card: o operador não precisa saber
+// que o app decidiu esperar 30 segundos por rede.
+function _gdAdiarEnvio(motivo){
+  try{
+    DRIVE_STATUS.nuvem_pendente = true;
+    saveDriveStatus();
+    _gdProxTentativaTs = 0;           // pode tentar assim que voltar
+    console.log('[DRIVE] envio adiado (' + motivo + ') — será retentado');
+  }catch(e){}
+}
 const GD_RETRY_BASE_MS = 5 * 60 * 1000;
 const GD_RETRY_MAX_MS  = 60 * 60 * 1000;
 
@@ -10435,13 +10641,20 @@ function _gdAgendarRetentativa(){
 async function _gdTentarPendente(){
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
-    if(!DRIVE_STATUS.nuvem_falha) return;          // nada pendente
+    // v1.9.5.3: não insistir quando as condições ainda são ruins — seria só
+    // acumular `Failed to fetch`.
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    // pendente = falha (definitiva ou transitória) OU envio adiado por condição ruim
+    const temPendencia = DRIVE_STATUS.nuvem_falha || DRIVE_STATUS.nuvem_falha_transitoria || DRIVE_STATUS.nuvem_pendente;
+    if(!temPendencia) return;
     if(_gdEnviando) return;                        // envio vivo, não empilha
     if(Date.now() < _gdProxTentativaTs) return;    // ainda no intervalo de espera
     const snap = await _gsLerSnapshotIDB();
     if(!snap) return;                              // sem snapshot completo, nada a reenviar
     const r = await _gdEnviarBackup(_gdNomeBackup(snap.ts), JSON.stringify(snap), 'Retentativa automática', false);
-    if(!r.ok) _gdAgendarRetentativa();
+    if(r.ok){ DRIVE_STATUS.nuvem_pendente = false; saveDriveStatus(); }
+    else _gdAgendarRetentativa();
   }catch(e){ console.warn('[DRIVE] retentativa não rodou:', e && e.message); }
 }
 
@@ -12296,15 +12509,44 @@ function _renderBackupStatus(){
 // A linha só existe onde a nuvem existe (APK com o plugin). No navegador e no
 // tablet do hotel — que ainda não tem nuvem — nada muda.
 const GD_ATRASO_MS = 24 * 60 * 60 * 1000;
+// v1.9.5.3 — LIMIARES DO ALARME (justificados no RELATORIO):
+//  • 3 falhas seguidas: a retentativa espera 5→10→20 min, então 3 falhas significam
+//    ~35 min insistindo sem sucesso. Uma ou duas falhas cabem numa oscilação de
+//    wi-fi e num app que foi minimizado no meio do upload — alarmar aí é mentir.
+//  • 6h sem envio bem-sucedido: a cadência completa é horária, então 6h são seis
+//    janelas perdidas. Bem antes das 24h de "atrasada", que é outro estado.
+// Alarme que dispara à toa é alarme que o operador aprende a ignorar.
+const GD_FALHAS_P_ALARME = 3;
+const GD_SEM_SUCESSO_MS  = 6 * 60 * 60 * 1000;
+
 function _gdRodapeEstado(){
   try{
     if(!_gdDisponivel()) return null;
     if(!_gdConectado())  return { classe:'alerta', txt:'Nuvem: não conectada' };
-    if(DRIVE_STATUS.nuvem_falha) return { classe:'ruim', txt:'Nuvem: falhando' };
     const ult = DRIVE_STATUS.nuvem_ultimo_backup;
+    const semSucessoHa = ult ? (Date.now() - ult) : Infinity;
+
+    // Falha DEFINITIVA do Google (403, 401…) alarma na hora: não adianta esperar,
+    // ela não se resolve sozinha — exige ação do gestor.
+    if(DRIVE_STATUS.nuvem_falha) return { classe:'ruim', txt:'Nuvem: falhando' };
+
+    // Falha transitória (rede): só vira alarme se PERSISTIR.
+    if(DRIVE_STATUS.nuvem_falha_transitoria){
+      // `ult` ausente = nunca houve envio bem-sucedido; aí não dá para medir "tempo
+      // sem sucesso" (seria Infinity e alarmaria já na 1ª tentativa, numa instalação
+      // recém-conectada). Nesse caso vale só a contagem de falhas.
+      const persistente = (_gdFalhasSeguidas >= GD_FALHAS_P_ALARME) ||
+                          (!!ult && semSucessoHa > GD_SEM_SUCESSO_MS);
+      if(persistente) return { classe:'ruim', txt:'Nuvem: falhando' };
+      // enquanto a retentativa está agendada, o rodapé mostra o último sucesso —
+      // estado neutro, sem alarme
+      if(ult) return { classe:'ok', txt:'Nuvem: ' + fmtHrCurta(ult) };
+      return { classe:'alerta', txt:'Nuvem: tentando…' };
+    }
+
     if(!ult) return { classe:'ruim', txt:'Nuvem: nunca enviada' };
-    if((Date.now() - ult) > GD_ATRASO_MS){
-      const h = Math.floor((Date.now() - ult) / (60*60*1000));
+    if(semSucessoHa > GD_ATRASO_MS){
+      const h = Math.floor(semSucessoHa / (60*60*1000));
       return { classe:'alerta', txt:'Nuvem: atrasada (há ' + h + 'h)' };
     }
     return { classe:'ok', txt:'Nuvem: ' + fmtHrCurta(ult) };
@@ -12320,6 +12562,40 @@ function _gdRodapeHTML(){
   const cor = st.classe === 'ok' ? '#0F6E56' : (st.classe === 'ruim' ? '#A32D2D' : '#B26A00');
   const peso = st.classe === 'ok' ? '600' : '700';
   return `<div id="rodape-nuvem" data-estado="${st.classe}" style="font-size:10px;color:${cor};font-weight:${peso};margin-top:2px">${_vtEsc(st.txt)}</div>`;
+}
+
+// v1.9.5.3 — ATALHO DO RODAPÉ: força o envio para a nuvem.
+//
+// Chama `fazerBackupNuvemAgora`, a MESMA função do botão de Backup e Conexões —
+// nada de caminho paralelo que possa divergir com o tempo.
+//
+// **SEM PIN e SEM registrar autor**, de propósito: forçar um backup é ação
+// preventiva, não configuração. Quem opera o mapa precisa poder fazer isso na
+// hora. Conectar/desconectar a CONTA continua atrás de `_gsPinValido` em Gestão —
+// aquilo sim muda a configuração do aparelho.
+function _gdForcarPeloRodape(){
+  try{
+    if(!_gdDisponivel()){
+      showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
+      return;
+    }
+    if(!_gdConectado()){
+      // NÃO abre login: conectar é ação de gestor, com PIN, em Gestão.
+      showToast('☁️ Google Drive não conectado. Peça ao gestor: Gestão → Backup e Conexões.', 5500);
+      return;
+    }
+    if(_gdEnviando){ showToast('☁️ Já estou enviando — aguarde.', 3000); return; }
+    const dica = document.getElementById('rodape-backup-dica');
+    if(dica) dica.textContent = 'enviando…';
+    Promise.resolve(fazerBackupNuvemAgora()).catch(function(e){
+      console.warn('[DRIVE] atalho do rodapé falhou:', e && e.message);
+    }).then(function(){
+      // re-renderiza o Painel para o rodapé refletir o novo estado, se ele estiver na tela
+      try{ if(document.getElementById('rodape-backup-atalho') && typeof renderPainelDia === 'function') renderPainelDia(); }catch(_){}
+      const d2 = document.getElementById('rodape-backup-dica');
+      if(d2) d2.textContent = 'toque para enviar ↑';
+    });
+  }catch(e){ console.warn('[DRIVE] atalho do rodapé:', e && e.message); }
 }
 
 // v1.9.5.2 — pendências de PDF de fechamento no card. Contagem simples, sem modal:
@@ -13451,11 +13727,19 @@ function fmtNomeCheckout(apt, hospNum, ts, checkinTs){
 
 // Pastas da árvore de consulta, pela data de CHECK-IN (é a referência de busca).
 // Devolve ['2026', '08-2026', 'Apt05'].
+// v1.9.5.3: mês em ABREVIAÇÃO PT-BR de 3 letras (`Ago-2026`), no lugar do numérico
+// (`08-2026`). Legível para quem procura um fechamento no Drive pelo celular.
+const GD_MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function _gdMesAbrev(mm, aaaa){
+  const i = parseInt(mm, 10) - 1;
+  const nome = GD_MESES_ABREV[i] || String(mm);
+  return nome + '-' + aaaa;
+}
 function _gdPastasHospedagem(apt, checkinTs){
   const base = checkinTs || Date.now();
   const iso = _localISO(new Date(base)) || _hojeLocalISO();
   const p = iso.split('-');
-  return [p[0], p[1] + '-' + p[0], 'Apt' + _apt2Txt(apt)];
+  return [p[0], _gdMesAbrev(p[1], p[0]), 'Apt' + _apt2Txt(apt)];
 }
 
 // Parte 1 v1.9.4.9: SALVA o PDF no dispositivo SEM compartilhar (compartilhar é ação à
@@ -15442,6 +15726,22 @@ checkLicense().then(async (ativo)=>{
       // v1.9.5.2: PDFs de fechamento que não subiram (sem Drive ou com falha) são
       // reenviados relendo o arquivo do dispositivo — um por tique.
       try { setInterval(function(){ _gdTentarPDFsPendentes(); }, 10 * 60 * 1000); } catch(e){}
+      // v1.9.5.3: quando o app VOLTA (ou a rede volta), tenta o que ficou adiado —
+      // com uma folga para a conectividade estabilizar. Sem isso, o que foi adiado
+      // no 'hidden' esperaria até 10 min pelo tique.
+      try {
+        document.addEventListener('visibilitychange', function(){
+          if(document.visibilityState === 'visible'){
+            setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); }, 4000);
+          }
+        });
+        window.addEventListener('online', function(){
+          setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); }, 3000);
+        });
+      } catch(e){}
+      // v1.9.5.3: migração das pastas do Drive para a estrutura definitiva.
+      // Roda UMA vez, já com o app pronto e a tela livre.
+      try { setTimeout(function(){ _gdMigrarEstrutura(); }, 12000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
