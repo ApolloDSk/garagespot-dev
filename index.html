@@ -1312,9 +1312,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
 // chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
 // nativo mudou, e o APK vc25 instalado segue valendo.
-const GS_VERSION = 'v1.9.5.3';
+const GS_VERSION = 'v1.9.5.4';
 const GS_VERSION_CODE = 25;
-const GS_BUILD_TS = '2026-08-06';
+const GS_BUILD_TS = '2026-08-07';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -2816,7 +2816,11 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
     upd();closeOv();
     showToast('✅ Check-in registrado — Hospedagem '+numH);
-    _gsBackupAuto('check-in '+numH); // v1.9.4.11
+    // v1.9.5.4: TODO check-in usa cadência COMPLETA — inclusive este, o clássico
+    // pela vaga livre, que conclui sem vistoria. Antes ele usava a leve, e como só
+    // a completa espelha na nuvem, esses check-ins ficavam fora do Drive até o tique
+    // horário. (Impor vistoria obrigatória aqui é decisão de outra rodada.)
+    _gsBackupAuto('check-in '+numH, {completo:true});
   } else if(isCheckin===false){
     const hospNum=(PASSEIO[apt]?.hospedagem)||d.hospedagem||'';
     if(hospNum) d.hospedagem=hospNum;
@@ -4800,11 +4804,11 @@ function renderPainelDia(){
       <div id="rodape-backup-atalho" role="button" tabindex="0"
            onclick="_gdForcarPeloRodape()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_gdForcarPeloRodape();}"
            title="Tocar para enviar o backup para a nuvem agora"
-           style="flex:1;min-width:100px;text-align:right;cursor:pointer;user-select:none;-webkit-tap-highlight-color:rgba(24,95,165,.15);border:1px dashed #d7d2c6;border-radius:8px;padding:6px 8px;margin:-4px -4px -4px 0">
+           style="flex:1;min-width:100px;text-align:right;cursor:pointer;user-select:none;-webkit-tap-highlight-color:rgba(24,95,165,.15);border-radius:8px;padding:6px 8px;margin:-4px -4px -4px 0">
         <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">☁️ Backup</div>
         <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?'Hoje às '+fmtHr(lastBkp):'Sem backup'}</div>
         ${_gdRodapeHTML()}
-        <div id="rodape-backup-dica" style="font-size:9px;color:#9a9284;margin-top:3px;font-weight:600">toque para enviar ↑</div>
+        ${_gdDicaTocarHTML()}
       </div>
     </div>
   </div>
@@ -5553,15 +5557,13 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-sep">Configurações</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showConfiguracoesSistema')">⚙ <span>Configurações do Sistema</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showConexoes')">🔗 <span>Backup e Conexões</span></div>
-    <div class="gestao-menu-sep">Exibição</div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('alterarPIN')">🔑 <span>Alterar PIN do gestor</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showExibicao')">🔤 <span>Tamanho de fonte</span></div>
-    <div class="gestao-menu-sep">Dados do mapa</div>
-    <div class="gestao-menu-item" onclick="closeOv();exportarBackupCompleto()">📦 <span>Exportar todos os dados</span></div>
-    <div class="gestao-menu-item" onclick="closeOv();abrirImportarDados()">📥 <span>Importar dados</span></div>
-    <div class="gestao-menu-item" onclick="_gestaoAbrir('confirmReset')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
+    <div class="gestao-menu-sep">Diagnóstico</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showAuditoria')" style="color:#555">🛡 <span>Trilha de auditoria</span></div>
-    <div class="gestao-menu-item" onclick="_gestaoAbrir('alterarPIN')" style="color:#555;font-size:12px">🔑 <span>Alterar PIN</span></div>
+    <div class="gestao-menu-sep">Zona de risco</div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('confirmReset')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
@@ -5712,6 +5714,10 @@ function addLogSistema(msg, meta){
       if(meta.quem) ent.quem=String(meta.quem);
       if(meta.acao) ent.acao=String(meta.acao);
       if(meta.alvo) ent.alvo=String(meta.alvo);
+      // v1.9.5.4: ORIGEM da ação (usuário × automático). Nasceu para a desconexão do
+      // Drive: sem isso, "o app desconectou sozinho" vira discussão de memória em vez
+      // de fato auditável. Campo opcional — nada antigo muda.
+      if(meta.origem) ent.origem=String(meta.origem);
     }
     log.push(ent);
     log=_logPodar(log);
@@ -9131,6 +9137,9 @@ let DRIVE_STATUS = {
   // `nuvem_pendente` marca envio ADIADO por condição ruim — nada disso alarma.
   nuvem_falha_transitoria:false,
   nuvem_pendente:false,
+  // v1.9.5.4: "precisa reconectar" ≠ "desconectado". O vínculo continua; o que
+  // falta é permissão. Só o botão Desconectar (com PIN) desvincula de fato.
+  nuvem_reconectar:false,
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
@@ -9312,8 +9321,18 @@ async function fazerBackupLocal(motivo, opts){
       return {ok:false,erro:val.motivo};
     }
     const json=JSON.stringify(snap);
+    // v1.9.5.4: nome no MESMO formato da nuvem (`AAAA-MM-DD_HHhMM`, dia local), para
+    // os dois lados baterem. Os arquivos antigos NÃO são renomeados, e a contagem
+    // não depende do nome — ela vem do registro `garagespot_backups_local`.
     const hoje=new Date();
-    const ds=String(hoje.getDate()).padStart(2,'0')+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getFullYear()).slice(-2)+'_'+String(hoje.getHours()).padStart(2,'0')+'h'+String(hoje.getMinutes()).padStart(2,'0')+'m'+String(hoje.getSeconds()).padStart(2,'0');
+    const p2=n=>String(n).padStart(2,'0');
+    let ds=_localISO(hoje)+'_'+p2(hoje.getHours())+'h'+p2(hoje.getMinutes());
+    // ⚠️ O LEVE mantém os SEGUNDOS. Ele roda a cada mudança relevante (debounce de
+    // 15s), então dois leves podem cair no mesmo minuto — e sem os segundos o
+    // segundo arquivo SOBRESCREVERIA o primeiro. Sobrescrever é destruir, e esta
+    // rodada é explicitamente não destrutiva. O COMPLETO usa o formato da nuvem sem
+    // segundos porque o freio abaixo garante minutos de distância entre eles.
+    if(!comFotos) ds += 'm'+p2(hoje.getSeconds());
     const nome='backup_'+(comFotos?'completo':'leve')+'_'+ds+'.json';
     let gravouArquivo = false;
     if(window.Capacitor?.Plugins?.Filesystem){
@@ -9367,6 +9386,56 @@ try {
   const _m = JSON.parse(localStorage.getItem(GS_BACKUP_META_LS) || 'null');
   if(_m && _m.ts) _gsUltimoCompletoTs = _m.ts;
 } catch(e){}
+
+// ── v1.9.5.4 — FREIO DO BACKUP AO MINIMIZAR ────────────────────────────────
+// Dois critérios, nesta ordem:
+//  1. **Houve mudança?** Sem alteração nos dados, não existe motivo para gerar
+//     arquivo nenhum — a cópia seria byte a byte igual à anterior. Este é o
+//     critério principal: alternar entre apps para tirar print não muda dado.
+//  2. **Intervalo mínimo entre COMPLETOS: 30 min.** Escolhido para casar com a
+//     cadência periódica, que já promove a completo 1×/h: com 30 min o app nunca
+//     gera mais de ~2 completos por hora por minimização, contra os 10 em 6 minutos
+//     medidos no aparelho. O LEVE não tem freio de tempo (pesa poucos KB) — se
+//     houve mudança e o completo está barrado, **a mudança é salva no leve**, para
+//     o freio nunca custar dado real.
+const GS_MIN_ENTRE_COMPLETOS_MS = 30 * 60 * 1000;
+let _gsUltimaAssinatura = '';
+
+// Assinatura barata do estado: contagens + carimbo da última escrita relevante.
+// Não serializa fotos de propósito — o custo teria de ser pago a cada minimização.
+function _gsAssinaturaDados(){
+  try{
+    const c = (typeof _gsContar === 'function') ? _gsContar() : {};
+    // ⚠️ NADA de metadado de backup aqui (ex.: `ultimo_backup`): ele muda a CADA
+    // backup, então a assinatura nunca coincidiria com a anterior e o freio não
+    // frearia nada. A assinatura descreve os DADOS, e só eles.
+    return JSON.stringify({
+      c: c,
+      h: Object.keys(HOSPEDAGENS||{}).length,
+      s: Object.keys(S||{}).filter(function(k){ return S[k] && S[k].status === 'occupied'; }).length,
+      u: (USUARIOS||[]).length,
+      hist: Object.keys(HISTORICO||{}).reduce(function(t,k){ return t + ((HISTORICO[k]||[]).length); }, 0),
+    });
+  }catch(e){ return String(Date.now()); }   // na dúvida, considera mudado
+}
+
+function _gsDecidirBackupMinimizar(){
+  try{
+    const assinatura = _gsAssinaturaDados();
+    if(_gsUltimaAssinatura && assinatura === _gsUltimaAssinatura){
+      return { fazer:false, motivo:'nenhuma mudança desde o último backup' };
+    }
+    const desdeCompleto = Date.now() - (_gsUltimoCompletoTs || 0);
+    const completo = desdeCompleto > GS_MIN_ENTRE_COMPLETOS_MS;
+    _gsUltimaAssinatura = assinatura;
+    // Houve mudança: SEMPRE grava. Completo se já passou o intervalo; senão leve —
+    // a mudança não pode se perder por causa do freio.
+    return { fazer:true, completo:completo,
+             motivo: completo ? 'mudança + intervalo vencido' : 'mudança, mas completo recente → leve' };
+  }catch(e){
+    return { fazer:true, completo:true, motivo:'falha ao avaliar (lado seguro: grava)' };
+  }
+}
 
 function _gsBackupAuto(motivo, opts){
   opts = opts || {};
@@ -9824,6 +9893,11 @@ let _gdTokenCache = null;   // {token, ts}
 let _gdIniciado   = false;
 let _gdEnviando   = false;  // trava contra uploads concorrentes
 let _gdTokenVia   = '';     // v1.9.5.1: por qual caminho o token atual foi obtido
+// v1.9.5.4: em QUAL passo da obtenção de token estamos. Sem isto, uma falha antes
+// da rede era registrada como `etapa: envio do backup` — rótulo que mandava o
+// diagnóstico para o lado errado (procurava-se problema de upload, quando o app
+// nem tinha chegado a montar uma requisição).
+let _gdTokenPasso = '';
 
 // v1.9.5.1 — TETO DE TEMPO PARA A CADEIA NATIVA/REDE.
 // A trava `_gdEnviando` SEMPRE foi liberada num `finally` — o que prendia era um
@@ -9912,6 +9986,7 @@ function _gdLimparFalha(){
   try{
     DRIVE_STATUS.nuvem_falha = false;
     DRIVE_STATUS.nuvem_falha_transitoria = false;
+    DRIVE_STATUS.nuvem_reconectar = false;   // v1.9.5.4: um envio bom prova que a autorização voltou
     DRIVE_STATUS.nuvem_ultimo_erro = '';
     DRIVE_STATUS.nuvem_erro_detalhe = null;
     saveDriveStatus();
@@ -10001,27 +10076,45 @@ async function _gdObterToken(interativo){
   // v1.9.5.2: cada passo tem teto PRÓPRIO e curto. Antes, os três passos ficavam
   // sob um único teto de 45s e o usuário esperava quase um minuto para ler
   // "tempo esgotado ao obter o token" — mensagem que não diz o que fazer.
+  // ⚠️⚠️ v1.9.5.4 — A ORDEM AQUI NÃO PODE SER INVERTIDA DE VOLTA.
+  //
+  // `getAuthorizationCode` valida o token PELA REDE e, se ele estiver inválido —
+  // o que acontece toda vez que o token expira, ~1h — chama **`rawLogout`**
+  // (GoogleProvider.java:1034), que faz
+  // `getSharedPreferences(...).edit().clear().apply()`: **apaga o blob inteiro,
+  // inclusive os `scopes` persistidos**, e desloga a conta no lado nativo.
+  //
+  // Era isso que produzia o sintoma "Conectado + sem autorização válida": o
+  // vínculo nativo tinha sido destruído pela nossa própria tentativa de obter
+  // token. `refresh` NÃO chama `rawLogout` em nenhum caminho (os três usos são
+  // :1005 logout explícito, :1034 e :1077, ambos dentro de getAuthorizationCode) —
+  // e persiste o estado quando dá certo. Por isso ele vem PRIMEIRO.
+  _gdTokenPasso = 'renovar a sessão (refresh)';
   try{
+    await _gdComTeto(p.refresh({ provider: 'google' }), 'ao renovar a sessão', GD_TIMEOUT_TOKEN_MS);
+    _gdTokenPasso = 'obter o token após o refresh';
     const a = await _gdComTeto(p.getAuthorizationCode({ provider: 'google' }), 'ao obter o token', GD_TIMEOUT_TOKEN_MS);
-    if(a && a.accessToken){ _gdTokenVia = 'getAuthorizationCode'; _gdTokenCache = {token:a.accessToken, ts:Date.now()}; return a.accessToken; }
+    if(a && a.accessToken){ _gdTokenVia = 'refresh+getAuthorizationCode'; _gdTokenCache = {token:a.accessToken, ts:Date.now()}; return a.accessToken; }
   }catch(e){
     // FALHA RÁPIDA: o plugin rejeita com "User is not logged in" SEM tocar na rede
-    // quando não há autorização guardada (GoogleProvider.java:1058-1059). Insistir
-    // no `refresh` nesse caso só queima tempo — o desfecho já é conhecido.
+    // quando não há autorização guardada (GoogleProvider.java:1058-1059).
     //
     // ⚠️ SÓ no caminho NÃO-interativo. Com `interativo=true` quem está pedindo é o
     // usuário (Conectar / Restaurar da nuvem): aí "não logado" é exatamente o caso
     // em que ABRIR o login é a resposta certa, não dizer "reconecte".
     if(!interativo && _gdSemAutorizacao(e)) throw _gdErroReconectar();
   }
+  // Última tentativa silenciosa. Pode custar a sessão (ver o aviso acima), por isso
+  // só acontece depois de o `refresh` já ter falhado.
+  _gdTokenPasso = 'obter o token (getAuthorizationCode)';
   try{
-    await _gdComTeto(p.refresh({ provider: 'google', options: { scopes: GD_SCOPES } }), 'ao renovar a sessão', GD_TIMEOUT_TOKEN_MS);
     const a2 = await _gdComTeto(p.getAuthorizationCode({ provider: 'google' }), 'ao obter o token', GD_TIMEOUT_TOKEN_MS);
-    if(a2 && a2.accessToken){ _gdTokenVia = 'refresh+getAuthorizationCode'; _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
+    if(a2 && a2.accessToken){ _gdTokenVia = 'getAuthorizationCode'; _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
   }catch(e){ /* segue para o login (ou para o erro de reconectar) */ }
   // Um ENVIO nunca chega aqui com `interativo=true` (regra da v1.9.5.1): quem abre
   // tela de login é o usuário, em Backup e Conexões.
   if(!interativo) throw _gdErroReconectar();
+  _gdTokenPasso = 'login interativo';
   const r = await _gdLoginInterativo();
   _gdTokenVia = 'login';
   return r.token;
@@ -10282,20 +10375,56 @@ function conectarGoogleDrive(){
   });
 }
 
+// ⚠️⚠️ v1.9.5.4 — PONTO ÚNICO DE DESVINCULAÇÃO, E O ÚNICO PERMITIDO.
+//
+// **Nenhum caminho automático pode desvincular a conta.** Erro de token, de rede,
+// retentativa ou arranque NUNCA podem chegar aqui: quando a autorização falha, o
+// estado vira "precisa reconectar" (`nuvem_reconectar`) com a conta e o e-mail
+// PRESERVADOS — ver `_gdMarcarPrecisaReconectar`.
+//
+// A trava é explícita (`origem !== 'usuario'` recusa) e não depende de nenhuma outra
+// correção: mesmo que um dia algum caminho automático chame esta função por engano,
+// ela se recusa a executar e deixa rastro na trilha.
+function _gdDesvincularConta(origem, antes){
+  if(origem !== 'usuario'){
+    console.warn('[DRIVE] desvinculação automática BLOQUEADA (origem:', origem, ')');
+    try{ addLogSistema('Tentativa de desconexão automática do Drive BLOQUEADA (origem: ' + (origem||'?') + ')',
+      {aud:true, acao:'drive_desconexao_bloqueada', alvo:(antes||'—')}); }catch(e){}
+    return false;
+  }
+  _gdTokenCache = null;
+  DRIVE_STATUS.nuvem_conectada = false;
+  DRIVE_STATUS.nuvem_email = '';
+  DRIVE_STATUS.nuvem_pasta_id = '';
+  DRIVE_STATUS.nuvem_reconectar = false;
+  saveDriveStatus();
+  _gdLimparFalha();
+  // v1.9.5.4: a trilha registra a ORIGEM — se um dia voltar a acontecer sozinho,
+  // dá para provar de onde veio em vez de discutir memória de quem operou.
+  addLogSistema('Google Drive desconectado' + (antes ? ' (' + antes + ')' : '') + ' [origem: usuário]',
+    {aud:true, acao:'drive_desconectado', alvo:(antes||'—'), origem:'usuario'});
+  return true;
+}
+
+// Falha de autorização NÃO desconecta: marca que é preciso reconectar, mantendo
+// conta e e-mail visíveis. "Desconectado" e "precisa reconectar" são estados
+// diferentes e o card precisa dizer qual é qual.
+function _gdMarcarPrecisaReconectar(msg){
+  try{
+    DRIVE_STATUS.nuvem_reconectar = true;
+    saveDriveStatus();
+    addLogSistema('Google Drive precisa ser reconectado: ' + (msg || 'autorização indisponível'),
+      {aud:true, acao:'drive_precisa_reconectar', alvo:(DRIVE_STATUS.nuvem_email||'—')});
+  }catch(e){}
+}
+
 function desconectarGoogleDrive(){
   showEntrarPIN(function(){
     (async function(){
       const antes = DRIVE_STATUS.nuvem_email || '';
       try{ const p = _gdPlugin(); if(p) await p.logout({ provider: 'google' }); }
       catch(e){ console.warn('[DRIVE] logout:', e && e.message); }
-      _gdTokenCache = null;
-      DRIVE_STATUS.nuvem_conectada = false;
-      DRIVE_STATUS.nuvem_email = '';
-      DRIVE_STATUS.nuvem_pasta_id = '';
-      saveDriveStatus();
-      _gdLimparFalha();
-      addLogSistema('Google Drive desconectado' + (antes ? ' (' + antes + ')' : ''),
-        {aud:true, acao:'drive_desconectado', alvo:(antes||'—')});
+      _gdDesvincularConta('usuario', antes);
       showToast('Google Drive desconectado. Os backups já enviados continuam no Drive.', 5000);
       _gdReabrirConexoes();
     })();
@@ -10328,16 +10457,25 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
     return {ok:true, nome:nome, id:(r && r.id) || ''};
   }catch(e){
     const m = (e && e.message) || String(e);
-    const det = Object.assign({ ts: Date.now(), etapa: 'envio do backup', via: _gdTokenVia || '(desconhecido)' },
+    // v1.9.5.4 — ETAPA REAL. Uma falha na obtenção do token não tem status HTTP nem
+    // URL: apresentá-la como "envio do backup" mandava o diagnóstico para o lado
+    // errado. Agora a etapa diz o passo em que parou de verdade.
+    const falhaDeToken = !!(e && (e.gdReconectar || _gdSemAutorizacao(e))) || !(e && e.gdDet);
+    const etapaReal = (e && e.gdDet && e.gdDet.etapa) ||
+      (falhaDeToken && _gdTokenPasso ? 'obter autorização — ' + _gdTokenPasso : 'envio do backup');
+    const det = Object.assign({ ts: Date.now(), etapa: etapaReal, via: _gdTokenVia || '(desconhecido)' },
       (e && e.gdDet) || { status: 0, reason: (e && e.gdTimeout) ? 'timeout' : '', message: m });
-    det.via = _gdTokenVia || '(desconhecido)';
-    // Sonda de escopos: só quando o Google recusou a autorização — é aí que a
-    // pergunta "esse token tem drive.file?" decide o diagnóstico. Nunca derruba o
-    // fluxo: `_gdEscoposDoToken` engole os próprios erros.
-    if(e && e.gdAuth){
+    det.etapa = etapaReal;
+    det.via = _gdTokenVia || '(não chegou a obter token)';
+    // v1.9.5.4 — a sonda de escopos passa a rodar TAMBÉM no caminho de token, que é
+    // onde o diagnóstico mais falta: antes só disparava com `gdAuth` (erro HTTP), e
+    // um erro de autorização anterior à rede não tem `gdAuth` — daí o eterno
+    // "escopos do token: (não consultado)" nos relatos do aparelho.
+    if(e && (e.gdAuth || falhaDeToken)){
       try{
         const t = _gdTokenCache && _gdTokenCache.token;
-        if(t) det.escopos = await _gdEscoposDoToken(t);
+        det.escopos = t ? await _gdEscoposDoToken(t)
+                        : '(sem token em mãos — a autorização falhou antes de obter um)';
       }catch(e3){}
     }
     // v1.9.5.3 — REDE ≠ GOOGLE. Um `TypeError: Failed to fetch` não tem status,
@@ -10348,6 +10486,9 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
     // operador aprende a ignorar alarme que mente.
     det.transitorio = _gdErroDeRede(e);
     _gdMarcarFalha(m, det, det.transitorio);
+    // v1.9.5.4: falha de autorização marca "precisa reconectar" — NUNCA desvincula.
+    // A conta e o e-mail continuam ali; o que falta é permissão.
+    if(e && e.gdReconectar) _gdMarcarPrecisaReconectar(m);
     _gdFalhasSeguidas++;
     _gdAgendarRetentativa();
     addLogSistema('Backup na nuvem falhou (' + (motivo || 'automático') + '): ' + m +
@@ -10768,12 +10909,18 @@ function _gdRestaurarArquivo(id, nome){
 }
 
 // Re-renderiza "Backup e Conexões" se ele estiver aberto (status muda ali).
+// v1.9.5.4 — o modal do PIN ficava aberto, com as 4 bolinhas preenchidas, depois de
+// conectar ou desconectar. Causa: `_gsPinTeclado` apenas trava (`travado=true`) sem
+// fechar nem limpar, e esta função DESISTIA porque o `.mt` visível era "🔑 PIN de
+// Gestão" — não continha "Conexões". Agora ela reabre Conexões também quando o que
+// está na tela é o teclado de PIN, que é exatamente o caso a corrigir.
 function _gdReabrirConexoes(){
   try{
     const ov = document.getElementById('ov');
     if(!ov || !ov.classList.contains('on')) return;
     const t = document.getElementById('mc').querySelector('.mt');
-    if(t && t.textContent.indexOf('Conexões') >= 0) showConexoes();
+    const txt = (t && t.textContent) || '';
+    if(txt.indexOf('Conexões') >= 0 || txt.indexOf('PIN de Gestão') >= 0) showConexoes();
   }catch(e){}
 }
 
@@ -12523,6 +12670,8 @@ function _gdRodapeEstado(){
   try{
     if(!_gdDisponivel()) return null;
     if(!_gdConectado())  return { classe:'alerta', txt:'Nuvem: não conectada' };
+    // v1.9.5.4: vínculo existe, permissão não — estado próprio, não "desconectada".
+    if(DRIVE_STATUS.nuvem_reconectar) return { classe:'ruim', txt:'Nuvem: reconectar' };
     const ult = DRIVE_STATUS.nuvem_ultimo_backup;
     const semSucessoHa = ult ? (Date.now() - ult) : Infinity;
 
@@ -12562,6 +12711,18 @@ function _gdRodapeHTML(){
   const cor = st.classe === 'ok' ? '#0F6E56' : (st.classe === 'ruim' ? '#A32D2D' : '#B26A00');
   const peso = st.classe === 'ok' ? '600' : '700';
   return `<div id="rodape-nuvem" data-estado="${st.classe}" style="font-size:10px;color:${cor};font-weight:${peso};margin-top:2px">${_vtEsc(st.txt)}</div>`;
+}
+
+// v1.9.5.4 — a dica "toque para enviar" só aparece quando há algo a resolver.
+// Antes ficava permanente, inclusive logo depois de um envio bem-sucedido, e virava
+// ruído: um aviso que está sempre aceso não avisa nada. Usa a MESMA noção de atraso
+// do indicador (`_gdRodapeEstado`), para os dois nunca discordarem.
+function _gdDicaTocarHTML(){
+  try{
+    const st = _gdRodapeEstado();
+    if(!st || st.classe === 'ok') return '';
+    return '<div id="rodape-backup-dica" style="font-size:9px;color:#9a9284;margin-top:3px;font-weight:600">toque para enviar ↑</div>';
+  }catch(e){ return ''; }
 }
 
 // v1.9.5.3 — ATALHO DO RODAPÉ: força o envio para a nuvem.
@@ -12687,8 +12848,9 @@ function _renderNuvemStatus(){
       <div style="min-width:0"><div style="font-weight:600;color:#0F6E56">Conectado</div>
       <div style="color:#666;overflow:hidden;text-overflow:ellipsis">${_vtEsc(email||'conta Google')}</div></div>
     </div>
+    ${DRIVE_STATUS.nuvem_reconectar?`<div id="nuvem-reconectar" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:6px;padding:8px 10px;margin-bottom:6px;color:#633806;font-size:11px;line-height:1.5">🔑 <strong>Precisa reconectar.</strong> A conta continua vinculada — o que venceu foi a permissão de acesso ao Drive. Toque em <strong>Desconectar</strong> e depois em <strong>Conectar</strong>.</div>`:''}
     ${falha?`<div style="color:#A32D2D;font-weight:600;margin-bottom:6px">⚠️ Último envio falhou — ${_vtEsc(erro)}</div>`:''}
-    ${falha?_gdDetalheErroHTML():''}
+    ${(falha||DRIVE_STATUS.nuvem_reconectar)?_gdDetalheErroHTML():''}
     <div style="color:#666">Último backup na nuvem: <strong id="nuvem-ultimo">${_vtEsc(ultStr)}</strong></div>
     <div style="color:#aaa;font-size:11px;margin-top:4px">Pasta <strong>${_vtEsc(GD_PASTA_NOME)}</strong> · ${DRIVE_STATUS.nuvem_enviados||0} envio(s) nesta instalação</div>
     ${_gdPdfsPendentesHTML()}
@@ -15516,7 +15678,14 @@ document.addEventListener('visibilitychange',()=>{
   // v1.9.4.10 (Bug A, camada 1): antes do init terminar o backup sairia VAZIO e
   // ainda substituiria a cópia boa em Documentos/GarageSpot/Dados.
   if(!gsPronto()){ console.warn('[BUG A] backup automático ignorado: app ainda inicializando'); return; }
-  if(document.visibilityState==='hidden') fazerBackupLocal('App minimizado');
+  if(document.visibilityState!=='hidden') return;
+  // v1.9.5.4 — FREIO. Sem isto, alternar entre apps gerava um backup COMPLETO de
+  // ~10MB por vez: o log do aparelho mostrou 10 completos em 6 minutos, todos com
+  // origem "App minimizado". Foi essa a origem dos 119 arquivos locais — não uso
+  // normal. O tablet do hotel (SM-T585) não tem espaço para isso.
+  const d = _gsDecidirBackupMinimizar();
+  if(!d.fazer){ console.log('[BACKUP] minimizar ignorado:', d.motivo); return; }
+  fazerBackupLocal('App minimizado', {comFotos: d.completo});
 });
 
 // Bug W v1.9.4.1.6: Save IMEDIATO ao perder foco (antes do Android matar o webview)
