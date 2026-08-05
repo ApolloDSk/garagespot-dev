@@ -1312,9 +1312,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
 // chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
 // nativo mudou, e o APK vc25 instalado segue valendo.
-const GS_VERSION = 'v1.9.5.1';
+const GS_VERSION = 'v1.9.5.2';
 const GS_VERSION_CODE = 25;
-const GS_BUILD_TS = '2026-08-05';
+const GS_BUILD_TS = '2026-08-06';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -3111,7 +3111,10 @@ function doChk(id){
       // Ao final: DUAS opções — "Salvar" e "Salvar e compartilhar". O app
       // SEMPRE salva no dispositivo; compartilhar é ação adicional.
       // ══════════════════════════════════════════════════════════════════
-      const _coNome=fmtNomeCheckout(aptKey,hospNum);
+      // v1.9.5.2: o nome traz as DUAS pontas da hospedagem; a data de check-in vem
+      // de HOSPEDAGENS (já disponível aqui — o bloco acima grava usuario_checkout).
+      const _coCheckinTs=(HOSPEDAGENS[hospNum]&&HOSPEDAGENS[hospNum].checkin_ts)||null;
+      const _coNome=fmtNomeCheckout(aptKey,hospNum,Date.now(),_coCheckinTs);
       showM(`<div class="mt">✅ Check-out realizado!</div>
         <div class="ms">Hospedagem ${hospNum||'s/n'} · Apt. ${aptKey}<br>${dvChk.guest||'Hóspede não identificado'}</div>
         <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">📄 Preparando o documento…</div>
@@ -3142,6 +3145,15 @@ function doChk(id){
         // O app SEMPRE salva — nas duas opções.
         if(_coConteudo){
           _salvo=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
+          // v1.9.5.2: cópia para a nuvem SÓ DEPOIS de o arquivo estar no dispositivo,
+          // e fire-and-forget — falha de rede não trava, não reverte e não atrasa o
+          // check-out. Sem Drive conectado, entra na fila de pendentes.
+          try{
+            if(_salvo&&_salvo.sucesso&&typeof _coConteudo.output==='function'){
+              const _b64=_coConteudo.output('datauristring').split(',')[1];
+              _gdEspelharPDFFechamento(_salvo.nome,_b64,aptKey,_coCheckinTs);
+            }
+          }catch(ePdfNuvem){ console.warn('[DRIVE] PDF de fechamento não agendado:',ePdfNuvem&&ePdfNuvem.message); }
         }
         _prog(100);
         const pw=document.getElementById('co-prog-wrap'); if(pw) pw.style.display='none';
@@ -9105,6 +9117,9 @@ let DRIVE_STATUS = {
   // "403" e cada iteração vira adivinhação — foi exatamente o que travou a rodada
   // anterior. Campo ADITIVO: aparelho antigo simplesmente não tem a chave.
   nuvem_erro_detalhe:null,   // {ts,etapa,status,reason,message,via,escopos,url}
+  // v1.9.5.2: PDFs de fechamento que ainda não subiram. Só METADADOS — o arquivo
+  // pesa MBs e já está no dispositivo. Campo ADITIVO: aparelho antigo não tem a chave.
+  nuvem_pdfs_pendentes:[],   // [{nome, apt, checkin, ts}]
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
@@ -9803,7 +9818,20 @@ let _gdTokenVia   = '';     // v1.9.5.1: por qual caminho o token atual foi obti
 // intent de consentimento não voltava (o "Cannot get getAuthorizationResultFromIntent"),
 // a promise ficava pendente para sempre e a trava junto. Um teto resolve a classe
 // inteira do problema, sem depender de qual chamada nativa travou.
-const GD_TIMEOUT_MS = 45 * 1000;
+// v1.9.5.2 — TETOS SEPARADOS. Um teto único de 45s servia mal aos dois lados:
+//  • OBTER TOKEN: a cadeia do plugin é lenta por dentro. `getAuthorizationCode`
+//    valida o token PELA REDE com `.get(7s)` (GoogleProvider.java:1029) e o
+//    `refresh` espera `future.get(60s)` na autorização (:1185) — pior caso ~74s,
+//    e os 45s disparavam ANTES do timeout interno do próprio plugin. Pior: o
+//    `onFailure` de `accessTokenIsValid` está VAZIO (:223), então erro de rede
+//    nunca completa o future e queima os 7s inteiros a cada chamada.
+//    → teto CURTO por passo + falha rápida quando não há autorização.
+//  • REDE (upload/download): sobe o snapshot COM FOTOS, megabytes no wi-fi do
+//    hotel. 45s é apertado e cortaria envio legítimo.
+//    → teto FOLGADO.
+const GD_TIMEOUT_MS       = 45 * 1000;   // padrão dos elos genéricos
+const GD_TIMEOUT_TOKEN_MS = 12 * 1000;   // por PASSO do plugin (interno é 7s)
+const GD_TIMEOUT_REDE_MS  = 120 * 1000;  // upload/download com fotos
 function _gdComTeto(promessa, oQue, ms){
   const teto = ms || GD_TIMEOUT_MS;
   return new Promise(function(resolve, reject){
@@ -9935,19 +9963,51 @@ async function _gdObterToken(interativo){
   // passa por válido aqui e só falha lá na frente, no upload. Por isso registramos
   // por qual caminho o token veio: sem isso não dá para separar "o app não pediu o
   // escopo" de "o Google não concedeu".
+  // v1.9.5.2: cada passo tem teto PRÓPRIO e curto. Antes, os três passos ficavam
+  // sob um único teto de 45s e o usuário esperava quase um minuto para ler
+  // "tempo esgotado ao obter o token" — mensagem que não diz o que fazer.
   try{
-    const a = await p.getAuthorizationCode({ provider: 'google' });
+    const a = await _gdComTeto(p.getAuthorizationCode({ provider: 'google' }), 'ao obter o token', GD_TIMEOUT_TOKEN_MS);
     if(a && a.accessToken){ _gdTokenVia = 'getAuthorizationCode'; _gdTokenCache = {token:a.accessToken, ts:Date.now()}; return a.accessToken; }
-  }catch(e){ /* segue para o refresh */ }
+  }catch(e){
+    // FALHA RÁPIDA: o plugin rejeita com "User is not logged in" SEM tocar na rede
+    // quando não há autorização guardada (GoogleProvider.java:1058-1059). Insistir
+    // no `refresh` nesse caso só queima tempo — o desfecho já é conhecido.
+    //
+    // ⚠️ SÓ no caminho NÃO-interativo. Com `interativo=true` quem está pedindo é o
+    // usuário (Conectar / Restaurar da nuvem): aí "não logado" é exatamente o caso
+    // em que ABRIR o login é a resposta certa, não dizer "reconecte".
+    if(!interativo && _gdSemAutorizacao(e)) throw _gdErroReconectar();
+  }
   try{
-    await p.refresh({ provider: 'google', options: { scopes: GD_SCOPES } });
-    const a2 = await p.getAuthorizationCode({ provider: 'google' });
+    await _gdComTeto(p.refresh({ provider: 'google', options: { scopes: GD_SCOPES } }), 'ao renovar a sessão', GD_TIMEOUT_TOKEN_MS);
+    const a2 = await _gdComTeto(p.getAuthorizationCode({ provider: 'google' }), 'ao obter o token', GD_TIMEOUT_TOKEN_MS);
     if(a2 && a2.accessToken){ _gdTokenVia = 'refresh+getAuthorizationCode'; _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
-  }catch(e){ /* segue para o login */ }
-  if(!interativo) throw new Error('sessão do Google expirou — reconecte em Backup e Conexões');
+  }catch(e){ /* segue para o login (ou para o erro de reconectar) */ }
+  // Um ENVIO nunca chega aqui com `interativo=true` (regra da v1.9.5.1): quem abre
+  // tela de login é o usuário, em Backup e Conexões.
+  if(!interativo) throw _gdErroReconectar();
   const r = await _gdLoginInterativo();
   _gdTokenVia = 'login';
   return r.token;
+}
+
+// Reconhece a rejeição do plugin para "não há autorização guardada". É comparação
+// por texto porque o plugin não expõe código de erro — por isso aceita as variantes
+// conhecidas em vez de casar uma frase exata.
+function _gdSemAutorizacao(e){
+  try{
+    const m = String((e && e.message) || e || '').toLowerCase();
+    return m.indexOf('not logged in') >= 0 || m.indexOf('user is not logged') >= 0 ||
+           m.indexOf('não logado') >= 0 || m.indexOf('no credential') >= 0;
+  }catch(_){ return false; }
+}
+// Mensagem ÚNICA para "sem autorização válida": diz o que fazer, em vez de
+// "tempo esgotado (45s)", que não orienta ninguém.
+function _gdErroReconectar(){
+  const e = new Error('sem autorização válida — reconecte o Google Drive em Backup e Conexões');
+  e.gdReconectar = true;
+  return e;
 }
 
 // Chamada HTTP ao Drive. 401/403 vira erro marcado, para o retry saber que é sessão.
@@ -9994,23 +10054,92 @@ async function _gdFetch(url, opts, token, etapa){
 // operando o mapa. E se aquele intent não voltasse, prendia a trava de envio.
 // Reconectar passou a ser ação EXPLÍCITA do usuário em Backup e Conexões.
 async function _gdComToken(fn, interativo){
-  let token = await _gdComTeto(_gdObterToken(interativo), 'ao obter o token');
+  // v1.9.5.2: `_gdObterToken` já embrulha CADA passo no seu próprio teto curto —
+  // não há mais um teto único por cima da cadeia inteira. A rede ganha teto folgado.
+  let token = await _gdObterToken(interativo);
   try{
-    return await _gdComTeto(fn(token), 'na chamada ao Drive');
+    return await _gdComTeto(fn(token), 'na chamada ao Drive', GD_TIMEOUT_REDE_MS);
   }catch(e){
     if(!e || !e.gdAuth) throw e;
     _gdTokenCache = null;
     // segunda e última tentativa, sempre NÃO-interativa
-    token = await _gdComTeto(_gdObterToken(false), 'ao renovar o token');
-    return await _gdComTeto(fn(token), 'na chamada ao Drive');
+    token = await _gdObterToken(false);
+    return await _gdComTeto(fn(token), 'na chamada ao Drive', GD_TIMEOUT_REDE_MS);
   }
 }
 
 // Escapa aspas simples para a sintaxe de busca do Drive.
 function _gdEscQ(s){ return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 
+// v1.9.5.2 — NOME ÚNICO DOS BACKUPS NA NUVEM.
+// Havia DOIS padrões convivendo na mesma pasta: o espelhamento automático herdava o
+// nome do arquivo LOCAL (`backup_completo_04-08-26_…`, dia-mês-ano) e as rotas manual
+// e de retentativa usavam `AAAA-MM-DD`. Só o segundo ordena corretamente como texto,
+// que é o que a retenção (v1.9.5.3) vai exigir.
+//
+// O nome do arquivo LOCAL fica exatamente como sempre foi — mexer nele seria mexer no
+// backup local, que é intocável. A nuvem passa a ter nome próprio.
+// Dia LOCAL (v1.9.4.14): `toISOString()` daria o dia errado das 21h à meia-noite.
+function _gdNomeBackup(ts){
+  const d = new Date(ts || Date.now());
+  const p = function(n){ return String(n).padStart(2, '0'); };
+  return 'backup_completo_' + _localISO(d) + '_' + p(d.getHours()) + 'h' + p(d.getMinutes()) + '.json';
+}
+
 // Acha (ou cria) a pasta do app. O id é lembrado, mas SEMPRE revalidado — a pasta
 // pode ter sido movida para a lixeira pelo dono da conta.
+// v1.9.5.2 — PASTA ANINHADA, SEMPRE RESTRITA AO PAI.
+// A busca de `_gdGarantirPasta` não filtra por pai, o que serve para a pasta raiz
+// única de backups mas NÃO serviria para a árvore de hospedagens: `Apt05` de agosto
+// e `Apt05` de setembro têm o mesmo nome, e sem `'<pai>' in parents` o app juntaria
+// os dois na primeira que achasse.
+async function _gdGarantirPastaEm(token, nome, paiId){
+  const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(nome) + "'" +
+            " and '" + _gdEscQ(paiId) + "' in parents and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token, 'procurar a pasta ' + nome);
+  const j = await r.json();
+  if(j && j.files && j.files.length) return j.files[0].id;
+  const r2 = await _gdFetch(GD_API + '/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nome, mimeType: GD_MIME_PASTA, parents: [paiId] }),
+  }, token, 'criar a pasta ' + nome);
+  const j2 = await r2.json();
+  if(!j2 || !j2.id) throw new Error('não foi possível criar a pasta "' + nome + '" no Drive');
+  return j2.id;
+}
+
+// Percorre/cria a árvore `raiz/seg1/seg2/…` e devolve o id da última pasta.
+// Criação SOB DEMANDA: nada é criado antes de existir um documento para guardar.
+async function _gdGarantirCaminho(token, raizNome, segmentos){
+  let paiId = await _gdGarantirPastaRaiz(token, raizNome);
+  for(const seg of segmentos){
+    if(!seg) continue;
+    paiId = await _gdGarantirPastaEm(token, seg, paiId);
+  }
+  return paiId;
+}
+
+// Pasta de primeiro nível (sem pai declarado). Usada pelas DUAS raízes: a de
+// backups (recuperação) e a de hospedagens (consulta) — que são separadas de
+// propósito e não devem se misturar.
+async function _gdGarantirPastaRaiz(token, nome){
+  const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(nome) + "' and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token, 'procurar a pasta ' + nome);
+  const j = await r.json();
+  if(j && j.files && j.files.length) return j.files[0].id;
+  const r2 = await _gdFetch(GD_API + '/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nome, mimeType: GD_MIME_PASTA }),
+  }, token, 'criar a pasta ' + nome);
+  const j2 = await r2.json();
+  if(!j2 || !j2.id) throw new Error('não foi possível criar a pasta "' + nome + '" no Drive');
+  return j2.id;
+}
+
 async function _gdGarantirPasta(token){
   const idLembrado = (DRIVE_STATUS && DRIVE_STATUS.nuvem_pasta_id) || '';
   if(idLembrado){
@@ -10174,9 +10303,111 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
 function _gdEspelharNoDrive(nome, json, motivo){
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
-    _gdEnviarBackup(nome, json, motivo, false)
+    // v1.9.5.2: o `nome` que chega é o do arquivo LOCAL (formato DD-MM-AA, que não
+    // ordena). A nuvem usa o seu próprio padrão — o arquivo local segue intocado.
+    _gdEnviarBackup(_gdNomeBackup(), json, motivo, false)
       .catch(function(e){ console.warn('[DRIVE] espelhamento falhou:', e && e.message); });
   }catch(e){ console.warn('[DRIVE] espelhamento não agendado:', e && e.message); }
+}
+
+// ── v1.9.5.2 — PDFs DE FECHAMENTO NA NUVEM ─────────────────────────────────
+// Dois destinos com propósitos DIFERENTES, deliberadamente separados:
+//   `GarageSpot Backups`      → recuperação (trocar de aparelho)
+//   `GarageSpot Hospedagens`  → CONSULTA (achar o fechamento de uma hospedagem)
+// Misturar os dois faria a retenção da v1.9.5.3 ter de distinguir por nome de
+// arquivo, que é frágil.
+//
+// REGRA DE OURO DESTE BLOCO: o PDF já está salvo no dispositivo antes de qualquer
+// coisa aqui acontecer. Nada nesta função pode travar, reverter ou sequer atrasar
+// um check-out — a nuvem é adicional.
+const GD_PASTA_HOSP = 'GarageSpot Hospedagens';
+
+async function _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs){
+  const pastas = _gdPastasHospedagem(apt, checkinTs);
+  return await _gdComToken(async function(token){
+    const destino = await _gdGarantirCaminho(token, GD_PASTA_HOSP, pastas);
+    return await _gdEnviarArquivoBin(token, destino, nomeArquivo, b64, 'application/pdf');
+  }, false);
+}
+
+// Upload multipart de conteúdo BINÁRIO (base64). O `_gdEnviarArquivo` existente
+// manda texto JSON; um PDF precisa de `Content-Transfer-Encoding: base64`.
+async function _gdEnviarArquivoBin(token, pastaId, nome, b64, mime){
+  const lim = 'gsbnd' + Date.now() + Math.random().toString(36).slice(2, 8);
+  const meta = JSON.stringify({ name: nome, parents: [pastaId], mimeType: mime });
+  const corpo =
+    '--' + lim + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n' +
+    '--' + lim + '\r\nContent-Type: ' + mime + '\r\nContent-Transfer-Encoding: base64\r\n\r\n' + b64 + '\r\n' +
+    '--' + lim + '--';
+  const r = await _gdFetch(GD_API_UPLOAD + '/files?uploadType=multipart&fields=id,name,size', {
+    method: 'POST',
+    headers: { 'Content-Type': 'multipart/related; boundary=' + lim },
+    body: corpo,
+  }, token, 'enviar o PDF de fechamento');
+  return await r.json();
+}
+
+// Fila de pendentes: guarda só METADADOS (nome, apto, data de check-in). O PDF
+// pesa megabytes e já está no dispositivo — reler de lá na retentativa é melhor do
+// que inchar o localStorage e disputar espaço com os dados da operação.
+function _gdPdfsPendentes(){
+  try{ return (DRIVE_STATUS.nuvem_pdfs_pendentes || []).slice(); }catch(e){ return []; }
+}
+function _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, motivo){
+  try{
+    const fila = _gdPdfsPendentes();
+    if(fila.some(function(x){ return x.nome === nomeArquivo; })) return;
+    fila.push({ nome: nomeArquivo, apt: apt, checkin: checkinTs || null, ts: Date.now() });
+    DRIVE_STATUS.nuvem_pdfs_pendentes = fila;
+    saveDriveStatus();
+    addLogSistema('PDF de fechamento pendente de envio (' + (motivo || 'nuvem indisponível') + '): ' + nomeArquivo);
+  }catch(e){}
+}
+function _gdTirarPDFPendente(nomeArquivo){
+  try{
+    DRIVE_STATUS.nuvem_pdfs_pendentes = _gdPdfsPendentes().filter(function(x){ return x.nome !== nomeArquivo; });
+    saveDriveStatus();
+  }catch(e){}
+}
+
+// Chamado no check-out, DEPOIS de o PDF estar salvo no dispositivo. Fire-and-forget:
+// não devolve promessa ao fluxo do check-out.
+function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'Drive não conectado'); return; }
+    _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs).then(function(){
+      _gdTirarPDFPendente(nomeArquivo);
+      addLogSistema('PDF de fechamento enviado à nuvem: ' + nomeArquivo);
+    }, function(e){
+      _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, (e && e.message) || 'falha no envio');
+      _gdMarcarFalha((e && e.message) || 'falha ao enviar o PDF', (e && e.gdDet) || null);
+    });
+  }catch(e){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'erro ao agendar'); }
+}
+
+// Retentativa dos PDFs pendentes: relê o arquivo do dispositivo e sobe. Uma por
+// tique, para não disputar banda com o backup nem martelar a API.
+async function _gdTentarPDFsPendentes(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(Date.now() < _gdProxTentativaTs) return;
+    const fila = _gdPdfsPendentes();
+    if(!fila.length) return;
+    const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+    if(!F) return;                                  // sem Filesystem não há como reler
+    const item = fila[0];
+    let b64 = '';
+    try{
+      const r = await F.readFile({ path: 'GarageSpot/' + item.nome, directory: 'DOCUMENTS' });
+      b64 = (r && r.data) || '';
+    }catch(e){ return; }                            // arquivo sumiu do aparelho: NÃO apagamos o registro
+    if(!b64) return;
+    try{
+      await _gdEnviarPDFFechamento(item.nome, b64, item.apt, item.checkin);
+      _gdTirarPDFPendente(item.nome);
+      addLogSistema('PDF de fechamento pendente enviado: ' + item.nome);
+    }catch(e){ _gdAgendarRetentativa(); }
+  }catch(e){ console.warn('[DRIVE] pendentes de PDF não rodaram:', e && e.message); }
 }
 
 // ── v1.9.5.1 — REAGENDAMENTO APÓS FALHA ────────────────────────────────────
@@ -10209,10 +10440,7 @@ async function _gdTentarPendente(){
     if(Date.now() < _gdProxTentativaTs) return;    // ainda no intervalo de espera
     const snap = await _gsLerSnapshotIDB();
     if(!snap) return;                              // sem snapshot completo, nada a reenviar
-    const d = new Date(snap.ts || Date.now());
-    const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') +
-               '_' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0') + 'm' + String(d.getSeconds()).padStart(2,'0');
-    const r = await _gdEnviarBackup('backup_completo_' + ds + '.json', JSON.stringify(snap), 'Retentativa automática', false);
+    const r = await _gdEnviarBackup(_gdNomeBackup(snap.ts), JSON.stringify(snap), 'Retentativa automática', false);
     if(!r.ok) _gdAgendarRetentativa();
   }catch(e){ console.warn('[DRIVE] retentativa não rodou:', e && e.message); }
 }
@@ -10227,10 +10455,7 @@ async function fazerBackupNuvemAgora(){
   const snap = _gsMontarSnapshot(true);
   const val = _gsValidarSnapshot(snap);
   if(!val.ok){ showToast('⚠️ Envio abortado: ' + val.motivo, 5000); return; }
-  const d = new Date();
-  const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') +
-             '_' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0') + 'm' + String(d.getSeconds()).padStart(2,'0');
-  const nome = 'backup_completo_' + ds + '.json';
+  const nome = _gdNomeBackup();
   // v1.9.5.1: ação explícita do usuário zera a espera do backoff — quem apertou o
   // botão quer tentar AGORA, não daqui a 40 minutos.
   _gdProxTentativaTs = 0;
@@ -12097,6 +12322,16 @@ function _gdRodapeHTML(){
   return `<div id="rodape-nuvem" data-estado="${st.classe}" style="font-size:10px;color:${cor};font-weight:${peso};margin-top:2px">${_vtEsc(st.txt)}</div>`;
 }
 
+// v1.9.5.2 — pendências de PDF de fechamento no card. Contagem simples, sem modal:
+// o operador só precisa saber que existe algo esperando, não ser interrompido.
+function _gdPdfsPendentesHTML(){
+  const n = _gdPdfsPendentes().length;
+  if(!n) return '';
+  return `<div id="nuvem-pdfs-pend" data-n="${n}" style="color:#B26A00;font-size:11px;margin-top:4px">
+    📄 ${n} documento${n>1?'s':''} de fechamento aguardando envio${n>1?'':''} — vai sozinho quando a nuvem voltar.
+  </div>`;
+}
+
 // v1.9.5.1 — DETALHE DO ÚLTIMO ERRO DE NUVEM, em texto copiável.
 // Fica DENTRO do card (sem modal, sem roubar foco). Um <details> fechado por
 // padrão: quem só quer operar não vê nada; quem está diagnosticando abre e copia.
@@ -12180,6 +12415,7 @@ function _renderNuvemStatus(){
     ${falha?_gdDetalheErroHTML():''}
     <div style="color:#666">Último backup na nuvem: <strong id="nuvem-ultimo">${_vtEsc(ultStr)}</strong></div>
     <div style="color:#aaa;font-size:11px;margin-top:4px">Pasta <strong>${_vtEsc(GD_PASTA_NOME)}</strong> · ${DRIVE_STATUS.nuvem_enviados||0} envio(s) nesta instalação</div>
+    ${_gdPdfsPendentesHTML()}
     <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
     <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
@@ -13186,12 +13422,40 @@ async function gerarECompartilharPDF(titulo, conteudo, nomeArquivo){
 
 // Parte 1 v1.9.4.9: nome de arquivo do PDF de check-out — identificável e datado.
 // Ex.: checkout-GS016-Apt390-2026-05-28
-function fmtNomeCheckout(apt, hospNum, ts){
-  const d=new Date(ts||Date.now());
-  const p=n=>String(n).padStart(2,'0');
-  const data=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
-  const aptTxt=String(apt||'').trim().replace(/[^\w-]+/g,'') || 'semApt';
-  return 'checkout-'+(hospNum||'semGS')+'-Apt'+aptTxt+'-'+data;
+// v1.9.5.2 — NOME DO DOCUMENTO DE FECHAMENTO.
+// Passou de `checkout-GS058-Apt05-2026-08-04` para
+// `GS058_apt05_in02-08-26_out04-08-26` — traz as DUAS pontas da hospedagem, que é
+// como o Douglas procura um fechamento. O MESMO nome vale no dispositivo e na
+// nuvem, para os dois baterem.
+//
+// ⚠️ Datas em dia LOCAL (`_localISO`), nunca `toISOString()` — das 21h à meia-noite
+// o UTC já está no dia seguinte e o arquivo sairia com a data errada (root-cause da
+// v1.9.4.14; não regredir).
+function _apt2Txt(apt){
+  return String(apt == null ? '' : apt).trim().replace(/[^\w-]+/g, '') || 'semApt';
+}
+function _dataCurtaLocal(ts){
+  if(!ts) return '';
+  const iso = _localISO(new Date(ts));            // AAAA-MM-DD local
+  if(!iso) return '';
+  const p = iso.split('-');
+  return p[2] + '-' + p[1] + '-' + p[0].slice(-2); // DD-MM-AA
+}
+function fmtNomeCheckout(apt, hospNum, ts, checkinTs){
+  const aptTxt = _apt2Txt(apt);
+  const ent = _dataCurtaLocal(checkinTs);
+  const sai = _dataCurtaLocal(ts || Date.now());
+  return (hospNum || 'semGS') + '_apt' + aptTxt +
+         (ent ? '_in' + ent : '') + '_out' + sai;
+}
+
+// Pastas da árvore de consulta, pela data de CHECK-IN (é a referência de busca).
+// Devolve ['2026', '08-2026', 'Apt05'].
+function _gdPastasHospedagem(apt, checkinTs){
+  const base = checkinTs || Date.now();
+  const iso = _localISO(new Date(base)) || _hojeLocalISO();
+  const p = iso.split('-');
+  return [p[0], p[1] + '-' + p[0], 'Apt' + _apt2Txt(apt)];
 }
 
 // Parte 1 v1.9.4.9: SALVA o PDF no dispositivo SEM compartilhar (compartilhar é ação à
@@ -15175,6 +15439,9 @@ checkLicense().then(async (ativo)=>{
       // v1.9.5.1: retentativa da NUVEM no mesmo tique. Só age se houver falha
       // pendente e o intervalo de espera já tiver passado — ver `_gdTentarPendente`.
       try { setInterval(function(){ _gdTentarPendente(); }, 10 * 60 * 1000); } catch(e){}
+      // v1.9.5.2: PDFs de fechamento que não subiram (sem Drive ou com falha) são
+      // reenviados relendo o arquivo do dispositivo — um por tique.
+      try { setInterval(function(){ _gdTentarPDFsPendentes(); }, 10 * 60 * 1000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
