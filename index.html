@@ -1312,9 +1312,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
 // chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
 // nativo mudou, e o APK vc25 instalado segue valendo.
-const GS_VERSION = 'v1.9.5.4';
-const GS_VERSION_CODE = 25;
-const GS_BUILD_TS = '2026-08-07';
+const GS_VERSION = 'v1.9.6.0';
+const GS_VERSION_CODE = 26;
+const GS_BUILD_TS = '2026-08-08';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -9437,6 +9437,33 @@ function _gsDecidirBackupMinimizar(){
   }
 }
 
+// ── v1.9.6.0 — CONFERÊNCIA NA ABERTURA ─────────────────────────────────────
+// O intervalo JÁ era contado desde o último backup completo (`_gsUltimoCompletoTs`,
+// carregado do meta no init) — isso foi verificado e está correto, não mexi.
+// O que faltava era conferir na ABERTURA: o primeiro tique só roda 10 min depois.
+//
+// Fail-safe em todas as bordas: sem app pronto, offline ou escondido, não faz nada —
+// e o freio (`_gsDecidirBackupMinimizar` no minimizar; as guardas em `fazerBackupLocal`)
+// continua valendo, então sem mudança nos dados nada é gerado.
+function _gsConferirBackupNaAbertura(){
+  try{
+    if(!gsPronto()) return { fez:false, motivo:'app ainda inicializando' };
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return { fez:false, motivo:'app em segundo plano' };
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return { fez:false, motivo:'sem conexão' };
+    const desde = Date.now() - (_gsUltimoCompletoTs || 0);
+    if(_gsUltimoCompletoTs && desde <= GS_BACKUP_INTERVALO_COMPLETO){
+      return { fez:false, motivo:'último backup completo ainda dentro do intervalo' };
+    }
+    // `{completo:true}` só declara a INTENÇÃO — as guardas de dados decidem se
+    // realmente há o que gravar.
+    _gsBackupAuto('abertura do app', {completo:true, imediato:true});
+    return { fez:true, motivo: _gsUltimoCompletoTs ? 'intervalo vencido' : 'nenhum backup completo ainda' };
+  }catch(e){
+    console.warn('[BACKUP] conferência na abertura falhou (ignorada):', e && e.message);
+    return { fez:false, motivo:'erro' };
+  }
+}
+
 function _gsBackupAuto(motivo, opts){
   opts = opts || {};
   try {
@@ -11147,11 +11174,116 @@ function _onRecargaBateu(vagaId){
   if(typeof ref==='function') ref(vagaId);
 }
 
-// Parte 6 v1.9.4.5: vibração com fallback gracioso (toque/som = futuro, requer APK).
+// Parte 6 v1.9.4.5: vibração com fallback gracioso.
+// v1.9.6.0: `navigator.vibrate` **não é implementado no WebView do Android** — é
+// no-op silencioso, e essa é a razão de a vibração nunca ter funcionado no aparelho.
+// A vibração de verdade agora vem junto com a notificação nativa (canal com
+// vibração), abaixo. Esta função continua para o navegador e como reforço.
 function _rcVibrar(padrao){
   try{
     if(navigator && typeof navigator.vibrate === 'function'){ navigator.vibrate(padrao||200); }
   }catch(e){ /* dispositivo sem suporte — ignora */ }
+}
+
+// ── v1.9.6.0 — ALERTA NATIVO DE RECARGA (som + vibração + notificação) ─────
+// A camada web (modal + Web Audio) só toca com o app ABERTO e em primeiro plano.
+// Faltava a notificação da bandeja, que é o que alcança quem está com o aparelho no
+// bolso ou em outro app.
+//
+// Sem `SCHEDULE_EXACT_ALARM` de propósito (decisão do Douglas): o alerta é aviso, não
+// despertador, e tolera atraso de minutos quando o Android está economizando bateria.
+// Estado da notificação exibido em Configurações de Recarga. A regra é não deixar a
+// interface mentir: se a permissão foi negada, o toggle "Alerta" continua ligado mas
+// o usuário precisa saber que a notificação NÃO vai aparecer.
+async function _rcRenderEstadoNotif(){
+  const el = document.getElementById('rc-cfg-notif-estado');
+  if(!el) return;
+  if(!_rcNotifDisponivel()){
+    el.style.color = '#888';
+    el.textContent = 'Notificação na bandeja: só no aplicativo instalado (APK). O alerta na tela funciona normalmente.';
+    return;
+  }
+  let permitido = _rcNotifPermitido;
+  if(permitido === null){
+    try{
+      const st = await _rcNotifPlugin().checkPermissions();
+      permitido = !!(st && st.display === 'granted');
+    }catch(e){ permitido = false; }
+  }
+  if(permitido){
+    el.style.color = '#0F6E56';
+    el.textContent = '✓ Som, vibração e notificação ativos neste aparelho.';
+  } else {
+    el.style.color = '#A32D2D';
+    el.innerHTML = '⚠️ <strong>Notificações bloqueadas nas permissões do Android.</strong> ' +
+      'O alerta só aparecerá com o app aberto. Para ativar: Ajustes do Android → Aplicativos → GarageSpot → Notificações.';
+  }
+}
+
+const RC_CANAL_ID = 'garagespot-recarga';
+let _rcNotifPermitido = null;   // null = ainda não perguntado
+let _rcNotifId = 1;
+
+function _rcNotifPlugin(){
+  try{ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) || null; }
+  catch(e){ return null; }
+}
+function _rcNotifDisponivel(){ return !!_rcNotifPlugin(); }
+
+// Cria o canal com som e vibração. No Android o CANAL é quem define isso — mudar
+// depois não afeta um canal já criado, então o id é versionado se um dia mudar.
+async function _rcGarantirCanal(){
+  const p = _rcNotifPlugin(); if(!p || typeof p.createChannel !== 'function') return;
+  try{
+    await p.createChannel({
+      id: RC_CANAL_ID,
+      name: 'Recarga de veículos',
+      description: 'Avisa quando uma recarga é concluída',
+      importance: 5,          // MAX — aparece como heads-up
+      visibility: 1,
+      sound: 'default',
+      vibration: true,
+      lights: true,
+    });
+  }catch(e){ console.warn('[RECARGA] canal de notificação:', e && e.message); }
+}
+
+// Pede a permissão (Android 13+). NUNCA trava o app: negar apenas desliga a
+// notificação — o alarme na tela continua funcionando.
+async function _rcPedirPermissaoNotif(){
+  const p = _rcNotifPlugin();
+  if(!p){ _rcNotifPermitido = false; return false; }
+  try{
+    let st = await p.checkPermissions();
+    if(st && st.display !== 'granted'){ st = await p.requestPermissions(); }
+    _rcNotifPermitido = !!(st && st.display === 'granted');
+    if(_rcNotifPermitido) await _rcGarantirCanal();
+    else addLogSistema('Notificações negadas — o alerta de recarga só aparecerá com o app aberto');
+    return _rcNotifPermitido;
+  }catch(e){
+    console.warn('[RECARGA] permissão de notificação:', e && e.message);
+    _rcNotifPermitido = false;
+    return false;
+  }
+}
+
+// Dispara a notificação da bandeja. Fail-safe: qualquer erro aqui é engolido — o
+// alerta na tela é a garantia, a notificação é o reforço.
+async function _rcNotificar(vagaId, apt){
+  try{
+    const p = _rcNotifPlugin(); if(!p) return false;
+    if(_rcNotifPermitido === null) await _rcPedirPermissaoNotif();
+    if(!_rcNotifPermitido) return false;
+    await p.schedule({ notifications: [{
+      id: (_rcNotifId++ % 10000) + 1,
+      title: '⚡ Recarga concluída',
+      body: 'Vaga ' + vagaId + (apt ? ' · Apt ' + apt : '') + ' — o veículo pode ser liberado.',
+      channelId: RC_CANAL_ID,
+      smallIcon: 'ic_stat_icon_config_sample',
+      schedule: { at: new Date(Date.now() + 200) },
+    }]});
+    return true;
+  }catch(e){ console.warn('[RECARGA] notificação falhou:', e && e.message); return false; }
 }
 
 // ── Parte 7 v1.9.4.8: ALERTA DE CONCLUSÃO DA RECARGA (camada WEB, app aberto) ──────
@@ -11206,6 +11338,9 @@ function _rcDispararAlertaConclusao(vagaId){
   if(!alertasOn) return;                     // respeita o toggle: alerta desligado → nada
   _rcPararAlarme();                          // evita empilhar alarmes
   const apt=r.apt||'—';
+  // v1.9.6.0: notificação da bandeja (som + vibração pelo canal). Fire-and-forget:
+  // é REFORÇO — o alarme na tela abaixo é a garantia e não depende dela.
+  try{ _rcNotificar(vagaId, apt); }catch(e){}
   const el=document.createElement('div');
   el.id='rc-alarme-overlay';
   el.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(20,20,30,.55);display:flex;align-items:center;justify-content:center;padding:20px';
@@ -12413,11 +12548,16 @@ function _rcCfgRender(){
     '<div class="gestao-menu-sep">Alertas</div>' +
     '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" id="rc-cfg-alertas" '+(cfg.alertas?'checked':'')+' style="width:18px;height:18px"> Alerta quando a recarga concluir</label>' +
     '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" id="rc-cfg-vibracao" '+(cfg.vibracao?'checked':'')+' style="width:18px;height:18px"> Vibração no alerta</label>' +
-    '<div style="font-size:10px;color:#888;padding:2px 0 4px">Toque/som do dispositivo: futuro (requer APK).</div>' +
+    // v1.9.6.0: o aviso "requer APK" saiu — som, vibração e notificação passaram a
+    // funcionar. No lugar entra o estado REAL da permissão: se o usuário negou, a
+    // interface diz isso AQUI, em vez de deixar o toggle fingir que está ligado.
+    '<div id="rc-cfg-notif-estado" style="font-size:10px;padding:2px 0 4px"></div>' +
     '<div class="ag">' +
       '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
       '<button class="bsv" id="rc-cfg-ok">Salvar</button>' +
     '</div>');
+  // v1.9.6.0: mostra o estado REAL da notificação junto dos toggles.
+  setTimeout(function(){ _rcRenderEstadoNotif(); }, 0);
   setTimeout(function(){
     document.getElementById('rc-cfg-ok')?.addEventListener('click', function(){
       RECARGA_CONFIG.valorHora       = parseFloat(document.getElementById('rc-cfg-valor').value);
@@ -15911,6 +16051,23 @@ checkLicense().then(async (ativo)=>{
       // v1.9.5.3: migração das pastas do Drive para a estrutura definitiva.
       // Roda UMA vez, já com o app pronto e a tela livre.
       try { setTimeout(function(){ _gdMigrarEstrutura(); }, 12000); } catch(e){}
+      // v1.9.6.0: CONFERÊNCIA NA ABERTURA. O tique periódico é um timer do WebView —
+      // com o app fechado ele não existe, então um aparelho que passou a noite
+      // desligado só faria backup 10 min depois de aberto. Aqui, ao abrir, o app
+      // confere se o último completo já venceu o intervalo e roda um.
+      //
+      // Não é conflito com o freio da v1.9.5.4: `_gsBackupAuto` continua passando
+      // pelas guardas, e sem mudança nos dados nada é gerado. Se o app ficou fechado,
+      // ninguém fez check-in nem check-out — então normalmente não há o que salvar, e
+      // é exatamente esse o comportamento desejado.
+      // v1.9.6.0: SEMEIA a assinatura logo na inicialização. Sem isto, o PRIMEIRO
+      // minimizar de cada sessão não tinha com o que comparar e gerava um backup —
+      // mesmo sem ninguém ter mexido em nada. Semeando aqui, "abrir e fechar sem
+      // mudança" não gera arquivo nenhum, que é a regra da v1.9.5.4.
+      try { _gsUltimaAssinatura = _gsAssinaturaDados(); } catch(e){}
+      try { setTimeout(function(){ _gsConferirBackupNaAbertura(); }, 8000); } catch(e){}
+      // permissão de notificação: pedida uma vez, sem travar nada
+      try { setTimeout(function(){ if(typeof _rcPedirPermissaoNotif==='function') _rcPedirPermissaoNotif(); }, 6000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
