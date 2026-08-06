@@ -1312,9 +1312,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
 // chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
 // nativo mudou, e o APK vc25 instalado segue valendo.
-const GS_VERSION = 'v1.9.6.0';
-const GS_VERSION_CODE = 26;
-const GS_BUILD_TS = '2026-08-08';
+const GS_VERSION = 'v1.9.6.1';
+const GS_VERSION_CODE = 27;
+const GS_BUILD_TS = '2026-08-09';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -11150,6 +11150,12 @@ function _rcComprovantePNG(e){
 }
 
 function agendarAlertaRecarga(vagaId){
+  // v1.9.6.1: DOIS agendamentos, com papéis diferentes:
+  //  • o NATIVO (abaixo) é quem realmente avisa — o Android acorda sozinho no
+  //    horário, mesmo com o app fechado. É a correção desta versão.
+  //  • o timer JS continua, mas só para o alarme de PRIMEIRO PLANO (modal + bipe)
+  //    de quem está com o app aberto. Ele nunca mais é a única linha de defesa.
+  try{ _rcAgendarNotificacaoFim(vagaId); }catch(e){ console.warn('[RECARGA] agendar nativo:', e && e.message); }
   if(_recTimers[vagaId]) clearTimeout(_recTimers[vagaId]);
   const r=RECARGAS[vagaId]; if(!r||!r.ativo) return;
   const delay=r.fim_ts-Date.now();
@@ -11211,8 +11217,26 @@ async function _rcRenderEstadoNotif(){
     }catch(e){ permitido = false; }
   }
   if(permitido){
-    el.style.color = '#0F6E56';
-    el.textContent = '✓ Som, vibração e notificação ativos neste aparelho.';
+    // v1.9.6.1: a notificação está ativa — falta dizer se ela chega NA HORA. Sem
+    // alarme exato o Android agrupa em janelas de manutenção (até ~15 min em Doze),
+    // e com cobrança por tempo isso importa.
+    let exato = null;
+    try{
+      const p = _rcNotifPlugin();
+      if(p && typeof p.checkExactNotificationSetting === 'function'){
+        const e2 = await p.checkExactNotificationSetting();
+        exato = !!(e2 && e2.exact_alarm === 'granted');
+      }
+    }catch(e){ exato = null; }
+    if(exato === false){
+      el.style.color = '#B26A00';
+      el.innerHTML = '⚠️ <strong>Alerta ativo, mas sem horário exato.</strong> ' +
+        'O aviso pode atrasar alguns minutos quando o aparelho está em repouso. ' +
+        'Para ativar: Ajustes do Android → Aplicativos → GarageSpot → Alarmes e lembretes.';
+    } else {
+      el.style.color = '#0F6E56';
+      el.textContent = '✓ Som, vibração e notificação ativos — inclusive com o app fechado.';
+    }
   } else {
     el.style.color = '#A32D2D';
     el.innerHTML = '⚠️ <strong>Notificações bloqueadas nas permissões do Android.</strong> ' +
@@ -11265,6 +11289,61 @@ async function _rcPedirPermissaoNotif(){
     _rcNotifPermitido = false;
     return false;
   }
+}
+
+// ── v1.9.6.1 — AGENDAMENTO NATIVO (funciona com o app FECHADO) ─────────────
+// ⚠️ REGRA QUE NÃO PODE SER DESFEITA: o alerta é AGENDADO no início da recarga,
+// com o horário de término como gatilho. **Nunca** dependa do timer JS para
+// disparar — com o app fechado o JavaScript deixa de existir, o `setTimeout`
+// nunca vence e a notificação (que está instalada e funcional) nunca chega a ser
+// chamada. Foi exatamente esse o bug da v1.9.6.0.
+//
+// O id da notificação é derivado da vaga, para conseguirmos REAGENDAR (prolongar)
+// e CANCELAR (encerrar) sem depender de guardar estado extra.
+function _rcNotifIdDaVaga(vagaId){
+  const s = String(vagaId || '');
+  let h = 0;
+  for(let i = 0; i < s.length; i++){ h = ((h * 31) + s.charCodeAt(i)) % 100000; }
+  return 500000 + h;   // faixa própria, longe dos ids das notificações imediatas
+}
+
+async function _rcAgendarNotificacaoFim(vagaId){
+  try{
+    const p = _rcNotifPlugin(); if(!p) return false;
+    const r = RECARGAS[vagaId]; if(!r || !r.ativo || !r.fim_ts) return false;
+    const cfg = (typeof RECARGA_CONFIG !== 'undefined') ? RECARGA_CONFIG : {};
+    // toggle desligado → nem agenda (e cancela o que porventura já existia)
+    if(cfg.alertas === false){ await _rcCancelarNotificacao(vagaId); return false; }
+    if(_rcNotifPermitido === null) await _rcPedirPermissaoNotif();
+    if(!_rcNotifPermitido) return false;
+    await _rcGarantirCanal();
+    // reagendar = cancelar o anterior e marcar de novo; o plugin não substitui sozinho
+    await _rcCancelarNotificacao(vagaId);
+    if(r.fim_ts <= Date.now()) return false;    // já venceu: quem avisa é o alarme na tela
+    await p.schedule({ notifications: [{
+      id: _rcNotifIdDaVaga(vagaId),
+      title: '⚡ Recarga concluída',
+      body: 'Vaga ' + vagaId + (r.apt ? ' · Apt ' + r.apt : '') + ' — o veículo pode ser liberado.',
+      channelId: RC_CANAL_ID,
+      smallIcon: 'ic_stat_icon_config_sample',
+      // `allowWhileIdle` é o que faz o plugin usar `setExactAndAllowWhileIdle`
+      // (LocalNotificationManager:392). Sem permissão de alarme exato ele DEGRADA
+      // sozinho para `setAndAllowWhileIdle` — ou seja, agenda de qualquer forma,
+      // só sem garantia de precisão.
+      schedule: { at: new Date(r.fim_ts), allowWhileIdle: true },
+      extra: { vagaId: vagaId, apt: r.apt || '' },
+    }]});
+    return true;
+  }catch(e){ console.warn('[RECARGA] agendamento falhou:', e && e.message); return false; }
+}
+
+// Cancela o agendamento. Chamado ao encerrar/liberar — nada de notificação
+// fantasma de recarga que já acabou.
+async function _rcCancelarNotificacao(vagaId){
+  try{
+    const p = _rcNotifPlugin(); if(!p || typeof p.cancel !== 'function') return;
+    await p.cancel({ notifications: [{ id: _rcNotifIdDaVaga(vagaId) }] });
+  }catch(e){ /* nada agendado — ignora */ }
 }
 
 // Dispara a notificação da bandeja. Fail-safe: qualquer erro aqui é engolido — o
@@ -11338,9 +11417,11 @@ function _rcDispararAlertaConclusao(vagaId){
   if(!alertasOn) return;                     // respeita o toggle: alerta desligado → nada
   _rcPararAlarme();                          // evita empilhar alarmes
   const apt=r.apt||'—';
-  // v1.9.6.0: notificação da bandeja (som + vibração pelo canal). Fire-and-forget:
-  // é REFORÇO — o alarme na tela abaixo é a garantia e não depende dela.
-  try{ _rcNotificar(vagaId, apt); }catch(e){}
+  // v1.9.6.1: a notificação da bandeja NÃO é mais disparada aqui. Ela é AGENDADA no
+  // início da recarga (`_rcAgendarNotificacaoFim`) e o próprio Android a entrega no
+  // horário — inclusive com o app fechado. Disparar aqui também duplicaria o aviso
+  // quando o app estivesse aberto. O que sobra aqui é o alarme de PRIMEIRO PLANO
+  // (modal + bipe), que continua sendo o reforço para quem está com o app na mão.
   const el=document.createElement('div');
   el.id='rc-alarme-overlay';
   el.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(20,20,30,.55);display:flex;align-items:center;justify-content:center;padding:20px';
@@ -11383,6 +11464,74 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   showToast('⚡ Recarga iniciada — Vaga '+vagaId);
   _gsBackupAuto('recarga iniciada '+vagaId); // v1.9.4.11
+}
+
+// ── v1.9.6.1 — PROLONGAR RECARGA ───────────────────────────────────────────
+// Fluxo real: a recarga bate o prazo, o hóspede pede mais tempo, e o manobrista não
+// deveria ter de encerrar e reabrir. Disponível TAMBÉM com a recarga já concluída —
+// é justamente aí que se decide continuar.
+//
+// **A cobrança não precisa de nada especial:** `calcValorRecarga(inicio_ts, fimReal)`
+// já cobra do início até o encerramento REAL. Basta **não tocar em `inicio_ts`** e o
+// tempo total é cobrado sozinho. Reiniciar a contagem seria o erro.
+//
+// Sem PIN: é ação operacional do manobrista, como encerrar.
+function showProlongarRecarga(vagaId){
+  const r = RECARGAS[vagaId];
+  if(!r || !r.ativo){ showToast('Recarga não está ativa.', 2500); return; }
+  // sugere +30 min a partir de agora (ou do término, se ainda no futuro)
+  const base = Math.max(Date.now(), r.fim_ts || Date.now());
+  const sug = new Date(base + 30*60000);
+  const hh = String(sug.getHours()).padStart(2,'0')+':'+String(sug.getMinutes()).padStart(2,'0');
+  showM(`<div class="mt">⏱ Prolongar recarga — Vaga ${_vtEsc(vagaId)}</div>
+    <div class="ms">Apt. ${_vtEsc(r.apt||'—')} · início ${_fmtHM(r.inicio_ts)} · término atual ${_fmtHM(r.fim_ts)}</div>
+    <label class="fl">Novo horário de término <span class="req">*</span></label>
+    <input class="fi" id="rc-prol-fim" type="time" value="${hh}" style="font-size:15px">
+    <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:7px;padding:7px 10px;font-size:11px;color:#0F6E56;margin-top:6px;line-height:1.5">
+      A cobrança considera o tempo <strong>total</strong>, desde o início da recarga — a contagem não é reiniciada.
+    </div>
+    <div class="ag" style="margin-top:10px">
+      <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <button class="bsv" id="rc-prol-ok">Prolongar</button>
+    </div>`);
+  setTimeout(function(){
+    const ok = document.getElementById('rc-prol-ok');
+    if(ok) ok.onclick = function(){ _prolongarRecargaAplicar(vagaId); };
+  }, 0);
+}
+
+function _prolongarRecargaAplicar(vagaId){
+  const r = RECARGAS[vagaId];
+  if(!r || !r.ativo){ showToast('Recarga não está ativa.', 2500); return; }
+  const val = (document.getElementById('rc-prol-fim')||{}).value || '';
+  if(!/^\d{2}:\d{2}$/.test(val)){ showToast('Informe o novo horário.', 2500); return; }
+  const [h,m] = val.split(':').map(Number);
+  const hoje = new Date();
+  let novo = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), h, m, 0, 0).getTime();
+  if(novo <= Date.now()) novo += 86400000;              // horário já passou → amanhã
+  const anterior = r.fim_ts;
+  // O novo prazo SUBSTITUI o anterior. `inicio_ts` fica intacto — é ele que garante
+  // a cobrança pelo tempo total.
+  r.fim_ts = novo;
+  r.ativo = true;
+  r.confirmada = false;                                  // volta a "carregando"
+  r.prorrogacoes = (r.prorrogacoes || 0) + 1;
+  saveRecargas();
+  // o alarme na tela some, se estava aberto para esta vaga
+  try{ if(_rcAlarme && _rcAlarme.vagaId === vagaId) _rcPararAlarme(); }catch(e){}
+  // reagenda os dois: o nativo (que avisa de verdade) e o timer de primeiro plano
+  agendarAlertaRecarga(vagaId);
+  const hrNovo = _fmtHM(novo), hrAnt = _fmtHM(anterior);
+  if(r.apt && typeof addHistorico === 'function'){
+    addHistorico(r.apt, 'recarga_prolongada', vagaId,
+      'Recarga prolongada · de ' + hrAnt + ' para ' + hrNovo, r.usuario || '', r.hospedagem);
+  }
+  try{ addLogSistema('Recarga prolongada (vaga ' + vagaId + '): ' + hrAnt + ' → ' + hrNovo); }catch(e){}
+  if(typeof ref === 'function') ref(vagaId);
+  closeOv();
+  if(document.getElementById('recarga-wrap')?.style?.display !== 'none') renderTelaRecarga();
+  showToast('⏱ Recarga prolongada até ' + hrNovo, 3500);
+  _gsBackupAuto('recarga prolongada ' + vagaId);
 }
 
 function showRecargaModal(vagaId){
@@ -11720,6 +11869,10 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   RECARGAS[vagaId].confirmada = true;
   RECARGAS[vagaId].fim_ts = fimReal;
   saveRecargas();
+  // v1.9.6.1: cancela o agendamento nativo — a recarga acabou, e uma notificação
+  // chegando depois disso seria pior do que não avisar.
+  try{ _rcCancelarNotificacao(vagaId); }catch(e){}
+  try{ if(_recTimers[vagaId]){ clearTimeout(_recTimers[vagaId]); delete _recTimers[vagaId]; } }catch(e){}
   _gsBackupAuto('recarga encerrada '+vagaId); // v1.9.4.11
   if(typeof ref === 'function') ref(vagaId);
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
@@ -11728,10 +11881,20 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   const nome = 'Recarga_'+r.apt+'_'+fmtNomeData(r.inicio_ts)+'_GarageSpot';
   closeOv();
   _rcEncerrarEstado = null;
-  if(docPdf){ await gerarECompartilharPDF('Registro de Recarga', docPdf, nome); }
-  else { showToast('Recarga encerrada — R$ '+valor.toFixed(2).replace('.',','),3500); }
-  // Ofertar próximo da fila
-  _verificarFilaRecarga(vagaId);
+  // v1.9.6.1: mesmo padrão do fechamento de hospedagem — SEMPRE salva no dispositivo,
+  // e compartilhar é ação adicional. Antes só oferecia compartilhar, e quem quisesse
+  // apenas guardar o comprovante não tinha como.
+  if(docPdf){
+    // A entrega resolve assim que o arquivo está salvo; a oferta da fila espera o
+    // modal sair da tela, para os dois não disputarem o overlay.
+    await _pdfEntregar('Registro de Recarga', docPdf, nome,
+      'Vaga '+vagaId+' · Apt '+(r.apt||'—')+' · R$ '+valor.toFixed(2).replace('.',','),
+      function(){ try{ _verificarFilaRecarga(vagaId); }catch(e){} });
+  }
+  else {
+    showToast('Recarga encerrada — R$ '+valor.toFixed(2).replace('.',','),3500);
+    _verificarFilaRecarga(vagaId);
+  }
 }
 
 function _verificarFilaRecarga(vagaId){
@@ -11813,9 +11976,13 @@ function renderTelaRecarga(){
       const linhaDest  = concluido
         ? '<div class="rcp-info-row destaque"><span>Concluído</span><strong class="restante">'+_fmtHM(r.fim_ts)+'</strong></div>'
         : '<div class="rcp-info-row destaque"><span>Restante</span><strong class="restante">'+_fmtDurRecarga(rem)+'</strong></div>';
-      const botaoCard = concluido
+      // v1.9.6.1: "Prolongar" ao lado do botão principal, nos DOIS estados. É ao
+      // CONCLUIR que se decide continuar (o hóspede pede mais tempo), e o manobrista
+      // não deveria precisar encerrar e reabrir para isso.
+      const btnProlongar = '<button class="rcp-btn ver" id="rcp-prolongar-'+vagaAtiva+'" onclick="showProlongarRecarga(\''+vagaAtiva+'\')">⏱ Prolongar</button>';
+      const botaoCard = (concluido
         ? '<button class="rcp-btn encerrar" onclick="showRecargaFinalizar(\''+vagaAtiva+'\')">✓ Encerrar e liberar</button>'
-        : '<button class="rcp-btn ver" onclick="showRecargaDetalhe(\''+vagaAtiva+'\')">Ver detalhes</button>';
+        : '<button class="rcp-btn ver" onclick="showRecargaDetalhe(\''+vagaAtiva+'\')">Ver detalhes</button>') + btnProlongar;
       const checkSuffix = concluido ? '<div class="rcp-bateria-big-check">✓</div>' : '';
       return ''+
         '<div class="'+cardCls+'">' +
@@ -14042,6 +14209,80 @@ function _gdPastasHospedagem(apt, checkinTs){
   const iso = _localISO(new Date(base)) || _hojeLocalISO();
   const p = iso.split('-');
   return [p[0], _gdMesAbrev(p[1], p[0]), 'Apt' + _apt2Txt(apt)];
+}
+
+// ── v1.9.6.1 — ENTREGA DE PDF: "Salvar" × "Salvar e compartilhar" ──────────
+// O padrão bom nasceu na v1.9.4.12, no fechamento de hospedagem: o app SEMPRE salva
+// no dispositivo, e compartilhar é ação ADICIONAL que reaproveita o arquivo já salvo
+// (em vez de remontar o PDF). O relatório de recarga só oferecia compartilhar.
+//
+// Este helper extrai esse padrão para ser reusado. **O modal do check-out NÃO foi
+// refatorado de propósito:** ele carrega barra de progresso e compressão de fotos, e
+// é o fluxo mais sensível do app — trocar risco por elegância ali não se paga. O que
+// é genuinamente comum (`salvarPDFNoDispositivo` + share do arquivo salvo) está aqui.
+// ⚠️ Resolve assim que o arquivo está SALVO — não espera o usuário escolher. Quem
+// chama precisa seguir a vida (o encerramento de recarga, por exemplo, ainda tem a
+// fila para verificar); prender o fluxo num clique deixaria o chamador pendurado.
+// O que depende da escolha vai em `aoFechar`, disparado quando o modal sai da tela.
+function _pdfEntregar(titulo, conteudo, nomeBase, subtitulo, aoFechar){
+  return new Promise(function(resolve){
+    let _salvo = null, _fechou = false;
+    function fechar(){
+      if(_fechou) return; _fechou = true;
+      try{ closeOv(); }catch(e){}
+      if(typeof aoFechar === 'function'){ try{ aoFechar(); }catch(e){} }
+    }
+    showM('<div class="mt">' + _vtEsc(titulo) + '</div>' +
+      (subtitulo ? '<div class="ms">' + _vtEsc(subtitulo) + '</div>' : '') +
+      '<div id="pdfe-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">💾 Salvando no dispositivo…</div>' +
+      '<div class="ag" id="pdfe-acoes" style="display:none">' +
+        '<button class="bsv" id="pdfe-salvar">💾 Salvar</button>' +
+        '<button class="bsv" id="pdfe-share" style="margin-top:4px">📤 Salvar e compartilhar</button>' +
+        '<button class="bcx" id="pdfe-fechar" style="margin-top:4px">Fechar</button>' +
+      '</div>');
+    (async function(){
+      try{ _salvo = await salvarPDFNoDispositivo(titulo, conteudo, nomeBase); }
+      catch(e){ console.warn('[PDF] salvar falhou:', e && e.message); }
+      const st = document.getElementById('pdfe-status');
+      if(st){
+        if(_salvo && _salvo.sucesso){
+          st.style.cssText = 'background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
+          st.textContent = (_salvo.nativo ? '✅ PDF salvo no dispositivo · GarageSpot/' + _salvo.nome
+                                          : '✅ PDF baixado · ' + _salvo.nome);
+        } else {
+          st.style.cssText = 'background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
+          st.textContent = '⚠️ Não foi possível salvar automaticamente — use "Salvar e compartilhar".';
+        }
+      }
+      const acoes = document.getElementById('pdfe-acoes'); if(acoes) acoes.style.display = '';
+      const bf = document.getElementById('pdfe-fechar'); if(bf) bf.onclick = fechar;
+      // ENTREGA CONCLUIDA: o arquivo esta salvo. Quem chamou segue a vida.
+      resolve({salvo: !!(_salvo && _salvo.sucesso), nome: _salvo && _salvo.nome});
+      const bs = document.getElementById('pdfe-salvar');
+      if(bs) bs.onclick = async function(){
+        if(_salvo && _salvo.sucesso){ showToast('✅ Já salvo · ' + _salvo.nome, 3000); fechar(); return; }
+        const r2 = await salvarPDFNoDispositivo(titulo, conteudo, nomeBase);
+        showToast(r2 && r2.sucesso ? ('✅ PDF salvo · ' + r2.nome) : '⚠️ Não foi possível salvar', 3500);
+        if(r2 && r2.sucesso) fechar();
+      };
+      const bc = document.getElementById('pdfe-share');
+      if(bc) bc.onclick = async function(){
+        // compartilha o arquivo JÁ SALVO — não remonta o PDF
+        if(_salvo && _salvo.sucesso && _salvo.uri && window.Capacitor?.Plugins?.Share){
+          try{
+            await window.Capacitor.Plugins.Share.share({ title:'GarageSpot — ' + titulo, url:_salvo.uri, dialogTitle:'Compartilhar' });
+            fechar(); return;
+          }catch(e){
+            const msg = (e && (e.message || e.errorMessage) || '').toLowerCase();
+            if(msg.includes('cancel') || msg.includes('dismiss') || msg.includes('abort') || msg.includes('close')) return;
+            console.warn('[PDF] share do arquivo salvo falhou, refazendo:', e && e.message);
+          }
+        }
+        fechar();
+        await gerarECompartilharPDF(titulo, conteudo, nomeBase);
+      };
+    })();
+  });
 }
 
 // Parte 1 v1.9.4.9: SALVA o PDF no dispositivo SEM compartilhar (compartilhar é ação à
