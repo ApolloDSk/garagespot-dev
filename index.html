@@ -549,6 +549,9 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .rcp-card{background:#fff;border-radius:12px;padding:13px;box-shadow:0 1px 3px rgba(15,30,60,.06),0 1px 2px rgba(15,30,60,.04);border:1.5px solid #E1E5EB;position:relative;overflow:hidden}
 .rcp-card.ativo{border-color:#2BB673;background:linear-gradient(180deg,#fff 0%,#F2FBF6 100%)}
 .rcp-card.concluido{border-color:#1F9A5F;background:linear-gradient(180deg,#fff 0%,#EEF9F2 100%)}
+/* v1.9.6.2: destaque temporário ao chegar pelo toque na notificação */
+.rcp-card.rcp-destacado{box-shadow:0 0 0 3px rgba(24,95,165,.35),0 4px 14px rgba(15,30,60,.18);animation:rcpPulso 1.1s ease-in-out 2}
+@keyframes rcpPulso{0%,100%{box-shadow:0 0 0 3px rgba(24,95,165,.35),0 4px 14px rgba(15,30,60,.18)}50%{box-shadow:0 0 0 7px rgba(24,95,165,.14),0 4px 14px rgba(15,30,60,.18)}}
 .rcp-card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
 .rcp-label{font-size:10px;font-weight:700;color:#8892A6;text-transform:uppercase;letter-spacing:.5px}
 .rcp-vagas{font-size:17px;font-weight:800;color:#1A2238;margin-top:2px}
@@ -1312,9 +1315,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.5.1: SEM rebuild de APK — as correções da pipeline da nuvem são HTML/JS e
 // chegam ao aparelho pelo Pages. O versionCode CONTINUA 25 de propósito: nada
 // nativo mudou, e o APK vc25 instalado segue valendo.
-const GS_VERSION = 'v1.9.6.1';
+// v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
+// 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
+// receivers no manifesto). O versionCode CONTINUA 27 de propósito.
+const GS_VERSION = 'v1.9.6.2';
 const GS_VERSION_CODE = 27;
-const GS_BUILD_TS = '2026-08-09';
+const GS_BUILD_TS = '2026-08-06';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -2829,6 +2835,10 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
     upd();closeOv();
     showToast('✅ Retorno registrado — Apt. '+apt);
+    // v1.9.6.2 — LACUNA FECHADA: o retorno do passeio devolve o carro a uma vaga e
+    // apaga o registro de PASSEIO. Não disparava cadência nenhuma (só o check-in,
+    // logo acima, disparava). Agora o par saída/volta fica consistente na nuvem.
+    _gsBackupAuto('retorno do passeio '+apt);
   } else {
     ref(id);refByApt(d.apt);
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
@@ -3008,6 +3018,11 @@ function doOut(id){
     d.status='free';d.apt='';d.model='';d.color='';d.plate='';d.guest='';d.hospedagem='';
     d.mergedMaster=false;d.mergedSlave=false;
     ref(id);refByApt(aptKey);upd();closeOv();
+    // v1.9.6.2 — LACUNA FECHADA: a saída para passeio esvazia a vaga e cria um
+    // registro em PASSEIO, e não disparava cadência NENHUMA — dependia do tique
+    // horário. Um carro fora da garagem é exatamente o estado que precisa estar
+    // atualizado na nuvem se o aparelho se perder.
+    _gsBackupAuto('saída para passeio '+aptKey);
   });
 }
 
@@ -6485,6 +6500,11 @@ function assinarVistoria(id){
       // Bug H v1.9.4.1.4: atualizar badge de Pendências no Painel
       if(typeof renderAgrupadoresPainel==='function') renderAgrupadoresPainel();
       showToast('Vistoria '+id+' assinada');
+      // v1.9.6.2 — LACUNA FECHADA: a assinatura é o que transforma a vistoria em
+      // documento válido (e tira a pendência do check-out), e não disparava cadência
+      // nenhuma. LEVE de propósito: a imagem da assinatura vive no IndexedDB e sobe
+      // com a próxima COMPLETA — o rolante leva os dados, não as fotos.
+      _gsBackupAuto('assinatura de vistoria '+id);
     });
   };
 }
@@ -9140,6 +9160,12 @@ let DRIVE_STATUS = {
   // v1.9.5.4: "precisa reconectar" ≠ "desconectado". O vínculo continua; o que
   // falta é permissão. Só o botão Desconectar (com PIN) desvincula de fato.
   nuvem_reconectar:false,
+  // v1.9.6.2: arquivo ROLANTE de estado atual (dados, sem fotos), sobrescrito por
+  // ID a cada cadência LEVE. Campos ADITIVOS: aparelho antigo não tem as chaves.
+  // `nuvem_rolante_id` é o id do arquivo no Drive — é ele que garante SOBRESCRITA
+  // em vez de um arquivo novo por envio.
+  nuvem_rolante_id:'',
+  nuvem_rolante_ts:null,
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
@@ -9368,6 +9394,11 @@ async function fazerBackupLocal(motivo, opts){
     // hotel). Fire-and-forget: o backup local ACIMA já está gravado, então nenhuma
     // falha de rede daqui para baixo pode afetá-lo.
     if(comFotos) _gdEspelharNoDrive(nome, json, motivo);
+    // v1.9.6.2: a cadência LEVE passa a espelhar também — mas em ARQUIVO ROLANTE,
+    // sobrescrito, sem fotos. É o que fecha o furo de recarga/designação/PIN/cadastro/
+    // passeio/assinatura ficarem fora da nuvem até o tique horário. Continua valendo
+    // que a leve NÃO cria histórico e NÃO substitui os completos.
+    else _gdEspelharEstadoAtual(json, motivo);
     return {ok:true,nome,tipo:snap.tipo,contagens:snap.contagens};
   }catch(e){
     DRIVE_STATUS.falha_backup=true;
@@ -10356,6 +10387,71 @@ async function _gdEnviarArquivo(token, pastaId, nome, texto){
   return await r.json();
 }
 
+// ── v1.9.6.2 — ARQUIVO ROLANTE DE ESTADO ATUAL ─────────────────────────────
+// NOME ESCOLHIDO E POR QUÊ: `_ESTADO-ATUAL (sem fotos).json`.
+//  • o `_` inicial o joga para o TOPO de qualquer listagem alfabética do Drive —
+//    quem abrir a pasta vê primeiro o arquivo que está sempre fresco;
+//  • NÃO começa com `backup_`, então nunca se mistura nem se confunde com a série
+//    histórica `backup_completo_AAAA-MM-DD_HHhMM.json`;
+//  • MAIÚSCULAS e "(sem fotos)" dizem, para um humano e sem manual, que aquilo é o
+//    estado corrente e que ele NÃO substitui o backup completo.
+//
+// ⚠️ REGRA INEGOCIÁVEL: este arquivo é ADICIONAL. Ele NUNCA substitui os backups
+// completos — a cadência COMPLETA continua criando o histórico imutável com fotos,
+// exatamente como antes. Nada aqui apaga, move ou renomeia arquivo algum; a única
+// escrita é a sobrescrita DESTE arquivo, que é sobrescrito por definição.
+const GD_ROLANTE_NOME = '_ESTADO-ATUAL (sem fotos).json';
+
+// COMO A SOBRESCRITA É FEITA: `PATCH /upload/drive/v3/files/<id>?uploadType=media`,
+// ou seja, atualização de conteúdo do MESMO arquivo, pelo id. Nunca "apagar e criar":
+// apagar e criar tem uma janela em que o dado não existe em lugar nenhum, e ainda
+// trocaria o id do arquivo a cada envio (quebrando link e histórico de revisões).
+// SE A ESCRITA FALHAR NO MEIO: o Drive só publica a nova revisão quando o corpo
+// chega inteiro — uma requisição interrompida deixa a revisão anterior intacta e
+// legível. Não há estado "meio gravado" visível para o usuário.
+async function _gdEnviarRolante(token, pastaId, json){
+  const idLembrado = (DRIVE_STATUS && DRIVE_STATUS.nuvem_rolante_id) || '';
+  if(idLembrado){
+    try{
+      const r = await _gdFetch(GD_API_UPLOAD + '/files/' + encodeURIComponent(idLembrado) +
+        '?uploadType=media&fields=id,name,size', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: json,
+        }, token, 'atualizar o estado atual');
+      return await r.json();
+    }catch(e){
+      // 404 = alguém apagou o arquivo no Drive. Esquece o id e recria abaixo; não é
+      // falha do app e não pode virar erro permanente.
+      if(e && e.gdAuth) throw e;
+      if(!(e && e.gdDet && e.gdDet.status === 404)) throw e;
+      DRIVE_STATUS.nuvem_rolante_id = ''; saveDriveStatus();
+    }
+  }
+  // Sem id em mãos: procura pelo NOME dentro da pasta antes de criar — senão cada
+  // instalação restaurada criaria uma duplicata do estado atual.
+  const q = "name='" + _gdEscQ(GD_ROLANTE_NOME) + "' and '" + _gdEscQ(pastaId) + "' in parents and trashed=false";
+  try{
+    const rb = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+      '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token, 'procurar o estado atual');
+    const jb = await rb.json();
+    const achado = jb && jb.files && jb.files[0];
+    if(achado && achado.id){
+      DRIVE_STATUS.nuvem_rolante_id = achado.id; saveDriveStatus();
+      const r2 = await _gdFetch(GD_API_UPLOAD + '/files/' + encodeURIComponent(achado.id) +
+        '?uploadType=media&fields=id,name,size', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: json,
+        }, token, 'atualizar o estado atual');
+      return await r2.json();
+    }
+  }catch(e){ if(e && e.gdAuth) throw e; /* busca falhou: cria abaixo */ }
+  const criado = await _gdEnviarArquivo(token, pastaId, GD_ROLANTE_NOME, json);
+  if(criado && criado.id){ DRIVE_STATUS.nuvem_rolante_id = criado.id; saveDriveStatus(); }
+  return criado;
+}
+
 async function _gdListarArquivos(token, pastaId){
   const q = "'" + _gdEscQ(pastaId) + "' in parents and trashed=false";
   const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
@@ -10556,6 +10652,93 @@ function _gdEspelharNoDrive(nome, json, motivo){
     _gdEnviarBackup(_gdNomeBackup(), json, motivo, false)
       .catch(function(e){ console.warn('[DRIVE] espelhamento falhou:', e && e.message); });
   }catch(e){ console.warn('[DRIVE] espelhamento não agendado:', e && e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// v1.9.6.2 — ESPELHAMENTO CONTÍNUO (cadência LEVE → nuvem)
+// ══════════════════════════════════════════════════════════════════════════
+// O furo que esta versão fecha: recarga, designação de vaga, PIN e cadastro de
+// funcionário usavam cadência LEVE, e a leve NÃO subia — essas ações ficavam fora
+// da nuvem até o tique horário promover um completo. Passeio e assinatura de
+// vistoria estavam pior: não disparavam nem a leve.
+//
+// A regra passa a ser:
+//   LEVE     → espelha os DADOS no arquivo ROLANTE (sobrescrito, sem fotos)
+//   COMPLETA → continua sendo o HISTÓRICO IMUTÁVEL com fotos, arquivo novo a cada vez
+// A leve NUNCA vira histórico e NUNCA substitui um completo.
+//
+// DEBOUNCE = 8 SEGUNDOS. Justificativa: a cadência leve local já agrupa em 15 s
+// (`_gsBackupAuto`), então o que sobra para agrupar aqui é a rajada que ATRAVESSA
+// aquele agrupamento — o tique periódico caindo junto com uma ação, ou dois fluxos
+// concluídos em sequência. 8 s engole essa sobreposição sem que o operador perceba
+// atraso: o teste de campo é "fazer a ação e conferir no Drive na hora", e um arquivo
+// que só aparece 30 s depois reprova nesse teste. Abaixo de ~5 s não se agruparia
+// nada que os 15 s locais já não tivessem agrupado — seria custo de rede sem ganho.
+const GD_ROLANTE_DEBOUNCE_MS = 8000;
+let _gdRolanteTimer = null;
+let _gdRolantePendente = null;   // último JSON a enviar (só o mais recente importa)
+let _gdRolanteEmVoo = false;     // SERIALIZAÇÃO: nunca dois envios sobre o mesmo arquivo
+let _gdRolanteMotivo = '';
+
+// Chamado pela cadência LEVE, depois de o arquivo local já estar gravado.
+// Fire-and-forget: nada aqui pode atrasar nem afetar o backup local.
+function _gdEspelharEstadoAtual(json, motivo){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    _gdRolantePendente = json;
+    _gdRolanteMotivo = motivo || 'mudança';
+    if(_gdRolanteTimer) clearTimeout(_gdRolanteTimer);
+    _gdRolanteTimer = setTimeout(function(){
+      _gdRolanteTimer = null;
+      _gdFlushRolante();
+    }, GD_ROLANTE_DEBOUNCE_MS);
+  }catch(e){ console.warn('[DRIVE] espelhamento leve não agendado:', e && e.message); }
+}
+
+// Envia o que estiver pendente. Guardas iguais às do espelhamento completo: sem app
+// visível, sem rede ou com o app inicializando, ADIA — o payload continua pendente e
+// o tique/volta do segundo plano tenta de novo. Adiar não é falhar.
+async function _gdFlushRolante(){
+  try{
+    if(_gdRolanteEmVoo) return;                       // já há um envio vivo
+    if(_gdRolantePendente == null) return;
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(typeof gsPronto === 'function' && !gsPronto()) return;
+    if(_gdEnviando) return;                           // backup completo em curso: espera a vez
+    const json = _gdRolantePendente;
+    const motivo = _gdRolanteMotivo;
+    _gdRolantePendente = null;
+    _gdRolanteEmVoo = true;
+    try{
+      await _gdComToken(async function(token){
+        const pasta = await _gdGarantirPasta(token);
+        return await _gdEnviarRolante(token, pasta, json);
+      }, false);
+      DRIVE_STATUS.nuvem_rolante_ts = Date.now();
+      saveDriveStatus();
+    }catch(e){
+      // ⚠️ O ROLANTE NUNCA ALARMA E NUNCA POLUI O CARD. Ele é conveniência: o backup
+      // local está gravado e o histórico completo tem indicador próprio. Marcar falha
+      // aqui faria o rodapé gritar "falhando" por um tropeço de wi-fi numa escrita que
+      // será refeita na próxima mudança — e alarme que mente é alarme que se aprende
+      // a ignorar (regra da v1.9.5.3/5.4). Retenta sozinho: o payload volta a pendente.
+      _gdRolantePendente = json;
+      _gdRolanteMotivo = motivo;
+      const m = (e && e.message) || String(e);
+      console.warn('[DRIVE] estado atual não subiu (vai retentar):', m);
+    }finally{
+      _gdRolanteEmVoo = false;
+    }
+    // Chegou mudança nova enquanto este envio estava no ar? Manda a mais recente.
+    if(_gdRolantePendente != null && !_gdRolanteTimer){
+      _gdRolanteTimer = setTimeout(function(){ _gdRolanteTimer = null; _gdFlushRolante(); }, GD_ROLANTE_DEBOUNCE_MS);
+    }
+  }catch(e){
+    _gdRolanteEmVoo = false;
+    console.warn('[DRIVE] flush do estado atual falhou:', e && e.message);
+  }
 }
 
 // ── v1.9.5.3 — MIGRAÇÃO DA ESTRUTURA DE PASTAS ─────────────────────────────
@@ -10884,18 +11067,36 @@ function abrirRestaurarNuvem(){
       box.innerHTML = `<div style="color:#bbb;font-size:12px">Use "Fazer backup na nuvem agora" para enviar o primeiro.</div>`;
       return;
     }
-    if(ms) ms.textContent = arquivos.length + ' backup(s) na nuvem · o mais recente primeiro';
-    box.innerHTML = arquivos.map(function(f){
+    // v1.9.6.2: o ESTADO ATUAL não é um backup completo, e a tela não pode deixar
+    // isso ambíguo — quem restaura precisa saber que ali há dados recentes SEM as
+    // fotos, contra um completo (com fotos) de um momento anterior.
+    const rolante = arquivos.filter(function(f){ return String(f.name||'') === GD_ROLANTE_NOME; });
+    const completos = arquivos.filter(function(f){ return String(f.name||'') !== GD_ROLANTE_NOME; });
+    if(ms) ms.textContent = completos.length + ' backup(s) completo(s) na nuvem · o mais recente primeiro';
+    const linha = function(f, estadoAtual){
       const kb = f.size ? (Math.round(Number(f.size)/1024) + ' KB') : '—';
       const dt = f.createdTime ? (typeof fmtDt==='function' ? fmtDt(new Date(f.createdTime).getTime()) : f.createdTime) : '—';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f0efea">
+      const rot = estadoAtual ? '📌 Estado atual (dados recentes, sem fotos)' : String(f.name||'');
+      const sub = estadoAtual
+        ? 'Atualizado a cada mudança · ' + kb + ' · <strong>não inclui fotos nem vistorias em imagem</strong>'
+        : _vtEsc(String(dt)) + ' · ' + kb;
+      return `<div class="gd-rest-item" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f0efea">
         <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_vtEsc(String(f.name||''))}</div>
-          <div style="font-size:11px;color:#888">${_vtEsc(String(dt))} · ${kb}</div>
+          <div style="font-size:12px;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${estadoAtual?rot:_vtEsc(rot)}</div>
+          <div style="font-size:11px;color:#888">${sub}</div>
         </div>
         <button class="bsv" style="padding:5px 10px;font-size:11px" onclick="_gdRestaurarArquivo('${_vtEsc(String(f.id||''))}','${_vtEsc(String(f.name||''))}')">Restaurar</button>
       </div>`;
-    }).join('');
+    };
+    box.innerHTML =
+      (rolante.length
+        ? '<div style="font-size:11px;font-weight:700;color:#185FA5;margin:2px 0 4px">ESTADO ATUAL</div>' +
+          rolante.map(function(f){ return linha(f, true); }).join('')
+        : '') +
+      (completos.length
+        ? '<div style="font-size:11px;font-weight:700;color:#6C7885;margin:10px 0 4px">BACKUPS COMPLETOS <span style="font-weight:400">(com fotos, de um momento anterior)</span></div>' +
+          completos.map(function(f){ return linha(f, false); }).join('')
+        : '<div style="color:#bbb;font-size:12px;margin-top:8px">Nenhum backup completo na nuvem ainda.</div>');
   })();
 }
 
@@ -11235,7 +11436,17 @@ async function _rcRenderEstadoNotif(){
         'Para ativar: Ajustes do Android → Aplicativos → GarageSpot → Alarmes e lembretes.';
     } else {
       el.style.color = '#0F6E56';
-      el.textContent = '✓ Som, vibração e notificação ativos — inclusive com o app fechado.';
+      // v1.9.6.2 — A INTERFACE DESCREVE O QUE O APP FAZ, e nada além disso.
+      // NÃO prometer som de alarme (volume/toque de alarme) nem tela cheia com o
+      // aparelho bloqueado: o plugin aplica `USAGE_ALARM` só no canal default dele
+      // (`LocalNotificationManager:112-118`); o canal próprio do GarageSpot passa por
+      // `NotificationChannelManager:96-101`, que usa `USAGE_NOTIFICATION`. Full-screen
+      // intent não existe em arquivo nenhum do plugin. Ambos exigiriam plugin nativo
+      // próprio — rodada futura, se o uso real mostrar que faz falta.
+      el.innerHTML = '✓ <strong>Som, vibração e notificação ativos, inclusive com o app fechado.</strong> ' +
+        'A notificação não some com um deslize e se repete de 5 em 5 minutos por até 1 hora, ' +
+        'até a recarga ser encerrada ou prolongada. Toque nela para abrir a tela de Recarga. ' +
+        '<span style="color:#6C7885">O som usa o volume de notificação do aparelho.</span>';
     }
   } else {
     el.style.color = '#A32D2D';
@@ -11307,6 +11518,69 @@ function _rcNotifIdDaVaga(vagaId){
   return 500000 + h;   // faixa própria, longe dos ids das notificações imediatas
 }
 
+// ── v1.9.6.2 — REPETIÇÃO ATÉ HAVER AÇÃO ────────────────────────────────────
+// TETO DE 12 (5 em 5 min = 1 hora), decidido e não negociável sem nova ordem.
+// Repetir a noite inteira é o caminho mais curto para o operador DESLIGAR a
+// notificação nas configurações do Android — e aí o recurso morre para sempre.
+// Uma hora insistindo é muito mais do que o suficiente para alguém agir.
+const RC_REPET_MAX = 12;
+const RC_REPET_INTERVALO_MS = 5 * 60 * 1000;
+const RC_REPET_JANELA_MS = RC_REPET_MAX * RC_REPET_INTERVALO_MS;   // 1 hora
+
+// Ids das repetições. Precisam ser PRÓPRIOS: o plugin usa o id como chave do
+// PendingIntent do AlarmManager (`LocalNotificationManager:333`) e ainda chama
+// `dismissVisibleNotification(id)` + `cancelTimerForNotification(id)` a cada
+// `schedule` (`:147-148`) — ou seja, agendar 12 vezes com o MESMO id deixaria
+// apenas o último alarme de pé.
+//
+// A faixa base é 500000..599999 (100000 valores). Somar 100000×k mantém as faixas
+// de cada k disjuntas entre si, então duas vagas diferentes nunca colidem.
+function _rcNotifIdRepeticao(vagaId, k){ return _rcNotifIdDaVaga(vagaId) + 100000 * k; }
+
+function _rcNotifIdsDaVaga(vagaId){
+  const ids = [_rcNotifIdDaVaga(vagaId)];
+  for(let k = 1; k <= RC_REPET_MAX; k++) ids.push(_rcNotifIdRepeticao(vagaId, k));
+  return ids;
+}
+
+// Grupo do Android: mantém os avisos da mesma vaga COLAPSADOS num item só na
+// bandeja em vez de 13 linhas soltas.
+// ⚠️ LIMITE MEDIDO DO PLUGIN, não do app: não existe "id de exibição" separado do
+// id de agendamento — `TimedNotificationPublisher:49` faz `notify(id, …)` com o
+// mesmo id. Sem escrever plugin nativo (fora de escopo nesta rodada), agrupar é o
+// mais próximo de "um aviso só" que dá para chegar.
+function _rcNotifGrupo(vagaId){ return 'garagespot-recarga-' + String(vagaId || ''); }
+
+function _rcNotifCorpo(vagaId, r, k){
+  const base = 'Vaga ' + vagaId + (r && r.apt ? ' · Apt ' + r.apt : '') + ' — o veículo pode ser liberado.';
+  return k ? (base + ' (lembrete ' + k + ' de ' + RC_REPET_MAX + ')') : base;
+}
+
+// Monta UMA entrada de notificação. `ongoing:true` é o que impede o operador de
+// dispensar o aviso com um deslize — o aviso só sai quando a recarga é encerrada
+// ou prolongada, que é a ação real que ele representa.
+function _rcMontarNotificacao(vagaId, r, id, quando, k){
+  return {
+    id: id,
+    title: '⚡ Recarga concluída',
+    body: _rcNotifCorpo(vagaId, r, k),
+    channelId: RC_CANAL_ID,
+    smallIcon: 'ic_stat_icon_config_sample',
+    ongoing: true,        // não some com deslize (LocalNotificationManager:172)
+    autoCancel: false,    // some ao TOCAR, que é quando o app abre e cancela o bloco
+    group: _rcNotifGrupo(vagaId),
+    // `allowWhileIdle` é o que faz o plugin usar `setExactAndAllowWhileIdle`
+    // (LocalNotificationManager:392). Sem permissão de alarme exato ele DEGRADA
+    // sozinho para `setAndAllowWhileIdle` — ou seja, agenda de qualquer forma,
+    // só sem garantia de precisão.
+    schedule: { at: new Date(quando), allowWhileIdle: true },
+    extra: { vagaId: vagaId, apt: (r && r.apt) || '', repeticao: k || 0 },
+  };
+}
+
+// Agenda o término E as 12 repetições DE UMA VEZ. Agendar tudo junto é o que faz o
+// lembrete sobreviver ao app fechado: com o WebView morto não existe JavaScript
+// para agendar a próxima repetição — quem tem de saber de todas é o Android.
 async function _rcAgendarNotificacaoFim(vagaId){
   try{
     const p = _rcNotifPlugin(); if(!p) return false;
@@ -11317,33 +11591,147 @@ async function _rcAgendarNotificacaoFim(vagaId){
     if(_rcNotifPermitido === null) await _rcPedirPermissaoNotif();
     if(!_rcNotifPermitido) return false;
     await _rcGarantirCanal();
-    // reagendar = cancelar o anterior e marcar de novo; o plugin não substitui sozinho
+    // reagendar = cancelar o bloco anterior e marcar de novo; o plugin não substitui sozinho
     await _rcCancelarNotificacao(vagaId);
-    if(r.fim_ts <= Date.now()) return false;    // já venceu: quem avisa é o alarme na tela
-    await p.schedule({ notifications: [{
-      id: _rcNotifIdDaVaga(vagaId),
-      title: '⚡ Recarga concluída',
-      body: 'Vaga ' + vagaId + (r.apt ? ' · Apt ' + r.apt : '') + ' — o veículo pode ser liberado.',
-      channelId: RC_CANAL_ID,
-      smallIcon: 'ic_stat_icon_config_sample',
-      // `allowWhileIdle` é o que faz o plugin usar `setExactAndAllowWhileIdle`
-      // (LocalNotificationManager:392). Sem permissão de alarme exato ele DEGRADA
-      // sozinho para `setAndAllowWhileIdle` — ou seja, agenda de qualquer forma,
-      // só sem garantia de precisão.
-      schedule: { at: new Date(r.fim_ts), allowWhileIdle: true },
-      extra: { vagaId: vagaId, apt: r.apt || '' },
-    }]});
+    const notifs = _rcMontarBlocoAlarme(vagaId, r);
+    if(!notifs.length) return false;   // tudo no passado: quem avisa é o alarme na tela
+    await p.schedule({ notifications: notifs });
     return true;
   }catch(e){ console.warn('[RECARGA] agendamento falhou:', e && e.message); return false; }
 }
 
-// Cancela o agendamento. Chamado ao encerrar/liberar — nada de notificação
-// fantasma de recarga que já acabou.
+// O bloco inteiro (término + repetições) que ainda está no FUTURO. O plugin recusa
+// `at` no passado (`LocalNotificationManager:338-341`), então horário vencido é
+// filtrado aqui — nada de alarme retroativo.
+function _rcMontarBlocoAlarme(vagaId, r){
+  const agora = Date.now();
+  const out = [];
+  if(r.fim_ts > agora) out.push(_rcMontarNotificacao(vagaId, r, _rcNotifIdDaVaga(vagaId), r.fim_ts, 0));
+  for(let k = 1; k <= RC_REPET_MAX; k++){
+    const quando = r.fim_ts + k * RC_REPET_INTERVALO_MS;
+    if(quando <= agora) continue;
+    out.push(_rcMontarNotificacao(vagaId, r, _rcNotifIdRepeticao(vagaId, k), quando, k));
+  }
+  return out;
+}
+
+// Cancela o BLOCO inteiro — término e as 12 repetições, numa chamada só. Chamado ao
+// encerrar, ao prolongar e ao tocar na notificação. Nenhum resquício depois da ação:
+// notificação `ongoing` que sobrevive à ação seria pior do que não avisar, porque o
+// operador não consegue nem tirá-la da tela com um deslize.
 async function _rcCancelarNotificacao(vagaId){
   try{
     const p = _rcNotifPlugin(); if(!p || typeof p.cancel !== 'function') return;
-    await p.cancel({ notifications: [{ id: _rcNotifIdDaVaga(vagaId) }] });
+    await p.cancel({ notifications: _rcNotifIdsDaVaga(vagaId).map(function(id){ return { id: id }; }) });
   }catch(e){ /* nada agendado — ignora */ }
+}
+
+// ── v1.9.6.2 — REARME AO ABRIR O APP ───────────────────────────────────────
+// Rede de segurança contra a plataforma. A causa real do "não tocou com o app
+// fechado" era a MIUI: deslizar dos recentes equivale a force-stop, e o Android
+// CANCELA todos os alarmes de um app em force-stop até ele ser reaberto. Isso foi
+// resolvido no aparelho ativando "Início automático" — não é bug do app.
+//
+// Mesmo assim, até esta versão NADA percorria `RECARGAS` na inicialização: se a
+// plataforma matasse os agendamentos, eles simplesmente não voltavam. Agora voltam.
+//
+// CRITÉRIO DE "VENCIDO HÁ MUITO TEMPO" = a própria janela de repetição (1 hora).
+// Justificativa: o rearme não pode INVENTAR aviso — ele só recoloca de pé o que já
+// existiria se o app tivesse ficado aberto. Passada a janela de 1 hora, o último
+// lembrete daquela recarga já teria tocado de qualquer forma, então não há nada a
+// restaurar; disparar ali seria alarme retroativo de coisa antiga. Dentro da janela,
+// só as repetições ainda no futuro são reagendadas (as vencidas são filtradas por
+// `_rcMontarBlocoAlarme`).
+async function _rcRearmarAlarmes(){
+  const res = { verificadas: 0, rearmadas: 0, ignoradas: 0, jaPendentes: 0 };
+  try{
+    const p = _rcNotifPlugin(); if(!p || typeof p.schedule !== 'function') return res;
+    const cfg = (typeof RECARGA_CONFIG !== 'undefined') ? RECARGA_CONFIG : {};
+    if(cfg.alertas === false) return res;    // toggle desligado → não rearma nada
+    if(_rcNotifPermitido === null){
+      try{
+        const st = await p.checkPermissions();
+        _rcNotifPermitido = !!(st && st.display === 'granted');
+      }catch(e){ _rcNotifPermitido = false; }
+    }
+    if(!_rcNotifPermitido) return res;
+    // IDEMPOTÊNCIA: o que o Android ainda tem agendado não é remarcado. Sem isto o
+    // rearme dispensaria a notificação `ongoing` que já está na bandeja (o plugin
+    // chama `dismissVisibleNotification` a cada `schedule`) — apagaria o aviso que
+    // está justamente esperando ação.
+    let pendentes = null;
+    try{
+      if(typeof p.getPending === 'function'){
+        const pl = await p.getPending();
+        pendentes = {};
+        ((pl && pl.notifications) || []).forEach(function(n){ if(n && n.id != null) pendentes[String(n.id)] = true; });
+      }
+    }catch(e){ pendentes = null; }
+    const agora = Date.now();
+    let canalOk = false;
+    for(const vagaId of Object.keys(RECARGAS || {})){
+      const r = RECARGAS[vagaId];
+      if(!r || !r.ativo || !r.fim_ts) continue;      // encerrada → nada a fazer
+      res.verificadas++;
+      if(agora - r.fim_ts > RC_REPET_JANELA_MS){ res.ignoradas++; continue; }
+      if(pendentes && _rcNotifIdsDaVaga(vagaId).some(function(id){ return pendentes[String(id)]; })){
+        res.jaPendentes++; continue;                 // o Android ainda tem o bloco
+      }
+      const notifs = _rcMontarBlocoAlarme(vagaId, r);
+      if(!notifs.length){ res.ignoradas++; continue; }
+      if(!canalOk){ await _rcGarantirCanal(); canalOk = true; }
+      await p.schedule({ notifications: notifs });
+      res.rearmadas++;
+    }
+    if(res.rearmadas){
+      try{ addLogSistema('Alertas de recarga rearmados ao abrir: ' + res.rearmadas + ' recarga(s)'); }catch(e){}
+    }
+  }catch(e){ console.warn('[RECARGA] rearme falhou (ignorado):', e && e.message); }
+  return res;
+}
+
+// ── v1.9.6.2 — TOQUE NA NOTIFICAÇÃO ABRE A TELA DE RECARGA ─────────────────
+// Ação em UM toque: a notificação diz "o veículo pode ser liberado" e o toque leva
+// exatamente ao card onde se encerra ou prolonga. E cancela o bloco: `ongoing` não
+// sai sozinha, e deixá-la ali depois de o operador atender seria lixo permanente na
+// bandeja.
+let _rcListenerNotifPronto = false;
+function _rcInitListenerNotificacao(){
+  try{
+    if(_rcListenerNotifPronto) return;
+    const p = _rcNotifPlugin();
+    if(!p || typeof p.addListener !== 'function') return;
+    _rcListenerNotifPronto = true;
+    p.addListener('localNotificationActionPerformed', function(ev){
+      try{
+        const extra = (ev && ev.notification && ev.notification.extra) || {};
+        _rcAbrirNaRecarga(String(extra.vagaId || ''));
+      }catch(e){ console.warn('[RECARGA] toque na notificação:', e && e.message); }
+    });
+  }catch(e){ console.warn('[RECARGA] listener de notificação:', e && e.message); }
+}
+
+function _rcAbrirNaRecarga(vagaId){
+  // O toque pode chegar durante a abertura do app (foi ele quem abriu). Espera o
+  // app ficar pronto em vez de navegar para uma tela que ainda não existe.
+  if(typeof gsPronto === 'function' && !gsPronto()){
+    setTimeout(function(){ _rcAbrirNaRecarga(vagaId); }, 400);
+    return;
+  }
+  if(vagaId){ try{ _rcCancelarNotificacao(vagaId); }catch(e){} }
+  try{ if(typeof navTo === 'function') navTo('recarga'); }catch(e){}
+  try{ if(typeof renderTelaRecarga === 'function') renderTelaRecarga(); }catch(e){}
+  if(!vagaId) return;
+  // destaca o card do ponto em questão, para não obrigar a procurar
+  setTimeout(function(){
+    try{
+      const el = document.getElementById('rcp-card-' + vagaId);
+      if(!el) return;
+      el.classList.add('rcp-destacado');
+      if(typeof el.scrollIntoView === 'function') el.scrollIntoView({block:'center'});
+      setTimeout(function(){ try{ el.classList.remove('rcp-destacado'); }catch(e){} }, 4000);
+    }catch(e){}
+  }, 120);
 }
 
 // Dispara a notificação da bandeja. Fail-safe: qualquer erro aqui é engolido — o
@@ -11985,7 +12373,9 @@ function renderTelaRecarga(){
         : '<button class="rcp-btn ver" onclick="showRecargaDetalhe(\''+vagaAtiva+'\')">Ver detalhes</button>') + btnProlongar;
       const checkSuffix = concluido ? '<div class="rcp-bateria-big-check">✓</div>' : '';
       return ''+
-        '<div class="'+cardCls+'">' +
+        // v1.9.6.2: id no card ativo — é o alvo do destaque quando o operador chega
+        // aqui tocando na notificação de recarga concluída.
+        '<div class="'+cardCls+'" id="rcp-card-'+_vtEsc(vagaAtiva)+'">' +
           '<div class="rcp-card-hdr">' +
             '<div>' +
               '<div class="rcp-label">'+_vtEsc(rotuloPonto)+'</div>' +
@@ -16273,6 +16663,9 @@ checkLicense().then(async (ativo)=>{
       // v1.9.5.1: retentativa da NUVEM no mesmo tique. Só age se houver falha
       // pendente e o intervalo de espera já tiver passado — ver `_gdTentarPendente`.
       try { setInterval(function(){ _gdTentarPendente(); }, 10 * 60 * 1000); } catch(e){}
+      // v1.9.6.2: o estado atual que não subiu (rede fora, app minimizado no meio)
+      // é retomado no mesmo tique. Sem alarme: é só reenviar o que já está pendente.
+      try { setInterval(function(){ _gdFlushRolante(); }, 10 * 60 * 1000); } catch(e){}
       // v1.9.5.2: PDFs de fechamento que não subiram (sem Drive ou com falha) são
       // reenviados relendo o arquivo do dispositivo — um por tique.
       try { setInterval(function(){ _gdTentarPDFsPendentes(); }, 10 * 60 * 1000); } catch(e){}
@@ -16282,11 +16675,11 @@ checkLicense().then(async (ativo)=>{
       try {
         document.addEventListener('visibilitychange', function(){
           if(document.visibilityState === 'visible'){
-            setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); }, 4000);
+            setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); _gdFlushRolante(); }, 4000);
           }
         });
         window.addEventListener('online', function(){
-          setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); }, 3000);
+          setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); _gdFlushRolante(); }, 3000);
         });
       } catch(e){}
       // v1.9.5.3: migração das pastas do Drive para a estrutura definitiva.
@@ -16310,6 +16703,13 @@ checkLicense().then(async (ativo)=>{
       // permissão de notificação: pedida uma vez, sem travar nada
       try { setTimeout(function(){ if(typeof _rcPedirPermissaoNotif==='function') _rcPedirPermissaoNotif(); }, 6000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
+      // v1.9.6.2: o toque na notificação leva direto à tela de Recarga. Registrado
+      // cedo de propósito — foi ele quem abriu o app, o evento chega no arranque.
+      try { if(typeof _rcInitListenerNotificacao==='function') _rcInitListenerNotificacao(); } catch(e){}
+      // v1.9.6.2: REARME. Se a plataforma matou os agendamentos (force-stop da MIUI,
+      // reinício sem BOOT_COMPLETED, atualização do app), eles voltam aqui. Roda
+      // depois da permissão para não competir com o diálogo do Android.
+      try { setTimeout(function(){ if(typeof _rcRearmarAlarmes==='function') _rcRearmarAlarmes(); }, 7000); } catch(e){}
       upd(); tick(); setInterval(tick,15000);
       requestAnimationFrame(()=>setTimeout(positionPilares, 150));
     });
