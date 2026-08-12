@@ -1318,8 +1318,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.2';
-const GS_VERSION_CODE = 27;
+const GS_VERSION = 'v1.9.6.3';
+const GS_VERSION_CODE = 28;
 const GS_BUILD_TS = '2026-08-06';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2094,6 +2094,7 @@ function executarMove(ms, destId, usuario){
       if(hospedagem) S[destId].hospedagem=hospedagem;
       saveV(destId,ms.apt,ms.model,ms.color,ms.plate,ms.guest,ms.obs);
       addHistorico(ms.apt,'movimentacao_vaga',destId,'Movido de '+ms.id+' para '+destId,usuarioStr,hospedagem);
+      _gsBackupAuto('movimentação de vaga '+ms.id+'→'+destId);   // v1.9.6.3
       refByApt(ms.apt);upd();_refrescarRecargaTodos();closeOv();setTimeout(positionPilares,150);
     };
   } else {
@@ -2103,6 +2104,7 @@ function executarMove(ms, destId, usuario){
     if(hospedagem) S[destId].hospedagem=hospedagem;
     saveV(destId,ms.apt,ms.model,ms.color,ms.plate,ms.guest,ms.obs);
     addHistorico(ms.apt,'movimentacao_vaga',destId,'Movido de '+ms.id+' para '+destId,usuarioStr,hospedagem);
+    _gsBackupAuto('movimentação de vaga '+ms.id+'→'+destId);   // v1.9.6.3
     refByApt(ms.apt);upd();_refrescarRecargaTodos();setTimeout(positionPilares,150);
   }
 }
@@ -3441,6 +3443,7 @@ function showEdit(id, fromPasseio){
         } catch(e){ console.error('[editar] re-render vaga falhou', e); }
       }
       try { if(typeof renderAgrupadoresPainel==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderAgrupadoresPainel(); } catch(e){}
+      _gsBackupAuto('edição de hospedagem '+(hospNum||novoApt));   // v1.9.6.3
       showToast('✓ Dados atualizados',2500);
       showDet(fromPasseio?novoApt:id, fromPasseio);
     });
@@ -3532,6 +3535,7 @@ function executarReset(){
   Object.keys(PASSEIO).forEach(k=>delete PASSEIO[k]);
 
   addLogSistema('Mapa limpo por usuário', {aud:true, acao:'mapa_limpo'});
+  _gsBackupAuto('mapa limpo');   // v1.9.6.3
   upd(); saveData(); closeOv();
   atualizarBotoesRestore();
 }
@@ -4432,6 +4436,7 @@ function showModalTurnos(){
         ESCALA_CONFIG.doze36.ancora=hojeISO();
       }
       saveEscala();
+      _gsBackupAuto('escala de turnos');   // v1.9.6.3
       closeOv();
       showToast('Escala salva');
       if(typeof renderPainelDia==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderPainelDia();
@@ -4543,11 +4548,11 @@ function showPlantaoTooltip(){
     const nome=(ni&&ni.value.trim())||'';
     if(!nome){ if(ni){ni.classList.add('err');ni.addEventListener('input',()=>ni.classList.remove('err'),{once:true});ni.focus();} return; }
     PLANTAO_MANUAL.push({nome, obs:(oi&&oi.value.trim())||''});
-    savePlantaoManual(); atualizarPlantao(); renderPlantao();
+    savePlantaoManual(); _gsBackupAuto('plantão manual'); atualizarPlantao(); renderPlantao();
   };
   window._rmPlantao=function(i){
     PLANTAO_MANUAL.splice(i,1);
-    savePlantaoManual(); atualizarPlantao(); renderPlantao();
+    savePlantaoManual(); _gsBackupAuto('plantão manual'); atualizarPlantao(); renderPlantao();
   };
   renderPlantao();
 }
@@ -7428,6 +7433,34 @@ function _vtMostrarPopupAvaria(idx){
     pop.remove();
   });
   layer.appendChild(pop);
+  _vtAjustarPopupNaBorda(pop, layer);
+}
+
+// v1.9.6.3 — MARCAÇÃO PERTO DA BORDA.
+// O popup era posicionado em `left:x% / top:y%` com `translate(-50%,-130%)` fixo:
+// uma avaria marcada no alto jogava o menu para fora por cima, e nas laterais
+// metade dele saía da tela — o operador não conseguia concluir a ação num ponto
+// legítimo da imagem. Agora, depois de anexado (que é quando se pode MEDIR), o
+// menu é reposicionado para caber: vira para baixo quando não há espaço acima e
+// desliza na horizontal até encostar na borda, sem nunca sair.
+function _vtAjustarPopupNaBorda(pop, layer){
+  try{
+    if(!pop || !layer || typeof pop.getBoundingClientRect !== 'function') return;
+    const lr = layer.getBoundingClientRect();
+    const pr = pop.getBoundingClientRect();
+    if(!lr.width || !pr.width) return;          // ainda sem layout: deixa como está
+    const folga = 4;
+    let dx = 0;
+    // Sem espaço acima → abre para BAIXO do ponto (mantém o ponto visível).
+    const paraBaixo = (pr.top < lr.top + folga);
+    // Horizontal: empurra para dentro do lado que estourou.
+    if(pr.left < lr.left + folga)          dx = (lr.left + folga) - pr.left;
+    else if(pr.right > lr.right - folga)   dx = (lr.right - folga) - pr.right;
+    if(!dx && !paraBaixo) return;
+    pop.style.transform = 'translate(-50%, ' + (paraBaixo ? '30%' : '-130%') + ') translate(' + dx + 'px, 0)';
+    if(paraBaixo) pop.setAttribute('data-borda', 'abaixo');
+    else if(dx)   pop.setAttribute('data-borda', 'lateral');
+  }catch(e){ /* posicionamento é conforto: nunca pode quebrar a vistoria */ }
 }
 
 function _vtAvariaLimparTodas(){
@@ -8478,6 +8511,10 @@ function _nciCommitNovaVistoriaAdicional(){
     ANEXOS[anexoKey].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
     saveAnexos();
   }
+  // v1.9.6.3: vistoria adicional cria documento e anexo e não disparava cadência
+  // nenhuma. COMPLETA porque o que ela produz é justamente uma FOTO — o rolante,
+  // que não leva fotos, não daria conta de proteger este dado.
+  _gsBackupAuto('vistoria adicional '+numero, {completo:true});
 }
 
 function _nciCriarVistoriaV2(d,numero){
@@ -9166,6 +9203,14 @@ let DRIVE_STATUS = {
   // em vez de um arquivo novo por envio.
   nuvem_rolante_id:'',
   nuvem_rolante_ts:null,
+  // v1.9.6.3: cota do Drive lida por `about.get` (escopo `drive.file` basta),
+  // no máximo 1×/6h. Serve ao aviso preventivo de espaço. Campos ADITIVOS.
+  nuvem_cota_limite:0,
+  nuvem_cota_uso:0,
+  nuvem_cota_ts:null,
+  // v1.9.6.3: Drive CHEIO é um estado próprio. Sem isto, `storageQuotaExceeded`
+  // aparecia como um 403 qualquer e os backups paravam de subir em silêncio.
+  nuvem_cheio:false,
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
 function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
@@ -9481,14 +9526,56 @@ function _gsConferirBackupNaAbertura(){
     if(!gsPronto()) return { fez:false, motivo:'app ainda inicializando' };
     if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return { fez:false, motivo:'app em segundo plano' };
     if(typeof navigator !== 'undefined' && navigator.onLine === false) return { fez:false, motivo:'sem conexão' };
+    // ── v1.9.6.3 — A CONFERÊNCIA PASSA A OLHAR TAMBÉM A NUVEM ──────────────
+    // Ela media SÓ o intervalo do backup LOCAL. Como "App minimizado" gera
+    // completos locais, o local costuma estar em dia — e a conferência devolvia
+    // "dentro do intervalo" e não fazia nada, MESMO COM A NUVEM PARADA HÁ DIAS.
+    // Era cega justamente para o lado que importa: a nuvem é o backup de verdade,
+    // o dispositivo é rede de segurança. Bate com o relato de campo (abrir o app
+    // depois de muito tempo não disparava nada; só o toque no rodapé resolvia).
+    //
+    // São duas perguntas independentes, e cada uma tem a sua resposta barata:
+    //  • local vencido  → gera o backup completo, como antes;
+    //  • nuvem parada   → espelha o ESTADO ATUAL (leve, poucos KB) e cutuca a
+    //    fila de pendências. Não gera arquivo local novo: seria caro e inútil,
+    //    já que o dado local está em dia — o que falta é ele estar na nuvem.
     const desde = Date.now() - (_gsUltimoCompletoTs || 0);
-    if(_gsUltimoCompletoTs && desde <= GS_BACKUP_INTERVALO_COMPLETO){
-      return { fez:false, motivo:'último backup completo ainda dentro do intervalo' };
+    const localVencido = !_gsUltimoCompletoTs || desde > GS_BACKUP_INTERVALO_COMPLETO;
+
+    let nuvemAtrasada = false;
+    try{
+      if(_gdDisponivel() && _gdConectado() && !DRIVE_STATUS.nuvem_reconectar){
+        const contato = _gdUltimoContatoNuvem();
+        nuvemAtrasada = !contato || (Date.now() - contato) > GS_BACKUP_INTERVALO_COMPLETO;
+      }
+    }catch(e){}
+
+    if(!localVencido && !nuvemAtrasada){
+      return { fez:false, motivo:'backup local e nuvem dentro do intervalo' };
     }
-    // `{completo:true}` só declara a INTENÇÃO — as guardas de dados decidem se
-    // realmente há o que gravar.
-    _gsBackupAuto('abertura do app', {completo:true, imediato:true});
-    return { fez:true, motivo: _gsUltimoCompletoTs ? 'intervalo vencido' : 'nenhum backup completo ainda' };
+
+    if(localVencido){
+      // `{completo:true}` só declara a INTENÇÃO — as guardas de dados decidem se
+      // realmente há o que gravar. O caminho completo já espelha na nuvem.
+      _gsBackupAuto('abertura do app', {completo:true, imediato:true});
+    } else if(nuvemAtrasada){
+      // Local em dia, nuvem atrasada: manda o estado atual para o rolante e
+      // retoma o que estiver pendente. Fail-safe — nada aqui pode quebrar a abertura.
+      try{
+        const snap = _gsMontarSnapshot(false);
+        if(_gsValidarSnapshot(snap).ok) _gdEspelharEstadoAtual(JSON.stringify(snap), 'conferência na abertura');
+      }catch(e){ console.warn('[BACKUP] espelho da abertura falhou (ignorado):', e && e.message); }
+    }
+    try{ if(typeof _gdTentarPendente === 'function') _gdTentarPendente(); }catch(e){}
+
+    // ⚠️ O texto do caso local continua sendo "intervalo vencido": a v1.9.6.0 já
+    // travou esse contrato numa spec, e o comportamento dele NÃO mudou aqui — só
+    // ganhou um segundo motivo ao lado. Reescrever a mensagem seria inventar uma
+    // regressão de graça.
+    return { fez:true, local:localVencido, nuvem:nuvemAtrasada,
+             motivo: localVencido
+               ? (_gsUltimoCompletoTs ? 'intervalo vencido' : 'nenhum backup completo ainda')
+               : 'nuvem atrasada' };
   }catch(e){
     console.warn('[BACKUP] conferência na abertura falhou (ignorada):', e && e.message);
     return { fez:false, motivo:'erro' };
@@ -9525,6 +9612,399 @@ async function fazerBackupAgora(){
   } else {
     showToast('⚠️ Backup não gravado: '+(r.erro||'erro'),5000);
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.3 — RETENÇÃO (PODA)
+// ════════════════════════════════════════════════════════════════════════════
+// FILOSOFIA DE ARMAZENAMENTO (decisão do Douglas — é o eixo de tudo aqui):
+//   • A NUVEM é o backup de verdade. É ela que garante que o dado está salvo.
+//   • O DISPOSITIVO é rede de segurança, para quando a conexão falha. Guarda só
+//     o necessário, pelo tempo necessário.
+//   • Janela local: 7 dias contados DEPOIS de confirmado que o backup está na
+//     nuvem. Sem confirmação, o arquivo FICA — por mais velho que seja. A
+//     análise é POR ARQUIVO, nunca só por idade.
+//   • A poda é só sobre BACKUPS. PDFs de fechamento ficam para sempre.
+//
+// A PODA NASCE DESLIGADA. O app vai para o hotel sem apagar nada; o gestor liga
+// depois, em Backup e Conexões, e pode desligar de novo a qualquer momento.
+// "Simular limpeza" é somente leitura e roda quantas vezes se quiser.
+const GS_PODA_LS = 'garagespot_poda_config';
+const GS_PODA_DIAS_LOCAL = 7;
+
+// TETO POR EXECUÇÃO = 40 arquivos. Justificativa: existe para que um erro de
+// lógica não esvazie a pasta numa tacada só. 40 cobre com folga o acúmulo de um
+// dia de operação normal (a cadência leve roda a cada mudança, mas o freio de 30
+// min entre completos limita os pesados), então na prática o teto nunca estorva
+// quem está em dia. Para um acúmulo histórico — o aparelho do Douglas já teve
+// 119 cópias — a limpeza acontece em algumas execuções, e entre elas o gestor vê
+// o resultado na trilha. Um defeito precisa se repetir várias vezes, à vista,
+// antes de causar dano: é exatamente essa a proteção que se quer.
+const GS_PODA_TETO = 40;
+
+// Escada da NUVEM, mais generosa que a local porque lá o espaço é folgado e o
+// custo de guardar é quase nulo — o que se protege aqui é a capacidade de voltar
+// no tempo, e ela vale mais do que alguns MB.
+//   • 30 dias: tudo. É a janela em que um problema costuma ser percebido; dentro
+//     dela se recupera QUALQUER ponto, sem buraco.
+//   • 30 dias a 6 meses: 1 por semana. Cobre uma temporada inteira; para algo
+//     notado com semanas de atraso, granularidade semanal é o que de fato se usa.
+//   • Acima de 6 meses: 1 por mês. A essa altura o valor é de referência
+//     histórica, não de recuperação operacional.
+const GD_PODA_TUDO_DIAS   = 30;
+const GD_PODA_SEMANAL_ATE = 180;   // 6 meses
+
+function _gsPodaConfig(){
+  try{
+    const c = JSON.parse(localStorage.getItem(GS_PODA_LS) || 'null');
+    // DESLIGADA POR PADRÃO: chave ausente = desligada. Nunca inferir "ligada".
+    return Object.assign({ ligada:false, nuvem:false }, c || {});
+  }catch(e){ return { ligada:false, nuvem:false }; }
+}
+function _gsPodaSalvarConfig(c){
+  try{ _gsSetItemSeguro(GS_PODA_LS, JSON.stringify(c), 'configuração da limpeza'); }catch(e){}
+}
+function _gsPodaLigada(){ return !!_gsPodaConfig().ligada; }
+
+// Marca no registro local que ESTE arquivo já está na nuvem, com o instante da
+// confirmação. É daqui que a janela de 7 dias conta.
+function _gsMarcarBackupNaNuvem(nome, driveId){
+  try{
+    const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
+    let mudou = false;
+    for(let i = 0; i < bkps.length; i++){
+      if(bkps[i] && bkps[i].nome === nome && !bkps[i].nuvem_ok){
+        bkps[i].nuvem_ok = true;
+        bkps[i].nuvem_ts = Date.now();
+        if(driveId) bkps[i].nuvem_id = String(driveId);
+        mudou = true;
+        break;
+      }
+    }
+    if(mudou) _gsSetItemSeguro('garagespot_backups_local', JSON.stringify(bkps), 'registro de backups');
+  }catch(e){ console.warn('[PODA] não marcou confirmação na nuvem:', e && e.message); }
+}
+
+// Um backup local é candidato SÓ se passar por TODAS estas peneiras. A ordem é
+// deliberada: o que protege vem antes do que apaga.
+function _gsPodaAvaliarLocal(reg, agora, maisRecenteTs){
+  const nome = String((reg && reg.nome) || '');
+  // 1. Só arquivos que o APP criou como backup, e só os que vivem em
+  //    GarageSpot/Dados/. PDFs de fechamento e relatórios de recarga são gravados
+  //    na RAIZ GarageSpot/ — a pasta já os separa, e o prefixo confirma. Critério
+  //    duplo de propósito: nome sozinho seria frágil demais para autorizar apagar.
+  if(nome.indexOf('backup_') !== 0) return { podar:false, motivo:'não é um arquivo de backup do app' };
+  if(!/\.json$/i.test(nome))        return { podar:false, motivo:'não é .json — fora do escopo da limpeza' };
+  // 2. O mais recente NUNCA sai, aconteça o que acontecer.
+  if(reg.ts === maisRecenteTs)      return { podar:false, motivo:'é o backup mais recente' };
+  // 3. Sem confirmação na nuvem, FICA — por mais velho que seja. Esta é a regra
+  //    que dá sentido à janela: o dispositivo é rede de segurança justamente
+  //    para o que ainda não chegou na nuvem.
+  if(!reg.nuvem_ok || !reg.nuvem_ts) return { podar:false, motivo:'ainda não confirmado na nuvem' };
+  // 4. 7 dias contados da CONFIRMAÇÃO, não da criação.
+  const dias = (agora - reg.nuvem_ts) / (24*60*60*1000);
+  if(dias < GS_PODA_DIAS_LOCAL){
+    return { podar:false, motivo:'confirmado na nuvem há ' + Math.floor(dias) + 'd — faltam ' +
+                                 Math.ceil(GS_PODA_DIAS_LOCAL - dias) + 'd' };
+  }
+  return { podar:true, motivo:'na nuvem há ' + Math.floor(dias) + 'd (≥ ' + GS_PODA_DIAS_LOCAL + 'd)' };
+}
+
+// SOMENTE LEITURA. Não apaga, não grava, não marca nada. Pode rodar à vontade.
+function _gsPodaSimularLocal(){
+  const out = { remover:[], manter:[], teto:GS_PODA_TETO, truncado:false };
+  try{
+    const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
+    const agora = Date.now();
+    let maisRecenteTs = 0;
+    bkps.forEach(function(b){ if(b && b.ts > maisRecenteTs) maisRecenteTs = b.ts; });
+    bkps.forEach(function(b){
+      if(!b) return;
+      const v = _gsPodaAvaliarLocal(b, agora, maisRecenteTs);
+      const linha = { nome:b.nome, ts:b.ts, tipo:b.tipo, motivo:v.motivo };
+      if(v.podar) out.remover.push(linha); else out.manter.push(linha);
+    });
+    // Mais antigos primeiro: se o teto cortar, some o lixo mais velho.
+    out.remover.sort(function(a,b){ return (a.ts||0) - (b.ts||0); });
+    if(out.remover.length > GS_PODA_TETO){
+      out.truncado = true;
+      out.excedente = out.remover.length - GS_PODA_TETO;
+      out.remover = out.remover.slice(0, GS_PODA_TETO);
+    }
+  }catch(e){ console.warn('[PODA] simulação local falhou:', e && e.message); }
+  return out;
+}
+
+// Apaga UM arquivo do dispositivo. Devolve true só se realmente sumiu.
+async function _gsPodaApagarArquivoLocal(nome){
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  if(!F) return false;
+  await F.deleteFile({ path:'GarageSpot/Dados/' + nome, directory:'DOCUMENTS' });
+  return true;
+}
+
+// Executa a poda LOCAL. Falha no meio → ABORTA, mantém íntegro o que sobrou,
+// registra e relata. O registro só é regravado no fim, refletindo o disco.
+async function _gsPodaExecutarLocal(){
+  if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
+  const plano = _gsPodaSimularLocal();
+  if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
+  const apagados = [];
+  let erro = null;
+  for(let i = 0; i < plano.remover.length; i++){
+    const it = plano.remover[i];
+    try{
+      await _gsPodaApagarArquivoLocal(it.nome);
+      apagados.push(it);
+    }catch(e){
+      // ABORTO: nada de continuar tentando às cegas. O que já saiu, saiu; o
+      // registro abaixo passa a refletir exatamente isso.
+      erro = (e && e.message) || String(e);
+      break;
+    }
+  }
+  try{
+    const apagadosNomes = {};
+    apagados.forEach(function(a){ apagadosNomes[a.nome] = true; });
+    const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
+    const restam = bkps.filter(function(b){ return !(b && apagadosNomes[b.nome]); });
+    _gsSetItemSeguro('garagespot_backups_local', JSON.stringify(restam), 'registro de backups');
+  }catch(e){ console.warn('[PODA] registro não atualizado:', e && e.message); }
+  // TRILHA: cada exclusão fica registrada, com a regra que a autorizou.
+  apagados.forEach(function(a){
+    try{ addLogSistema('Limpeza: backup local apagado — ' + a.nome + ' (' + a.motivo + ')',
+      {aud:true, acao:'poda_backup_local', alvo:a.nome}); }catch(e){}
+  });
+  if(erro){
+    try{ addLogSistema('Limpeza ABORTADA após ' + apagados.length + ' arquivo(s): ' + erro,
+      {aud:true, acao:'poda_abortada', alvo:String(erro).slice(0,80)}); }catch(e){}
+    return { ok:false, erro:erro, apagados:apagados.length, plano:plano };
+  }
+  return { ok:true, apagados:apagados.length, plano:plano };
+}
+
+// ── Poda da NUVEM ──────────────────────────────────────────────────────────
+// Escopo: SÓ a pasta de backups (`GarageSpot Backups`). A árvore de hospedagens,
+// onde vivem os PDFs de fechamento, não é sequer listada aqui — não existe
+// caminho de código que a alcance, o que é uma garantia melhor que uma condição.
+function _gdPodaChaveSemana(d){
+  // Segunda-feira da semana daquele arquivo — agrupador estável, sem depender de locale.
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = (x.getDay() + 6) % 7;             // 0 = segunda
+  x.setDate(x.getDate() - dow);
+  return _localISO(x);
+}
+
+function _gdPodaPlanejarNuvem(arquivos, agora){
+  const out = { remover:[], manter:[], teto:GS_PODA_TETO, truncado:false };
+  const candidatos = [];
+  (arquivos || []).forEach(function(f){
+    const nome = String((f && f.name) || '');
+    // O ROLANTE nunca é tocado: não começa com `backup_` justamente para isso.
+    // Qualquer coisa que não seja da série histórica também fica de fora.
+    if(nome.indexOf('backup_') !== 0){ out.manter.push({ nome:nome, motivo:'não é da série de backups (rolante/outro)' }); return; }
+    const t = Date.parse(f.createdTime || '') || 0;
+    if(!t){ out.manter.push({ nome:nome, motivo:'sem data confiável — na dúvida, fica' }); return; }
+    candidatos.push({ id:f.id, nome:nome, ts:t, size:Number(f.size||0) });
+  });
+  candidatos.sort(function(a,b){ return b.ts - a.ts; });      // recente → antigo
+  const vistoSemana = {}, vistoMes = {};
+  candidatos.forEach(function(c, ix){
+    const dias = (agora - c.ts) / (24*60*60*1000);
+    if(ix === 0){ out.manter.push({ nome:c.nome, motivo:'é o backup mais recente' }); return; }
+    if(dias <= GD_PODA_TUDO_DIAS){ out.manter.push({ nome:c.nome, motivo:'dentro dos ' + GD_PODA_TUDO_DIAS + ' dias — tudo é mantido' }); return; }
+    const d = new Date(c.ts);
+    if(dias <= GD_PODA_SEMANAL_ATE){
+      const k = _gdPodaChaveSemana(d);
+      if(!vistoSemana[k]){ vistoSemana[k] = true; out.manter.push({ nome:c.nome, motivo:'representante da semana de ' + k }); return; }
+      out.remover.push({ id:c.id, nome:c.nome, ts:c.ts, motivo:'já há um backup guardado nessa semana' });
+      return;
+    }
+    const km = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    if(!vistoMes[km]){ vistoMes[km] = true; out.manter.push({ nome:c.nome, motivo:'representante do mês de ' + km }); return; }
+    out.remover.push({ id:c.id, nome:c.nome, ts:c.ts, motivo:'já há um backup guardado nesse mês' });
+  });
+  out.remover.sort(function(a,b){ return (a.ts||0) - (b.ts||0); });
+  if(out.remover.length > GS_PODA_TETO){
+    out.truncado = true;
+    out.excedente = out.remover.length - GS_PODA_TETO;
+    out.remover = out.remover.slice(0, GS_PODA_TETO);
+  }
+  return out;
+}
+
+// SOMENTE LEITURA: lista e planeja, não apaga nada.
+async function _gdPodaSimularNuvem(){
+  if(!_gdDisponivel() || !_gdConectado()) return { remover:[], manter:[], indisponivel:true };
+  const arquivos = await _gdComToken(async function(token){
+    const pasta = await _gdGarantirPasta(token);
+    return await _gdListarArquivos(token, pasta);
+  }, false);
+  return _gdPodaPlanejarNuvem(arquivos, Date.now());
+}
+
+// LIXEIRA, não exclusão definitiva: `PATCH {trashed:true}` dá 30 dias de
+// arrependimento e é reversível pelo próprio Drive. Apagar de vez seria ganhar
+// nada e perder a única chance de desfazer um engano.
+async function _gdPodaLixeira(token, id){
+  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,trashed', {
+    method:'PATCH',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ trashed:true }),
+  }, token, 'mover backup para a lixeira');
+  return await r.json();
+}
+
+async function _gdPodaExecutarNuvem(){
+  if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
+  const plano = await _gdPodaSimularNuvem();
+  if(plano.indisponivel) return { ok:false, erro:'nuvem não conectada' };
+  if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
+  const feitos = [];
+  let erro = null;
+  try{
+    await _gdComToken(async function(token){
+      for(let i = 0; i < plano.remover.length; i++){
+        const it = plano.remover[i];
+        try{ await _gdPodaLixeira(token, it.id); feitos.push(it); }
+        catch(e){ erro = (e && e.message) || String(e); break; }   // aborta no primeiro tropeço
+      }
+      return true;
+    }, false);
+  }catch(e){ erro = erro || (e && e.message) || String(e); }
+  feitos.forEach(function(a){
+    try{ addLogSistema('Limpeza: backup da nuvem para a lixeira — ' + a.nome + ' (' + a.motivo + ')',
+      {aud:true, acao:'poda_backup_nuvem', alvo:a.nome}); }catch(e){}
+  });
+  if(erro){
+    try{ addLogSistema('Limpeza da nuvem ABORTADA após ' + feitos.length + ' arquivo(s): ' + erro,
+      {aud:true, acao:'poda_abortada', alvo:String(erro).slice(0,80)}); }catch(e){}
+    return { ok:false, erro:erro, apagados:feitos.length, plano:plano };
+  }
+  return { ok:true, apagados:feitos.length, plano:plano };
+}
+
+// Roda a poda de verdade — SÓ se o gestor tiver ligado. Uma vez por dia basta:
+// a janela é de 7 dias, então não há nada que ganhe em rodar mais vezes.
+const GS_PODA_ULT_LS = 'garagespot_poda_ultima';
+async function _gsPodaRodarSeLigada(){
+  try{
+    if(!_gsPodaLigada()) return;
+    let ult = 0;
+    try{ ult = parseInt(localStorage.getItem(GS_PODA_ULT_LS) || '0', 10) || 0; }catch(e){}
+    if(ult && (Date.now() - ult) < 24*60*60*1000) return;
+    try{ localStorage.setItem(GS_PODA_ULT_LS, String(Date.now())); }catch(e){}
+    const rl = await _gsPodaExecutarLocal();
+    if(rl && rl.apagados) console.log('[PODA] local:', rl.apagados, 'arquivo(s)');
+    const cfg = _gsPodaConfig();
+    if(cfg.nuvem){
+      const rn = await _gdPodaExecutarNuvem();
+      if(rn && rn.apagados) console.log('[PODA] nuvem:', rn.apagados, 'arquivo(s)');
+    }
+  }catch(e){ console.warn('[PODA] execução automática falhou (ignorada):', e && e.message); }
+}
+
+// ── Interface da limpeza (Backup e Conexões) ───────────────────────────────
+function _renderPodaStatus(){
+  const c = _gsPodaConfig();
+  let n = 0;
+  try{ n = (JSON.parse(localStorage.getItem('garagespot_backups_local')||'[]')||[]).length; }catch(e){}
+  return `<div id="poda-box" style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+      <div><div style="font-weight:600;color:${c.ligada?'#0F6E56':'#555'}">Limpeza automática: ${c.ligada?'LIGADA':'DESLIGADA'}</div>
+      <div style="color:#999">${n} cópia(s) no registro do aparelho</div></div>
+      <span style="font-size:18px;color:${c.ligada?'#0F6E56':'#aaa'}">${c.ligada?'●':'○'}</span>
+    </div>
+    <div style="color:#666;line-height:1.55;margin-bottom:8px">
+      Um backup do aparelho só é apagado depois de <strong>confirmado na nuvem</strong> e de passados
+      <strong>${GS_PODA_DIAS_LOCAL} dias dessa confirmação</strong>. Sem confirmação, ele fica — por mais velho que seja.
+      O <strong>mais recente nunca sai</strong>.
+    </div>
+    <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:6px;padding:8px 10px;color:#0F6E56;font-size:11px;line-height:1.5;margin-bottom:8px">
+      Os <strong>PDFs de fechamento nunca são apagados</strong> pelo app — nem no aparelho, nem na nuvem.
+      A limpeza alcança <strong>somente arquivos de backup</strong>.
+    </div>
+    <button class="bcx" id="btn-poda-simular" onclick="simularLimpeza()" style="width:100%">🔍 Simular limpeza (não apaga nada)</button>
+    <button class="bcx" id="btn-poda-toggle" onclick="alternarLimpeza()" style="width:100%;margin-top:6px">${c.ligada?'Desligar limpeza automática':'Ligar limpeza automática'}</button>
+  </div>`;
+}
+
+// Ligar/desligar é ação de gestor: pede o PIN e deixa rastro.
+function alternarLimpeza(){
+  showEntrarPIN(function(){
+    const c = _gsPodaConfig();
+    c.ligada = !c.ligada;
+    _gsPodaSalvarConfig(c);
+    try{ addLogSistema('Limpeza automática ' + (c.ligada?'LIGADA':'DESLIGADA'),
+      {aud:true, acao:(c.ligada?'poda_ligada':'poda_desligada')}); }catch(e){}
+    showToast(c.ligada ? '✅ Limpeza ligada — rode a simulação antes de confiar nela' : 'Limpeza desligada. Nada será apagado.', 5000);
+    _gdReabrirConexoes();
+  });
+}
+
+// SOMENTE LEITURA. Mostra o que sairia, o que ficaria e POR QUAL REGRA, com nome
+// e data. Roda com a limpeza desligada — é justamente assim que se ganha confiança
+// nela antes de ligar.
+async function simularLimpeza(){
+  const mc = document.getElementById('mc');
+  mc.innerHTML = `<div class="mt">🔍 Simulação de limpeza</div>
+    <div class="ms">Nada foi apagado. Isto é só uma previsão.</div>
+    <div id="sim-corpo" style="font-size:12px;color:#666">Analisando…</div>
+    <button class="bcx" onclick="showConexoes()" style="width:100%;margin-top:12px">← Voltar</button>`;
+  document.getElementById('ov').classList.add('on');
+  const local = _gsPodaSimularLocal();
+  let nuvem = { remover:[], manter:[], indisponivel:true };
+  try{ nuvem = await _gdPodaSimularNuvem(); }catch(e){ nuvem = { remover:[], manter:[], erro:(e&&e.message)||String(e) }; }
+  const fmtL = function(it){
+    const q = it.ts ? fmtDt(it.ts) : '—';
+    return `<div style="padding:5px 0;border-bottom:1px solid #eee"><div style="color:#333;word-break:break-all">${_vtEsc(it.nome)}</div>
+      <div style="color:#999;font-size:11px">${_vtEsc(q)} · ${_vtEsc(it.motivo)}</div></div>`;
+  };
+  const bloco = function(titulo, cor, itens, vazio){
+    if(!itens.length) return `<div style="margin-top:10px"><div style="font-weight:600;color:${cor}">${titulo} (0)</div><div style="color:#999;font-size:11px;padding:4px 0">${vazio}</div></div>`;
+    return `<div style="margin-top:10px"><div style="font-weight:600;color:${cor};margin-bottom:4px">${titulo} (${itens.length})</div>${itens.map(fmtL).join('')}</div>`;
+  };
+  const corpo = document.getElementById('sim-corpo');
+  if(!corpo) return;
+  corpo.innerHTML =
+    `<div style="background:#FFF8E6;border:1px solid #BA7517;border-radius:6px;padding:8px 10px;color:#633806;font-size:11px;line-height:1.5">
+       Simulação <strong>somente leitura</strong> — nenhum arquivo foi tocado. A limpeza está
+       <strong>${_gsPodaLigada()?'LIGADA':'DESLIGADA'}</strong>.
+     </div>
+     <div class="gestao-menu-sep" style="margin-top:12px">No aparelho</div>
+     ${bloco('Sairiam', '#A32D2D', local.remover, 'Nada seria apagado agora.')}
+     ${local.truncado?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${local.teto} por execução: outros ${local.excedente} ficariam para a próxima.</div>`:''}
+     ${bloco('Ficariam', '#0F6E56', local.manter, 'Nenhuma cópia registrada.')}
+     <div class="gestao-menu-sep" style="margin-top:14px">Na nuvem</div>
+     ${nuvem.indisponivel?'<div style="color:#999;font-size:11px;padding:4px 0">Drive não conectado — nada a analisar.</div>':''}
+     ${nuvem.erro?`<div style="color:#A32D2D;font-size:11px;padding:4px 0">Não deu para listar: ${_vtEsc(nuvem.erro)}</div>`:''}
+     ${(!nuvem.indisponivel&&!nuvem.erro)?bloco('Iriam para a lixeira do Drive', '#A32D2D', nuvem.remover, 'Nada seria movido agora.'):''}
+     ${(!nuvem.indisponivel&&!nuvem.erro&&nuvem.truncado)?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${nuvem.teto} por execução: outros ${nuvem.excedente} ficariam para a próxima.</div>`:''}
+     ${(!nuvem.indisponivel&&!nuvem.erro)?bloco('Ficariam', '#0F6E56', nuvem.manter, 'Nenhum backup na nuvem.'):''}`;
+  try{ addLogSistema('Simulação de limpeza consultada', {aud:true, acao:'poda_simulada'}); }catch(e){}
+}
+
+// ── Cota do Drive (aviso preventivo) ───────────────────────────────────────
+// `about.get` aceita o escopo `drive.file` (confirmado na doc oficial da API v3).
+// Qualquer falha aqui é engolida: é informação de conforto, nunca pode derrubar
+// nem atrasar um backup.
+const GD_COTA_INTERVALO_MS = 6 * 60 * 60 * 1000;
+async function _gdLerCota(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    const ult = DRIVE_STATUS.nuvem_cota_ts || 0;
+    if(ult && (Date.now() - ult) < GD_COTA_INTERVALO_MS) return;
+    await _gdComToken(async function(token){
+      const r = await _gdFetch(GD_API + '/about?fields=storageQuota', {method:'GET'}, token, 'consultar o espaço do Drive');
+      const j = await r.json();
+      const q = (j && j.storageQuota) || {};
+      DRIVE_STATUS.nuvem_cota_limite = Number(q.limit || 0);
+      DRIVE_STATUS.nuvem_cota_uso    = Number(q.usage || 0);
+      DRIVE_STATUS.nuvem_cota_ts     = Date.now();
+      saveDriveStatus();
+      return true;
+    }, false);
+  }catch(e){ console.warn('[DRIVE] cota não consultada (ignorado):', e && e.message); }
 }
 
 // ── Exportação COMPLETA sem depender de plugin ─────────────────────────────
@@ -10029,8 +10509,42 @@ function _gdErroDeRede(e){
 // `transitorio=true` registra a falha (o detalhe continua copiável — foi ele que
 // permitiu diagnosticar o `Failed to fetch`) mas NÃO acende o alarme: quem decide
 // se alarma é `_gdRodapeEstado`, pelos limiares de persistência.
+// v1.9.6.3 — DRIVE CHEIO É UM ESTADO PRÓPRIO, NÃO "erro 403".
+// Sem isto o upload falhava com uma mensagem genérica e os backups paravam de
+// subir em silêncio — o pior modo de falha possível para uma rede de segurança.
+// O Google devolve 403 com `reason: storageQuotaExceeded`; o parser já extraía
+// o `reason` desde a v1.9.5.1, só ninguém olhava para ele.
+const GD_RAZOES_CHEIO = ['storagequotaexceeded', 'quotaexceeded'];
+
+function _gdErroDeDriveCheio(detalhe){
+  try{
+    if(!detalhe) return false;
+    const r = String(detalhe.reason || '').toLowerCase();
+    if(GD_RAZOES_CHEIO.indexOf(r) >= 0) return true;
+    // Rede de segurança: alguns retornos trazem só a mensagem.
+    const m = String(detalhe.message || '').toLowerCase();
+    return m.indexOf('storage quota') >= 0 || m.indexOf('quota has been exceeded') >= 0;
+  }catch(e){ return false; }
+}
+
+function _gdMsgDriveCheio(){
+  return 'O Google Drive do hotel está SEM ESPAÇO. Os backups não estão subindo. ' +
+         'Libere espaço na conta ou fale com o gestor — os PDFs de fechamento NÃO são apagados pelo app.';
+}
+
 function _gdMarcarFalha(msg, detalhe, transitorio){
   try{
+    // Drive cheio nunca é "transitório": insistir não resolve, e a mensagem tem
+    // de ser específica, senão o operador não sabe o que fazer.
+    const cheio = _gdErroDeDriveCheio(detalhe);
+    if(cheio){
+      transitorio = false;
+      msg = _gdMsgDriveCheio();
+      DRIVE_STATUS.nuvem_cheio = true;
+    } else if(DRIVE_STATUS.nuvem_cheio && detalhe){
+      // Um erro de outra natureza não limpa o estado "cheio" — só um envio bem
+      // sucedido limpa (em `_gdLimparFalha`).
+    }
     DRIVE_STATUS.nuvem_falha = !transitorio;
     DRIVE_STATUS.nuvem_falha_transitoria = !!transitorio;
     DRIVE_STATUS.nuvem_ultimo_erro = String(msg == null ? '' : msg).slice(0, 180);
@@ -10045,6 +10559,7 @@ function _gdLimparFalha(){
     DRIVE_STATUS.nuvem_falha = false;
     DRIVE_STATUS.nuvem_falha_transitoria = false;
     DRIVE_STATUS.nuvem_reconectar = false;   // v1.9.5.4: um envio bom prova que a autorização voltou
+    DRIVE_STATUS.nuvem_cheio = false;        // v1.9.6.3: subiu, logo há espaço
     DRIVE_STATUS.nuvem_ultimo_erro = '';
     DRIVE_STATUS.nuvem_erro_detalhe = null;
     saveDriveStatus();
@@ -10474,6 +10989,13 @@ function conectarGoogleDrive(){
     return;
   }
   showEntrarPIN(function(){
+    // v1.9.6.3: o modal de PIN sai da tela AGORA, não no fim da cadeia.
+    // Antes, quem fechava era o `_gdReabrirConexoes()` lá embaixo — e ele só é
+    // alcançado quando o login nativo assenta. Durante todo o intent do Google
+    // (segundos, e indefinidamente se o intent não voltar — `p.login()` não tem
+    // teto de tempo) o "PIN de Gestão" ficava plantado na tela. Trocar pelo card
+    // de Conexões aqui resolve os dois casos com a mesma linha.
+    try{ showConexoes(); }catch(e){}
     (async function(){
       showToast('Abrindo o login do Google…', 2500);
       try{
@@ -10543,6 +11065,7 @@ function _gdMarcarPrecisaReconectar(msg){
 
 function desconectarGoogleDrive(){
   showEntrarPIN(function(){
+    try{ showConexoes(); }catch(e){}   // v1.9.6.3: mesma regra do conectar
     (async function(){
       const antes = DRIVE_STATUS.nuvem_email || '';
       try{ const p = _gdPlugin(); if(p) await p.logout({ provider: 'google' }); }
@@ -10557,7 +11080,11 @@ function desconectarGoogleDrive(){
 // ── Parte 4 — backup na nuvem ──────────────────────────────────────────────
 // Sobe o MESMO conteúdo do backup local completo (dados + fotos). Mantém TODAS as
 // cópias — poda só manual, pelo gestor, igual à regra do local.
-async function _gdEnviarBackup(nome, json, motivo, interativo){
+// v1.9.6.3 — `nomeLocal` (opcional) é o nome do arquivo NO DISPOSITIVO que este
+// envio representa. Só serve para marcar "confirmado na nuvem" no registro local,
+// que é a peça central da política dos 7 dias: sem essa confirmação, a poda NÃO
+// apaga nada. Parâmetro aditivo — quem não passa nada continua funcionando igual.
+async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
   if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste aparelho'};
   if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
   if(_gdEnviando)      return {ok:false, erro:'já há um envio em andamento'};
@@ -10576,6 +11103,10 @@ async function _gdEnviarBackup(nome, json, motivo, interativo){
     saveDriveStatus();
     _gdLimparFalha();
     _gdFalhasSeguidas = 0;
+    // v1.9.6.3: o arquivo local correspondente passa a valer como CONFIRMADO na
+    // nuvem, com o carimbo de QUANDO foi confirmado — é desse instante que a
+    // janela de 7 dias começa a contar, não da criação do arquivo.
+    if(nomeLocal){ try{ _gsMarcarBackupNaNuvem(nomeLocal, (r && r.id) || ''); }catch(e2){} }
     addLogSistema('Backup na nuvem: ' + (motivo || 'automático') + ' — ' + nome);
     return {ok:true, nome:nome, id:(r && r.id) || ''};
   }catch(e){
@@ -10649,7 +11180,7 @@ function _gdEspelharNoDrive(nome, json, motivo){
     }
     // v1.9.5.2: o `nome` que chega é o do arquivo LOCAL (formato DD-MM-AA, que não
     // ordena). A nuvem usa o seu próprio padrão — o arquivo local segue intocado.
-    _gdEnviarBackup(_gdNomeBackup(), json, motivo, false)
+    _gdEnviarBackup(_gdNomeBackup(), json, motivo, false, nome)
       .catch(function(e){ console.warn('[DRIVE] espelhamento falhou:', e && e.message); });
   }catch(e){ console.warn('[DRIVE] espelhamento não agendado:', e && e.message); }
 }
@@ -10698,9 +11229,30 @@ function _gdEspelharEstadoAtual(json, motivo){
 // Envia o que estiver pendente. Guardas iguais às do espelhamento completo: sem app
 // visível, sem rede ou com o app inicializando, ADIA — o payload continua pendente e
 // o tique/volta do segundo plano tenta de novo. Adiar não é falhar.
+// v1.9.6.3 — WATCHDOG DO ROLANTE.
+// `_gdRolanteEmVoo` era uma trava sem prazo: bastava UM envio não assentar para
+// que todo flush seguinte saísse pela porta dos fundos — inclusive o do tique de
+// 10 min. E como o rolante NUNCA alarma (regra da 6.2, que continua valendo), o
+// espelhamento contínuo podia parar sem que nada na tela mudasse. É o único
+// caminho conhecido que produz o sintoma relatado em campo: o arquivo no Drive
+// congelado num horário antigo, sem nenhuma queixa do app.
+//
+// O teto é generoso de propósito (o envio já tem tetos internos de 12s/120s):
+// aqui não se está cancelando um envio bom, só recusando acreditar numa trava
+// que já deveria ter sido liberada pelo `finally`.
+const GD_ROLANTE_EMVOO_TETO_MS = 5 * 60 * 1000;
+let _gdRolanteEmVooDesde = 0;
+
 async function _gdFlushRolante(){
   try{
-    if(_gdRolanteEmVoo) return;                       // já há um envio vivo
+    if(_gdRolanteEmVoo){
+      const parado = Date.now() - (_gdRolanteEmVooDesde || 0);
+      if(parado < GD_ROLANTE_EMVOO_TETO_MS) return;   // envio vivo de verdade
+      // Trava vencida: o `finally` nunca rodou. Libera e segue — o pior que pode
+      // acontecer é uma sobrescrita a mais do mesmo arquivo, que é idempotente.
+      console.warn('[DRIVE] trava do rolante vencida (' + Math.round(parado/1000) + 's) — liberando');
+      _gdRolanteEmVoo = false;
+    }
     if(_gdRolantePendente == null) return;
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
@@ -10711,6 +11263,7 @@ async function _gdFlushRolante(){
     const motivo = _gdRolanteMotivo;
     _gdRolantePendente = null;
     _gdRolanteEmVoo = true;
+    _gdRolanteEmVooDesde = Date.now();
     try{
       await _gdComToken(async function(token){
         const pasta = await _gdGarantirPasta(token);
@@ -13125,6 +13678,7 @@ function _rcCfgRender(){
       saveRecargaCfg();
       _aplicarConfigPontos(_rcCfgEstado.pontos);
       saveConfigPontos(_rcCfgEstado.pontos);
+      _gsBackupAuto('configurações de recarga');   // v1.9.6.3
       closeOv();
       showToast('Configurações salvas');
       if(typeof applyModulos==='function') applyModulos();
@@ -13322,7 +13876,7 @@ function showConfiguracoesSistema(){
         <div style="font-size:13px;font-weight:600">⚡ Recarga de veículos</div>
         <div style="font-size:11px;color:#999;margin-top:2px">Controle de carregamento elétrico</div>
       </div>
-      ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
+      ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();_gsBackupAuto('módulos');applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
     </div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>
     <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
@@ -13363,13 +13917,38 @@ const GD_ATRASO_MS = 24 * 60 * 60 * 1000;
 const GD_FALHAS_P_ALARME = 3;
 const GD_SEM_SUCESSO_MS  = 6 * 60 * 60 * 1000;
 
+// ── v1.9.6.3 — O RODAPÉ PASSA A REFLETIR O ESTADO REAL DA NUVEM ────────────
+// O rodapé lia SÓ `nuvem_ultimo_backup`, gravado exclusivamente no caminho do
+// backup COMPLETO. O arquivo ROLANTE grava em `nuvem_rolante_ts`, e o rodapé
+// nunca o lia — daí o relato de campo: rodapé "Nuvem: 13:40" (último completo)
+// com o arquivo no Drive marcando 13:44 (último rolante). Tecnicamente correto,
+// operacionalmente enganoso: o operador confere o rodapé para saber se os dados
+// estão salvos, e o rodapé mostrava um número mais velho que a verdade.
+//
+// A partir daqui, "quando a nuvem recebeu alguma coisa" = o MAIS RECENTE entre os
+// dois. É esse instante que o rodapé mostra e é sobre ele que "atrasada" é medida.
+// O card de Conexões continua distinguindo os dois (lá a diferença importa: um é
+// histórico com fotos, o outro é o estado atual sem fotos).
+function _gdUltimoContatoNuvem(){
+  try{
+    const c = DRIVE_STATUS.nuvem_ultimo_backup || 0;
+    const r = DRIVE_STATUS.nuvem_rolante_ts   || 0;
+    const m = Math.max(c, r);
+    return m > 0 ? m : null;
+  }catch(e){ return null; }
+}
+
 function _gdRodapeEstado(){
   try{
     if(!_gdDisponivel()) return null;
     if(!_gdConectado())  return { classe:'alerta', txt:'Nuvem: não conectada' };
     // v1.9.5.4: vínculo existe, permissão não — estado próprio, não "desconectada".
     if(DRIVE_STATUS.nuvem_reconectar) return { classe:'ruim', txt:'Nuvem: reconectar' };
-    const ult = DRIVE_STATUS.nuvem_ultimo_backup;
+    // v1.9.6.3: Drive cheio tem rótulo próprio. "falhando" mandaria o gestor
+    // procurar defeito de rede quando o problema é espaço — e nada volta a subir
+    // até alguém liberar a conta.
+    if(DRIVE_STATUS.nuvem_cheio) return { classe:'ruim', txt:'Nuvem: sem espaço' };
+    const ult = _gdUltimoContatoNuvem();
     const semSucessoHa = ult ? (Date.now() - ult) : Infinity;
 
     // Falha DEFINITIVA do Google (403, 401…) alarma na hora: não adianta esperar,
@@ -13549,13 +14128,36 @@ function _renderNuvemStatus(){
     ${falha?`<div style="color:#A32D2D;font-weight:600;margin-bottom:6px">⚠️ Último envio falhou — ${_vtEsc(erro)}</div>`:''}
     ${(falha||DRIVE_STATUS.nuvem_reconectar)?_gdDetalheErroHTML():''}
     <div style="color:#666">Último backup na nuvem: <strong id="nuvem-ultimo">${_vtEsc(ultStr)}</strong></div>
+    <div style="color:#666;margin-top:2px">Estado atual (sem fotos): <strong id="nuvem-rolante">${_vtEsc(DRIVE_STATUS.nuvem_rolante_ts?fmtDt(DRIVE_STATUS.nuvem_rolante_ts):'Nunca')}</strong></div>
     <div style="color:#aaa;font-size:11px;margin-top:4px">Pasta <strong>${_vtEsc(GD_PASTA_NOME)}</strong> · ${DRIVE_STATUS.nuvem_enviados||0} envio(s) nesta instalação</div>
+    ${_gdEspacoAvisoHTML()}
     ${_gdPdfsPendentesHTML()}
     <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
     <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
-    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. Nenhuma cópia é apagada automaticamente.</div>
+    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. Os <strong>PDFs de fechamento nunca são apagados</strong> pelo app, nem no aparelho nem na nuvem.</div>
   </div>`;
+}
+
+// ── v1.9.6.3 — AVISO PREVENTIVO DE ESPAÇO NO DRIVE ─────────────────────────
+// Discreto e sem modal, por decisão: é informação de fundo, não uma emergência —
+// quem opera o mapa não pode ser interrompido por um aviso de cota. A leitura
+// vem de `about.get?fields=storageQuota` (o escopo `drive.file` basta), feita
+// no máximo 1×/6h e guardada em `DRIVE_STATUS.nuvem_cota_*`. Se a consulta
+// falhar, o aviso simplesmente não aparece — nunca vira erro na cara do usuário.
+const GD_ESPACO_ALERTA_PCT = 85;
+
+function _gdEspacoAvisoHTML(){
+  try{
+    const lim = DRIVE_STATUS.nuvem_cota_limite || 0;
+    const uso = DRIVE_STATUS.nuvem_cota_uso || 0;
+    if(!lim || !uso) return '';
+    const pct = Math.round((uso / lim) * 100);
+    if(pct < GD_ESPACO_ALERTA_PCT) return '';
+    const gb = function(b){ return (b / (1024*1024*1024)).toFixed(1).replace('.', ','); };
+    return `<div id="nuvem-espaco" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:6px;padding:7px 9px;margin-top:6px;color:#633806;font-size:11px;line-height:1.5">
+      💾 <strong>Drive em ${pct}%</strong> — ${gb(uso)} GB de ${gb(lim)} GB usados. Vale liberar espaço antes que os backups parem de subir.</div>`;
+  }catch(e){ return ''; }
 }
 
 function showConexoes(){
@@ -13572,6 +14174,8 @@ function showConexoes(){
     </div>
     <div class="gestao-menu-sep" style="margin-top:14px">Google Drive (nuvem)</div>
     ${_renderNuvemStatus()}
+    <div class="gestao-menu-sep" style="margin-top:14px">Limpeza de backups antigos</div>
+    ${_renderPodaStatus()}
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
@@ -13747,7 +14351,7 @@ function loadTema(){
   const cor=localStorage.getItem('garagespot_tema')||'#185FA5';
   applyTema(cor);
 }
-function saveTema(cor){ try{localStorage.setItem('garagespot_tema',cor);}catch(e){} }
+function saveTema(cor){ try{localStorage.setItem('garagespot_tema',cor);}catch(e){} try{ _gsBackupAuto('tema'); }catch(e){} }
 
 function showTema(){
   const corAtual=localStorage.getItem('garagespot_tema')||'#185FA5';
@@ -15723,6 +16327,10 @@ window.delAtt = function(id, fp, idx, containerId){
         // v1.9.4.15: exclusão de anexo também na trilha de auditoria
         try{ addLogSistema('Anexo excluído: '+nomeReal+(apt?(' (Apt '+apt+')'):''),
           {aud:true, acao:'anexo_excluido', alvo:nomeReal+(apt?(' · Apt '+apt):'')}); }catch(e){}
+        // v1.9.6.3: exclusão de anexo altera o IndexedDB e não disparava cadência.
+        // COMPLETA de propósito: o que mudou foi o conjunto de FOTOS, e só a
+        // cadência completa carrega fotos — um rolante aqui não registraria nada.
+        try{ _gsBackupAuto('exclusão de anexo', {completo:true}); }catch(e){}
         showToast('✓ Anexo excluído',2500);
         _reabrir();
       });
@@ -16700,6 +17308,10 @@ checkLicense().then(async (ativo)=>{
       // mudança" não gera arquivo nenhum, que é a regra da v1.9.5.4.
       try { _gsUltimaAssinatura = _gsAssinaturaDados(); } catch(e){}
       try { setTimeout(function(){ _gsConferirBackupNaAbertura(); }, 8000); } catch(e){}
+      // v1.9.6.3: cota do Drive (aviso preventivo de espaço) — 1×/6h, engolindo
+      // qualquer falha. E a poda, se e somente se o gestor a tiver LIGADO.
+      try { setTimeout(function(){ _gdLerCota(); }, 15000); } catch(e){}
+      try { setTimeout(function(){ if(_gsPodaLigada()) _gsPodaRodarSeLigada(); }, 20000); } catch(e){}
       // permissão de notificação: pedida uma vez, sem travar nada
       try { setTimeout(function(){ if(typeof _rcPedirPermissaoNotif==='function') _rcPedirPermissaoNotif(); }, 6000); } catch(e){}
       try { if(typeof _rcInitAudioUnlock==='function') _rcInitAudioUnlock(); } catch(e){}
