@@ -1318,7 +1318,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.3';
+const GS_VERSION = 'v1.9.6.4';
 const GS_VERSION_CODE = 28;
 const GS_BUILD_TS = '2026-08-06';
 
@@ -9657,9 +9657,16 @@ const GD_PODA_SEMANAL_ATE = 180;   // 6 meses
 function _gsPodaConfig(){
   try{
     const c = JSON.parse(localStorage.getItem(GS_PODA_LS) || 'null');
-    // DESLIGADA POR PADRÃO: chave ausente = desligada. Nunca inferir "ligada".
-    return Object.assign({ ligada:false, nuvem:false }, c || {});
-  }catch(e){ return { ligada:false, nuvem:false }; }
+    // v1.9.6.4 — LIGADA POR PADRÃO, e isso é seguro POR CONSTRUÇÃO, não por sorte:
+    // um backup só é podável depois de CONFIRMADO na nuvem e de passados 7 dias
+    // DESSA confirmação. Na estreia a nuvem do hotel começa vazia — nada está
+    // confirmado, então nada é podável — e nos 7 dias seguintes também não. A
+    // janela de observação que antes se obtinha desligando a poda é consequência
+    // natural da própria regra.
+    // ⚠️ Se algum dia a regra dos 7 dias após confirmação for afrouxada, este
+    // padrão TEM de voltar a ser `false`. É ela que sustenta este default.
+    return Object.assign({ ligada:true, nuvem:true }, c || {});
+  }catch(e){ return { ligada:false, nuvem:false }; }   // no erro, o lado seguro
 }
 function _gsPodaSalvarConfig(c){
   try{ _gsSetItemSeguro(GS_PODA_LS, JSON.stringify(c), 'configuração da limpeza'); }catch(e){}
@@ -9919,6 +9926,11 @@ function _renderPodaStatus(){
       Um backup do aparelho só é apagado depois de <strong>confirmado na nuvem</strong> e de passados
       <strong>${GS_PODA_DIAS_LOCAL} dias dessa confirmação</strong>. Sem confirmação, ele fica — por mais velho que seja.
       O <strong>mais recente nunca sai</strong>.
+    </div>
+    <div style="background:#F1F5FA;border:1px solid #2E6DB4;border-radius:6px;padding:8px 10px;color:#153E6B;font-size:11px;line-height:1.5;margin-bottom:8px">
+      Na primeira semana <strong>nada é apagado</strong>, mesmo com a limpeza ligada: a nuvem começa vazia,
+      então nenhum backup está confirmado — e a contagem dos ${GS_PODA_DIAS_LOCAL} dias só começa depois disso.
+      Use a <strong>simulação</strong> para conferir antes.
     </div>
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:6px;padding:8px 10px;color:#0F6E56;font-size:11px;line-height:1.5;margin-bottom:8px">
       Os <strong>PDFs de fechamento nunca são apagados</strong> pelo app — nem no aparelho, nem na nuvem.
@@ -11506,6 +11518,235 @@ async function _gdTentarPDFsPendentes(){
       addLogSistema('PDF de fechamento pendente enviado: ' + item.nome);
     }catch(e){ _gdAgendarRetentativa(); }
   }catch(e){ console.warn('[DRIVE] pendentes de PDF não rodaram:', e && e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.4 — ENVIO DO HISTÓRICO JÁ EXISTENTE NO DISPOSITIVO
+// ════════════════════════════════════════════════════════════════════════════
+// O tablet do hotel tem MESES de PDFs em `Documentos/GarageSpot/` gerados antes de
+// existir integração com o Drive. O app só enviava PDFs novos dali em diante, então
+// todo esse histórico ficava só no dispositivo — o oposto exato da filosofia de
+// armazenamento (a nuvem é o backup de verdade; o aparelho é rede de segurança).
+//
+// Esta varredura sobe o que faltar. Regras que a governam:
+//   • NUNCA apaga o original do dispositivo. Isto é um COPIADOR, não um movedor.
+//   • Idempotente: confere no destino, pelo NOME, antes de enviar.
+//   • Em lote, incremental e RETOMÁVEL: a fila vive no localStorage; uma interrupção
+//     (app fechado, rede caída) continua de onde parou, sem recomeçar.
+//   • Nunca inventa data. Fechamento sem data de check-in recuperável vai para uma
+//     pasta de quarentena declarada, e isso é dito na tela e na trilha.
+const GD_PASTA_RECARGAS  = 'GarageSpot Recargas';
+const GD_PASTA_SEM_DATA  = '_Sem data de check-in';
+const GS_HIST_LS         = 'garagespot_hist_envio';
+// 3 arquivos por tique. Um PDF de fechamento tem megabytes (leva fotos), e o tique é
+// de 10 min: 3 por vez sobe ~430/dia sem competir com o backup nem chegar perto de
+// qualquer limite de cota do Drive. O objetivo aqui é terminar sem que ninguém note,
+// não terminar rápido.
+const GD_HIST_LOTE       = 3;
+
+function _gdHistEstado(){
+  try{
+    const e = JSON.parse(localStorage.getItem(GS_HIST_LS) || 'null');
+    return Object.assign({ varrido:false, ts:0, pendentes:[], enviados:[], semData:0, falhas:0, total:0 }, e || {});
+  }catch(e){ return { varrido:false, ts:0, pendentes:[], enviados:[], semData:0, falhas:0, total:0 }; }
+}
+function _gdHistSalvar(e){
+  try{ _gsSetItemSeguro(GS_HIST_LS, JSON.stringify(e), 'fila do histórico'); }catch(x){}
+}
+
+// Descobre o que o arquivo É e de onde tirar a data. Devolve `null` para o que não
+// entra no escopo — e o escopo é fechado de propósito: PDFs de FECHAMENTO e
+// RELATÓRIOS DE RECARGA. Os relatórios de período (`Relatorio-Movimentacoes`,
+// `-Ocupacao`, `-Apartamento`) ficam de fora porque são REGERÁVEIS a partir dos
+// dados, que já vão nos backups; os de fechamento não são (os anexos são apagados
+// no check-out) e os de recarga carregam registro financeiro.
+function _gdHistClassificar(nome){
+  const n = String(nome || '');
+  if(!/\.pdf$/i.test(n)) return null;
+
+  // Formato NOVO (v1.9.5.2+): GS001_apt101_in01-08-26_out05-08-26.pdf
+  // A data de check-in está NO PRÓPRIO NOME — é a fonte mais confiável que existe.
+  let m = n.match(/^(GS[\w-]*)_apt([\w-]+)_in(\d{2})-(\d{2})-(\d{2})_out/i);
+  if(m){
+    const ts = new Date(2000 + parseInt(m[5],10), parseInt(m[4],10) - 1, parseInt(m[3],10), 12, 0, 0).getTime();
+    return { nome:n, tipo:'fechamento', gs:m[1], apt:m[2], checkin:ts, origemData:'nome do arquivo' };
+  }
+
+  // Formato ANTIGO (v1.9.4.9–v1.9.5.1): checkout-GS001-Apt101-2026-08-01.pdf
+  // ⚠️ Essa data é a de CHECK-OUT. A árvore de consulta é organizada por CHECK-IN,
+  // então usá-la aqui arquivaria errado toda hospedagem que virou o mês. O número
+  // GS está no nome, e `HOSPEDAGENS` sobrevive ao check-out — é de lá que se
+  // recupera a data certa.
+  m = n.match(/^checkout-(GS[\w-]*)-Apt([\w-]+)-(\d{4})-(\d{2})-(\d{2})\.pdf$/i);
+  if(m){
+    const gs = m[1];
+    let checkin = null, origem = '';
+    try{
+      const h = HOSPEDAGENS && HOSPEDAGENS[gs];
+      if(h && h.checkin_ts){ checkin = h.checkin_ts; origem = 'registro em HOSPEDAGENS'; }
+    }catch(e){}
+    return { nome:n, tipo:'fechamento', gs:gs, apt:m[2], checkin:checkin,
+             origemData: checkin ? origem : '',
+             checkoutIso: m[3] + '-' + m[4] + '-' + m[5] };
+  }
+
+  // Relatório de recarga: Recarga_101_<data>_GarageSpot.pdf
+  if(/^Recarga_/i.test(n)) return { nome:n, tipo:'recarga' };
+
+  return null;   // backups, exports, relatórios de período, qualquer outra coisa
+}
+
+// Onde cada arquivo vai parar na nuvem.
+function _gdHistDestino(item){
+  if(item.tipo === 'recarga') return [GD_PASTA_RECARGAS];
+  if(item.checkin) return [GD_PASTA_HOSP].concat(_gdPastasHospedagem(item.apt, item.checkin));
+  // SEM DATA RECUPERÁVEL. Não se arquiva pelo check-out (arquivaria no mês errado)
+  // e não se inventa nada: vai para uma pasta declarada, com o apartamento
+  // preservado, e o gestor decide depois o que fazer. Silêncio aqui seria pior que
+  // o problema.
+  return [GD_PASTA_HOSP, GD_PASTA_SEM_DATA, 'Apt' + _apt2Txt(item.apt)];
+}
+
+// Varre `Documentos/GarageSpot/` e monta a fila. Só a RAIZ: `Dados/` é backup
+// (fora do escopo) e `Vistorias/` já vai dentro dos PDFs de fechamento.
+async function _gdHistVarrer(){
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  if(!F || typeof F.readdir !== 'function') return { ok:false, erro:'sem Filesystem' };
+  let nomes = [];
+  try{
+    const r = await F.readdir({ path:'GarageSpot', directory:'DOCUMENTS' });
+    const arr = (r && r.files) || [];
+    // Capacitor 5+ devolve objetos {name,type,...}; versões antigas, strings.
+    nomes = arr.map(function(f){ return (f && f.name != null) ? f.name : String(f); })
+               .filter(function(x){ return x && x.indexOf('/') < 0; });
+  }catch(e){ return { ok:false, erro:(e && e.message) || 'não deu para ler a pasta' }; }
+
+  const est = _gdHistEstado();
+  const jaEnviado = {};
+  (est.enviados || []).forEach(function(n){ jaEnviado[n] = true; });
+  const jaNaFila = {};
+  (est.pendentes || []).forEach(function(i){ jaNaFila[i.nome] = true; });
+
+  let semData = 0;
+  const novos = [];
+  nomes.forEach(function(n){
+    if(jaEnviado[n] || jaNaFila[n]) return;      // idempotência da própria varredura
+    const c = _gdHistClassificar(n);
+    if(!c) return;
+    if(c.tipo === 'fechamento' && !c.checkin) semData++;
+    novos.push(c);
+  });
+  // Mais antigos primeiro: se o envio for interrompido, o que já subiu é o histórico
+  // mais distante — que é justamente o mais difícil de recuperar de outro jeito.
+  novos.sort(function(a,b){ return (a.checkin || 0) - (b.checkin || 0); });
+
+  est.pendentes = (est.pendentes || []).concat(novos);
+  est.varrido = true;
+  est.ts = Date.now();
+  est.semData = (est.semData || 0) + semData;
+  est.total = (est.enviados || []).length + est.pendentes.length;
+  _gdHistSalvar(est);
+  if(novos.length){
+    addLogSistema('Histórico: ' + novos.length + ' documento(s) do aparelho na fila para a nuvem' +
+      (semData ? ' (' + semData + ' sem data de check-in recuperável)' : ''),
+      {aud:true, acao:'historico_varrido', alvo:String(novos.length)});
+  }
+  return { ok:true, novos:novos.length, semData:semData };
+}
+
+// Já existe na nuvem, com este nome, nesta pasta? É a garantia de idempotência que
+// não depende do nosso registro local — um aparelho restaurado do zero não
+// re-enviaria nada.
+async function _gdHistJaNaNuvem(token, pastaId, nome){
+  try{
+    const q = "name='" + _gdEscQ(nome) + "' and '" + _gdEscQ(pastaId) + "' in parents and trashed=false";
+    const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+      '&spaces=drive&fields=files(id,name)&pageSize=5', {method:'GET'}, token, 'conferir se o documento já está na nuvem');
+    const j = await r.json();
+    return !!(j && j.files && j.files.length);
+  }catch(e){ return false; }   // na dúvida, tenta enviar: duplicar é melhor que perder
+}
+
+async function _gdHistEnviarUm(item){
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  if(!F) throw new Error('sem Filesystem');
+  // Lê do dispositivo. NUNCA apaga — este caminho não tem `deleteFile`, e é de
+  // propósito: o original é a cópia que o hotel já tem na mão.
+  const r = await F.readFile({ path:'GarageSpot/' + item.nome, directory:'DOCUMENTS' });
+  const b64 = (r && r.data) || '';
+  if(!b64) throw new Error('arquivo vazio');
+  return await _gdComToken(async function(token){
+    const destino = await _gdGarantirCaminho(token, _gdHistDestino(item));
+    if(await _gdHistJaNaNuvem(token, destino, item.nome)) return { pulado:true };
+    return await _gdEnviarArquivoBin(token, destino, item.nome, b64, 'application/pdf');
+  }, false);
+}
+
+// Processa um LOTE. Chamada pelo tique; sai calada em qualquer condição ruim.
+async function _gdHistProcessar(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(DRIVE_STATUS.nuvem_cheio) return;             // sem espaço, não adianta insistir
+    if(_gdEnviando) return;                          // backup completo tem prioridade
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(typeof gsPronto === 'function' && !gsPronto()) return;
+
+    let est = _gdHistEstado();
+    if(!est.varrido){ await _gdHistVarrer(); est = _gdHistEstado(); }
+    if(!est.pendentes || !est.pendentes.length) return;
+
+    for(let i = 0; i < GD_HIST_LOTE && est.pendentes.length; i++){
+      const item = est.pendentes[0];
+      try{
+        const res = await _gdHistEnviarUm(item);
+        // RETOMÁVEL: o estado é regravado a CADA arquivo, não no fim do lote. Se o
+        // app morrer no meio, o que já subiu não sobe de novo.
+        est = _gdHistEstado();
+        est.pendentes = est.pendentes.filter(function(x){ return x.nome !== item.nome; });
+        est.enviados = (est.enviados || []).concat([item.nome]);
+        _gdHistSalvar(est);
+        if(!(res && res.pulado)){
+          addLogSistema('Histórico enviado à nuvem: ' + item.nome +
+            (item.tipo === 'fechamento' && !item.checkin ? ' → ' + GD_PASTA_SEM_DATA : ''),
+            {aud:true, acao:'historico_enviado', alvo:item.nome});
+        }
+      }catch(e){
+        // Falha NÃO descarta o item: ele volta para o fim da fila e o lote para
+        // aqui. Rede ruim não pode custar um documento do histórico.
+        est = _gdHistEstado();
+        const fila = est.pendentes.filter(function(x){ return x.nome !== item.nome; });
+        fila.push(item);
+        est.pendentes = fila;
+        est.falhas = (est.falhas || 0) + 1;
+        _gdHistSalvar(est);
+        console.warn('[HIST] não subiu (volta para a fila):', item.nome, e && e.message);
+        return;
+      }
+    }
+    try{ if(typeof _gdReabrirConexoes === 'function') _gdReabrirConexoes(); }catch(e){}
+  }catch(e){ console.warn('[HIST] lote não rodou:', e && e.message); }
+}
+
+// Progresso DISCRETO no card de nuvem — sem modal, sem roubar foco. Some sozinho
+// quando termina.
+function _gdHistProgressoHTML(){
+  try{
+    const e = _gdHistEstado();
+    const pend = (e.pendentes || []).length;
+    const env  = (e.enviados  || []).length;
+    if(!pend && !env) return '';
+    if(!pend){
+      const aviso = e.semData
+        ? `<div style="color:#854F0B;margin-top:3px">${e.semData} sem data de check-in — foram para <strong>${_vtEsc(GD_PASTA_SEM_DATA)}</strong>.</div>`
+        : '';
+      return `<div id="hist-progresso" style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:6px;padding:7px 9px;margin-top:6px;color:#0F6E56;font-size:11px;line-height:1.5">
+        ✅ Histórico do aparelho enviado — <strong>${env}</strong> documento(s). Os originais continuam no aparelho.${aviso}</div>`;
+    }
+    const total = env + pend;
+    return `<div id="hist-progresso" style="background:#F1F5FA;border:1px solid #2E6DB4;border-radius:6px;padding:7px 9px;margin-top:6px;color:#153E6B;font-size:11px;line-height:1.5">
+      ⬆️ Enviando histórico: <strong>${env} de ${total}</strong>. Continua sozinho, aos poucos — nada é apagado do aparelho.</div>`;
+  }catch(e){ return ''; }
 }
 
 // ── v1.9.5.1 — REAGENDAMENTO APÓS FALHA ────────────────────────────────────
@@ -14132,6 +14373,7 @@ function _renderNuvemStatus(){
     <div style="color:#aaa;font-size:11px;margin-top:4px">Pasta <strong>${_vtEsc(GD_PASTA_NOME)}</strong> · ${DRIVE_STATUS.nuvem_enviados||0} envio(s) nesta instalação</div>
     ${_gdEspacoAvisoHTML()}
     ${_gdPdfsPendentesHTML()}
+    ${_gdHistProgressoHTML()}
     <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
     <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
@@ -17277,17 +17519,22 @@ checkLicense().then(async (ativo)=>{
       // v1.9.5.2: PDFs de fechamento que não subiram (sem Drive ou com falha) são
       // reenviados relendo o arquivo do dispositivo — um por tique.
       try { setInterval(function(){ _gdTentarPDFsPendentes(); }, 10 * 60 * 1000); } catch(e){}
+      // v1.9.6.4: envio do HISTÓRICO já existente no aparelho — um lote por tique,
+      // incremental e retomável. A primeira varredura roda 25 s após o init, longe
+      // do arranque e depois da migração de pastas.
+      try { setInterval(function(){ _gdHistProcessar(); }, 10 * 60 * 1000); } catch(e){}
+      try { setTimeout(function(){ _gdHistProcessar(); }, 25000); } catch(e){}
       // v1.9.5.3: quando o app VOLTA (ou a rede volta), tenta o que ficou adiado —
       // com uma folga para a conectividade estabilizar. Sem isso, o que foi adiado
       // no 'hidden' esperaria até 10 min pelo tique.
       try {
         document.addEventListener('visibilitychange', function(){
           if(document.visibilityState === 'visible'){
-            setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); _gdFlushRolante(); }, 4000);
+            setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); _gdFlushRolante(); _gdHistProcessar(); }, 4000);
           }
         });
         window.addEventListener('online', function(){
-          setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); _gdFlushRolante(); }, 3000);
+          setTimeout(function(){ _gdTentarPendente(); _gdTentarPDFsPendentes(); _gdFlushRolante(); _gdHistProcessar(); }, 3000);
         });
       } catch(e){}
       // v1.9.5.3: migração das pastas do Drive para a estrutura definitiva.
