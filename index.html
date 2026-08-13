@@ -1318,7 +1318,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.4';
+const GS_VERSION = 'v1.9.6.5';
 const GS_VERSION_CODE = 28;
 const GS_BUILD_TS = '2026-08-06';
 
@@ -4148,11 +4148,16 @@ function showModalUsuarios(){
 }
 
 // ── TURNOS ────────────────────────────────────────────────────────────────
-let TURNOS = [
+// v1.9.6.5: os padrões DE FÁBRICA ficam nomeados. Sem isso a importação não
+// conseguia distinguir "o gestor nunca mexeu nos turnos" de "o gestor configurou
+// assim" — e, como `TURNOS` já nasce preenchido, a etapa 6 do import (que exigia
+// contagem 0) NUNCA restaurava turno nenhum num aparelho recém-instalado.
+const TURNOS_PADRAO = [
   { id:'t1', nome:'Manhã',  inicio:'06:00', fim:'14:00' },
   { id:'t2', nome:'Tarde',  inicio:'14:00', fim:'22:00' },
   { id:'t3', nome:'Noite',  inicio:'22:00', fim:'06:00' },
 ];
+let TURNOS = TURNOS_PADRAO.map(function(t){ return Object.assign({}, t); });
 function saveTurnos(opts){
   _gsGravarColecao('garagespot_turnos', TURNOS, 'turnos', opts); // v1.9.4.10/.11
 }
@@ -9253,6 +9258,11 @@ const GS_CONFIG_RESTAURAVEL = [
   'garagespot_tema',              // tema do cliente
   'garagespot_hospedagem_counter',
   'garagespot_vistoria_counter',
+  // v1.9.6.5 — faltavam duas. `poda_config` é ESCOLHA DO GESTOR (limpeza ligada ou
+  // desligada, e desligar era a decisão que mais custava reconquistar); o aviso de
+  // orientação é preferência de tela. Ambas entravam no arquivo e não voltavam.
+  'garagespot_poda_config',
+  'garagespot_orientacao_aviso_visto',
 ];
 
 // Relê em memória o que acabou de ser restaurado, para valer sem reabrir o app.
@@ -10106,6 +10116,9 @@ function _gsNormalizarBackup(obj){
     historico: (obj && obj.historico) || null,
     turnos: (obj && obj.turnos) || null,
     temIndexedDB: false,
+    // v1.9.6.5: o objeto cru, para as coleções que só existem como campo de topo
+    // do snapshot (recargas, lixeira, pendentes…). Aditivo — nada mais mudou.
+    bruto: obj || null,
   };
   if(obj && obj.indexeddb && typeof obj.indexeddb === 'object'){
     r.anexos = obj.indexeddb.anexos || null;
@@ -10119,11 +10132,97 @@ function _gsNormalizarBackup(obj){
   return r;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.5 — "O APARELHO ESTÁ EM BRANCO?"
+// ════════════════════════════════════════════════════════════════════════════
+// A regra de mescla do import sempre foi "o aparelho vence". Isso está certo no
+// uso normal (importar um arquivo antigo não pode desfazer o trabalho de hoje),
+// mas produzia um buraco no caso que MAIS importa: o aparelho recém-instalado.
+// Três coisas nascem PREENCHIDAS numa instalação nova — o mapa (todas as vagas
+// existem, livres), os turnos (Manhã/Tarde/Noite) e o PIN do gestor (`1200`,
+// semeado por `_gsPinGarantido` no boot) — e por isso as condições antigas
+// ("mapa não é coleção", "contagem === 0", "!_gsPinGuardado()") NUNCA davam
+// verdadeiro depois de desinstalar/reinstalar. O dado estava no arquivo e não
+// voltava.
+//
+// A correção não afrouxa a regra: ela troca "o aparelho não tem nada" por
+// "o aparelho está EM BRANCO / NO PADRÃO DE FÁBRICA", que é a mesma ideia dita
+// corretamente. Havendo qualquer sinal de uso, o aparelho vence como sempre.
+// ⚠️ NÃO transformar nenhuma destas em sobrescrita incondicional.
+
+// Mapa em branco = nenhuma vaga ocupada E ninguém em passeio. Só isso autoriza
+// o mapa do arquivo a entrar. Basta UM carro no mapa para o aparelho vencer.
+function _gsMapaEmBranco(){
+  try {
+    if(typeof S === 'undefined' || !S) return false;
+    const ids = Object.keys(S);
+    if(!ids.length) return false;                 // mapa ainda não construído → não mexe
+    for(let i = 0; i < ids.length; i++){
+      const d = S[ids[i]];
+      if(!d) continue;
+      if(d.status === 'occupied') return false;
+      if(d.hospedagem) return false;
+    }
+    if(typeof PASSEIO !== 'undefined' && PASSEIO && Object.keys(PASSEIO).length) return false;
+    return true;
+  } catch(e){ return false; }                     // na dúvida, o aparelho vence
+}
+
+// Turnos no padrão de fábrica = mesma quantidade, mesmos id/nome/início/fim.
+// Qualquer edição do gestor (inclusive só o horário) faz o aparelho vencer.
+function _gsTurnosSaoPadrao(){
+  try {
+    if(!Array.isArray(TURNOS) || TURNOS.length !== TURNOS_PADRAO.length) return false;
+    const sig = function(t){
+      return String((t&&t.id)||'') + '|' + String((t&&t.nome)||'') + '|' +
+             String((t&&t.inicio)||'') + '|' + String((t&&t.fim)||'');
+    };
+    for(let i = 0; i < TURNOS_PADRAO.length; i++){
+      if(sig(TURNOS[i]) !== sig(TURNOS_PADRAO[i])) return false;
+    }
+    return true;
+  } catch(e){ return false; }
+}
+
+// PIN do gestor ainda no padrão semeado (`1200`). É o que `_gsPinGarantido`
+// grava no primeiro boot de uma instalação nova, então é indistinguível de
+// "nunca configurado" — e é exatamente esse caso que o import precisa cobrir.
+// ⚠️ NÃO MEXER em `_gsPinValido` nem na aceitação da `SENHA_DEV`: esta função
+// só decide se o PIN do ARQUIVO pode entrar, e nunca amplia o que é aceito.
+function _gsPinEhPadraoSemeado(){
+  try {
+    const p = _gsPinGuardado();
+    return !p || p === '1200';
+  } catch(e){ return false; }                     // ilegível → não sobrescreve
+}
+
+// Mescla aditiva por chave: entra só o que falta, o do aparelho nunca é tocado.
+function _gsMesclarPorChave(destino, vindo){
+  let novos = 0;
+  if(!destino || !vindo || typeof vindo !== 'object') return novos;
+  Object.keys(vindo).forEach(function(k){
+    if(destino[k] === undefined){ destino[k] = vindo[k]; novos++; }
+  });
+  return novos;
+}
+
+// Lê uma coleção do arquivo aceitando as duas formas: campo de topo do snapshot
+// (`snap.recargas`) ou a chave crua do localStorage varrido (`n.ls[...]`).
+function _gsColecaoDoBackup(n, campoTopo, chaveLS){
+  try {
+    if(n && n.bruto && n.bruto[campoTopo] !== undefined && n.bruto[campoTopo] !== null) return n.bruto[campoTopo];
+    if(n && n.ls && n.ls[chaveLS]) return JSON.parse(n.ls[chaveLS]);
+  } catch(e){ console.warn('[IMPORT] coleção ' + campoTopo + ':', e); }
+  return null;
+}
+
 // Aplica o backup MESCLANDO. Retorna um resumo do que entrou.
 async function _gsAplicarBackup(obj, origem){
   const n = _gsNormalizarBackup(obj);
   const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0,
-                pinGestor:0, pinsUsuarios:0, config:0, trilha:0, ignorados:0 };
+                pinGestor:0, pinsUsuarios:0, config:0, trilha:0, ignorados:0,
+                mapaVagas:0, mapaPasseio:0, recargas:0, recargaHist:0, lixeira:0, pendentes:0,
+                plantaoManual:0 };
 
   // 1) Hospedagens — só as que faltam (as do aparelho vencem)
   try {
@@ -10241,20 +10340,27 @@ async function _gsAplicarBackup(obj, origem){
     }
   } catch(e){ console.warn('[IMPORT] historico:', e); }
 
-  // 6) Turnos — só se o aparelho não tiver nenhum
+  // 6) Turnos — só se o aparelho estiver no PADRÃO DE FÁBRICA.
+  // v1.9.6.5: a condição era `_gsContar(TURNOS) === 0`, e `TURNOS` JÁ NASCE com
+  // Manhã/Tarde/Noite — logo a contagem nunca era 0 e os turnos do arquivo eram
+  // silenciosamente descartados em toda reinstalação. Editou qualquer horário?
+  // O aparelho vence, como antes.
   try {
     const t = n.turnos || (n.ls && n.ls['garagespot_turnos'] ? JSON.parse(n.ls['garagespot_turnos']) : null);
-    if(Array.isArray(t) && t.length && _gsContar(TURNOS) === 0){
+    if(Array.isArray(t) && t.length && (_gsContar(TURNOS) === 0 || _gsTurnosSaoPadrao())){
       TURNOS = t; res.turnos = t.length; saveTurnos();
     }
   } catch(e){ console.warn('[IMPORT] turnos:', e); }
 
   // 7) v1.9.4.13 — PIN do gestor: o snapshot SEMPRE o carregou (`_gsSnapshotLocalStorage`),
-  // mas nada o reaplicava — num aparelho restaurado o PIN voltava ausente. Agora entra,
-  // e SÓ quando o aparelho não tem um utilizável: o do aparelho sempre vence (mesma
-  // regra de mesclagem do resto). Não destrutivo por construção.
+  // mas nada o reaplicava — num aparelho restaurado o PIN voltava ausente.
+  // v1.9.6.5: a condição era `!_gsPinGuardado()`, e `_gsPinGarantido()` semeia `1200`
+  // no boot — então numa instalação nova SEMPRE havia PIN guardado e o do arquivo
+  // nunca entrava: o hotel reinstalava e voltava com o PIN de fábrica. Agora o
+  // arquivo também vence sobre o `1200` SEMEADO. PIN escolhido pelo gestor
+  // continua vencendo. `_gsPinValido` e a `SENHA_DEV` seguem intocados.
   try {
-    if(!_gsPinGuardado()){
+    if(_gsPinEhPadraoSemeado()){
       const pinBk = n.ls ? n.ls[GESTAO_PIN_KEY] : null;
       if(pinBk){
         let limpo = String(pinBk).trim();
@@ -10311,13 +10417,141 @@ async function _gsAplicarBackup(obj, origem){
     }
   } catch(e){ console.warn('[IMPORT] trilha:', e); }
 
+  // 10) v1.9.6.5 — O MAPA (vagas + passeio).
+  // O estado do mapa vive em `localStorage['garagem_spot_v1']` e SEMPRE entrou no
+  // snapshot (a varredura não o exclui), mas NENHUM caminho de importação o lia de
+  // volta: `applySnapshot` só era alimentado pelo IndexedDB/localStorage LOCAIS.
+  // Consequência medida: depois de desinstalar → instalar → importar, as
+  // hospedagens voltavam e o mapa voltava VAZIO — nenhum carro em nenhuma vaga,
+  // tamanhos de vaga e merges laterais no padrão, e o passeio perdido.
+  // Entra só com o mapa do aparelho EM BRANCO (`_gsMapaEmBranco`). Um único carro
+  // no mapa e o arquivo não encosta nele — o uso normal segue aditivo como sempre.
+  try {
+    if(_gsMapaEmBranco()){
+      const bruto = n.ls ? n.ls[STORAGE_KEY] : null;
+      const mapa = bruto ? JSON.parse(bruto) : null;
+      if(mapa && mapa.vagas && applySnapshot(mapa)){
+        Object.keys(mapa.vagas).forEach(function(id){
+          const v = mapa.vagas[id];
+          if(S[id] && v && v.status === 'occupied') res.mapaVagas++;
+        });
+        res.mapaPasseio = _gsContar(mapa.passeio);
+        // Redesenha como o restaurar do mapa já fazia: `upd()` sozinho não
+        // reconstrói o rowSpan dos merges laterais.
+        try {
+          Object.keys(S).forEach(function(id){
+            ref(id);
+            if(id.slice(-1) === 'B'){ const td = getTd(id); if(td) td.rowSpan = S[id].mergedMaster ? 2 : 1; }
+          });
+        } catch(eR){ console.warn('[IMPORT] redesenho do mapa:', eR); }
+        try { saveData(); } catch(eS){}
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] mapa:', e); }
+
+  // 11) v1.9.6.5 — RECARGAS EM ANDAMENTO. Mescla por VAGA: entra só a vaga que o
+  // aparelho não tem. É tempo sendo medido para cobrança — perder o `inicio_ts`
+  // é perder o valor a cobrar.
+  try {
+    const rec = _gsColecaoDoBackup(n, 'recargas', RECARGA_LS);
+    if(rec && typeof rec === 'object'){
+      res.recargas = _gsMesclarPorChave(RECARGAS, rec);
+      if(res.recargas){
+        saveRecargas();
+        // O alarme do fim da recarga é agendado no NATIVO, no início dela — um
+        // aparelho recém-instalado não tem esses agendamentos. `_rcRearmarAlarmes`
+        // é idempotente (consulta `getPending`) e ignora o que já venceu.
+        try { if(typeof _rcRearmarAlarmes === 'function') _rcRearmarAlarmes(); } catch(eA){}
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] recargas:', e); }
+
+  // 12) v1.9.6.5 — HISTÓRICO DE RECARGAS: registro FINANCEIRO. Mescla append-only
+  // com dedupe por vaga+início+criação, igual à trilha. Idempotente.
+  try {
+    const hr = _gsColecaoDoBackup(n, 'historico_recargas', RECARGA_HIST_LS);
+    if(Array.isArray(hr) && hr.length){
+      if(!Array.isArray(HISTORICO_RECARGAS)) HISTORICO_RECARGAS = [];
+      const sig = function(e){ return String(e.vagaId)+'|'+String(e.inicio_ts)+'|'+String(e.ts); };
+      const vistos = {};
+      HISTORICO_RECARGAS.forEach(function(e){ if(e) vistos[sig(e)] = true; });
+      let novos = 0;
+      hr.forEach(function(e){
+        if(!e || vistos[sig(e)]) return;
+        vistos[sig(e)] = true;
+        HISTORICO_RECARGAS.push(e); novos++;
+      });
+      if(novos){
+        HISTORICO_RECARGAS.sort(function(a,b){ return (a.ts||0)-(b.ts||0); });
+        res.recargaHist = novos; saveRecargaHist();
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] histórico de recargas:', e); }
+
+  // 13) v1.9.6.5 — LIXEIRA DE VISTORIAS. Vestigial (a exclusão é permanente desde a
+  // v1.9.1 e nada mais escreve aqui), mas um aparelho vindo de versão antiga pode
+  // ter conteúdo, e este é o único lugar onde ele existe. Mescla por chave.
+  try {
+    const lx = _gsColecaoDoBackup(n, 'vistorias_lixeira', VISTORIAS_LIXEIRA_LS);
+    if(lx && typeof lx === 'object'){
+      res.lixeira = _gsMesclarPorChave(VISTORIAS_LIXEIRA, lx);
+      if(res.lixeira) saveLixeira();
+    }
+  } catch(e){ console.warn('[IMPORT] lixeira de vistorias:', e); }
+
+  // 14) v1.9.6.5 — CHECK-INS PENDENTES (modelo legado). `getPendentePorApt` ainda
+  // os lê e o roteamento da vaga livre ainda os oferece. Mescla por chave.
+  try {
+    const cp = _gsColecaoDoBackup(n, 'checkins_pendentes', CHECKINS_PENDENTES_LS);
+    if(cp && typeof cp === 'object'){
+      res.pendentes = _gsMesclarPorChave(CHECKINS_PENDENTES, cp);
+      if(res.pendentes) saveCheckinsPendentes();
+    }
+  } catch(e){ console.warn('[IMPORT] check-ins pendentes:', e); }
+
+  // 15) v1.9.6.5 — PLANTÃO MANUAL. Mescla append-only com dedupe por nome+obs.
+  // ⚠️ RESSALVA CONHECIDA, registrada por decisão do Douglas (regra do projeto: o
+  // backup devolve TUDO o que o app tinha): as entradas são `{nome, obs}` SEM data,
+  // e `agendarLimparPlantao` esvazia a lista toda meia-noite. Importar um arquivo de
+  // OUTRO dia repõe inclusões de plantão daquele dia. O estrago é limitado e
+  // visível — as entradas aparecem na lista de plantão, o gestor as remove com um
+  // toque, e a virada da meia-noite as apaga sozinha. No caso que importa (exportar
+  // e importar no mesmo dia, o ritual de reinstalação) o resultado é exatamente
+  // certo. Se um dia as entradas ganharem data, filtrar por dia aqui vira trivial.
+  try {
+    const pm = _gsColecaoDoBackup(n, 'plantao_manual', 'garagespot_plantao_manual');
+    if(Array.isArray(pm) && pm.length){
+      if(!Array.isArray(PLANTAO_MANUAL)) PLANTAO_MANUAL = [];
+      const sig = function(e){ return String((e&&e.nome)||'')+'|'+String((e&&e.obs)||''); };
+      const vistos = {};
+      PLANTAO_MANUAL.forEach(function(e){ if(e) vistos[sig(e)] = true; });
+      let novos = 0;
+      pm.forEach(function(e){
+        if(!e || vistos[sig(e)]) return;
+        vistos[sig(e)] = true;
+        PLANTAO_MANUAL.push(e); novos++;
+      });
+      if(novos){
+        res.plantaoManual = novos; savePlantaoManual();
+        try { if(typeof atualizarPlantao === 'function') atualizarPlantao(); } catch(eP){}
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] plantão manual:', e); }
+
   try { _atualizarContadores(); } catch(e){}
   try { if(typeof addLogSistema === 'function') addLogSistema(
     'Importação (' + (origem||'arquivo') + '): +' + res.hospedagens + ' hosp., +' + res.usuarios +
     ' func., +' + res.vistorias + ' vist., +' + res.anexosItens + ' anexos, +' + res.historico + ' eventos' +
+    (res.mapaVagas ? ', mapa restaurado (' + res.mapaVagas + ' vaga(s))' : '') +
+    (res.mapaPasseio ? ', +' + res.mapaPasseio + ' em passeio' : '') +
+    (res.recargas ? ', +' + res.recargas + ' recarga(s) em andamento' : '') +
+    (res.recargaHist ? ', +' + res.recargaHist + ' registro(s) de recarga' : '') +
+    (res.pendentes ? ', +' + res.pendentes + ' check-in(s) pendente(s)' : '') +
+    (res.plantaoManual ? ', +' + res.plantaoManual + ' inclusão(ões) de plantão' : '') +
     (res.pinsUsuarios ? ', +' + res.pinsUsuarios + ' PIN(s) de funcionário' : '') +
     (res.config ? ', +' + res.config + ' ajuste(s)' : '') +
     (res.trilha ? ', +' + res.trilha + ' registro(s) de trilha' : '') +
+    (res.turnos ? ', turnos restaurados' : '') +
     (res.pinGestor ? ', PIN do gestor restaurado' : ''),
     {aud:true, acao:'dados_importados', alvo:String(origem||'arquivo')}); } catch(e){}
   return res;
@@ -10393,6 +10627,13 @@ function _gsConfirmarImportacao(obj, nomeArq){
             <div>+ ${res.vistorias} vistorias</div>
             <div>+ ${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
             <div>+ ${res.historico} eventos de histórico</div>
+            ${res.mapaVagas ? `<div>🗺 mapa restaurado — ${res.mapaVagas} vaga(s) ocupada(s)</div>` : ''}
+            ${res.mapaPasseio ? `<div>+ ${res.mapaPasseio} carro(s) em passeio</div>` : ''}
+            ${res.recargas ? `<div>+ ${res.recargas} recarga(s) em andamento</div>` : ''}
+            ${res.recargaHist ? `<div>+ ${res.recargaHist} registro(s) de recarga</div>` : ''}
+            ${res.pendentes ? `<div>+ ${res.pendentes} check-in(s) pendente(s)</div>` : ''}
+            ${res.turnos ? `<div>+ turnos restaurados</div>` : ''}
+            ${res.pinGestor ? `<div>+ PIN do gestor restaurado</div>` : ''}
             <div style="color:#888;margin-top:6px">${res.ignorados} registro(s) já existiam e foram preservados.</div>
           </div>
           <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
