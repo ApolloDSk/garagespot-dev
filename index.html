@@ -891,6 +891,11 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
   <div class="nci-body" id="nci-body"></div>
   <div class="nci-ftr" id="nci-ftr"></div>
 </div>
+<!-- v1.9.6.6 — CONTRATO: o fundo do modal (#ov) NÃO tem manipulador de clique, e
+     não pode ganhar um. Tocar fora NUNCA fecha um modal do app: no tablet, o dedo
+     escorrega para fora com facilidade, e fechar o modal do check-out por engano
+     esconderia a confirmação de que o documento foi salvo. Fechar é sempre por
+     botão. Travado por `checkout-modal-nao-fecha-ao-tocar-fora`. -->
 <div class="ovbg" id="ov"><div class="modal" id="mc"></div></div>
 
 <!-- v1.9.4.1.8: Painel de debug visível na tela (5 toques na versão para abrir) -->
@@ -1318,9 +1323,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.5';
+const GS_VERSION = 'v1.9.6.6';
 const GS_VERSION_CODE = 28;
-const GS_BUILD_TS = '2026-08-06';
+const GS_BUILD_TS = '2026-08-13';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -2829,6 +2834,8 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     // a completa espelha na nuvem, esses check-ins ficavam fora do Drive até o tique
     // horário. (Impor vistoria obrigatória aqui é decisão de outra rodada.)
     _gsBackupAuto('check-in '+numH, {completo:true});
+    // v1.9.6.6: hospedagem nova nasce com documento em `Hospedados Hoje`.
+    try{ _hhjMarcar(numH, 'check-in'); }catch(e){}
   } else if(isCheckin===false){
     const hospNum=(PASSEIO[apt]?.hospedagem)||d.hospedagem||'';
     if(hospNum) d.hospedagem=hospNum;
@@ -3120,6 +3127,10 @@ function doChk(id){
       if(_limpou) saveAnexos({permitirVazio:true}); // v1.9.4.10: limpeza INTENCIONAL do check-out
       // v1.9.4.11: check-out é evento crítico → backup COMPLETO (com fotos) agora
       _gsBackupAuto('check-out '+(hospNum||aptKey), {completo:true});
+      // v1.9.6.6: o provisório sai de `Hospedados Hoje` — NENHUM hóspede que já
+      // saiu pode continuar lá. Disparado e esquecido: se a rede falhar agora, a
+      // conferência do tique retira depois. Nada disto pode atrasar o check-out.
+      try{ if(hospNum) _hhjRetirar(hospNum); }catch(eHhj){ console.warn('[HHJ] retirada não agendada:',eHhj&&eHhj.message); }
       // Parte 1 v1.9.4.9: o PDF de check-out é SALVO NO DISPOSITIVO automaticamente
       // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
       // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
@@ -3129,8 +3140,12 @@ function doChk(id){
       // modal aparecer — a tela ficava congelada durante todo o processo.
       // Agora o modal abre na hora, com barra de progresso, e o documento é
       // montado em etapas assíncronas com as imagens já comprimidas.
-      // Ao final: DUAS opções — "Salvar" e "Salvar e compartilhar". O app
-      // SEMPRE salva no dispositivo; compartilhar é ação adicional.
+      // v1.9.6.6: os TRÊS botões viraram DOIS — [OK] e [Compartilhar PDF]. Os três
+      // anteriores ofereciam uma escolha que não existia: o app SEMPRE salvou no
+      // dispositivo e SEMPRE mandou para a nuvem, nas três opções. "Salvar" e
+      // "Fechar" faziam a mesma coisa, e "Salvar" ainda insinuava que sem apertá-lo
+      // o documento se perderia. Agora a mensagem diz o que já aconteceu (aparelho
+      // E nuvem) e os botões só decidem se o manobrista quer compartilhar também.
       // ══════════════════════════════════════════════════════════════════
       // v1.9.5.2: o nome traz as DUAS pontas da hospedagem; a data de check-in vem
       // de HOSPEDAGENS (já disponível aqui — o bloco acima grava usuario_checkout).
@@ -3141,16 +3156,15 @@ function doChk(id){
         <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">📄 Preparando o documento…</div>
         <div id="co-prog-wrap" style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin:-4px 0 10px"><div id="co-prog" style="background:#185FA5;height:100%;width:0%;transition:width .2s"></div></div>
         <div class="ag" id="co-acoes" style="display:none">
-          <button class="bsv" id="co-salvar">💾 Salvar</button>
-          <button class="bsv" id="co-share" style="margin-top:4px">📤 Salvar e compartilhar</button>
-          <button class="bcx" onclick="closeOv()" style="margin-top:4px">Fechar</button>
+          <button class="bsv" id="co-ok">OK</button>
+          <button class="bcx" id="co-share" style="margin-top:4px">📤 Compartilhar PDF</button>
         </div>`);
       (async()=>{
         const _st=function(){ return document.getElementById('co-save-status'); };
         const _prog=function(p){
           const b=document.getElementById('co-prog'); if(b) b.style.width=Math.round(p)+'%';
         };
-        let _coConteudo=null, _salvo=null;
+        let _coConteudo=null, _salvo=null, _coNuvem='';
         try{
           const doc=await buildRegistroDocAsync(aptKey,dvChk,histChk,_snapshotAnexosCheckout,function(feitos,total){
             const el=_st(); if(el) el.textContent='📄 Preparando imagens… ('+feitos+' de '+total+')';
@@ -3163,7 +3177,8 @@ function doChk(id){
         }
         _prog(95);
         const el2=_st(); if(el2) el2.textContent='💾 Salvando no dispositivo…';
-        // O app SEMPRE salva — nas duas opções.
+        // O app SEMPRE salva no dispositivo E SEMPRE manda para a nuvem — os botões
+        // não decidem nada disso, e é por isso que agora são só dois.
         if(_coConteudo){
           _salvo=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
           // v1.9.5.2: cópia para a nuvem SÓ DEPOIS de o arquivo estar no dispositivo,
@@ -3172,7 +3187,12 @@ function doChk(id){
           try{
             if(_salvo&&_salvo.sucesso&&typeof _coConteudo.output==='function'){
               const _b64=_coConteudo.output('datauristring').split(',')[1];
+              // v1.9.6.6: o PDF entra no registro de documentos do aparelho ANTES de
+              // qualquer tentativa de envio. Sem registro não há confirmação, e sem
+              // confirmação a limpeza nunca o alcança — é essa a ordem segura.
+              try{ _gsRegistrarPDFLocal(_salvo.nome,'fechamento'); }catch(eR){}
               _gdEspelharPDFFechamento(_salvo.nome,_b64,aptKey,_coCheckinTs);
+              _coNuvem=_gdConectado()?' · enviando para a nuvem':' · na fila para a nuvem';
             }
           }catch(ePdfNuvem){ console.warn('[DRIVE] PDF de fechamento não agendado:',ePdfNuvem&&ePdfNuvem.message); }
         }
@@ -3183,19 +3203,16 @@ function doChk(id){
         if(el){
           if(_salvo&&_salvo.sucesso){
             el.style.cssText='background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
-            el.textContent=(_salvo.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+_salvo.nome:'✅ PDF baixado · '+_salvo.nome);
+            // A mensagem verde diz as DUAS pontas — aparelho e nuvem —, que é o que
+            // o manobrista precisa saber para poder simplesmente apertar OK.
+            el.textContent=(_salvo.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+_salvo.nome:'✅ PDF baixado · '+_salvo.nome)+_coNuvem;
           } else {
             el.style.cssText='background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
-            el.textContent='⚠️ Não foi possível salvar automaticamente — use "Salvar e compartilhar".';
+            el.textContent='⚠️ Não foi possível salvar automaticamente — use "Compartilhar PDF" para guardar o documento.';
           }
         }
-        const bs=document.getElementById('co-salvar');
-        if(bs) bs.onclick=async function(){
-          if(_salvo&&_salvo.sucesso){ showToast('✅ Já salvo · '+_salvo.nome,3500); closeOv(); return; }
-          const r=_coConteudo?await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome):null;
-          showToast(r&&r.sucesso?('✅ PDF salvo · '+r.nome):'⚠️ Não foi possível salvar',4000);
-          if(r&&r.sucesso) closeOv();
-        };
+        const bs=document.getElementById('co-ok');
+        if(bs) bs.onclick=function(){ closeOv(); };
         const bc=document.getElementById('co-share');
         if(bc) bc.onclick=async function(){
           // v1.9.4.12: compartilha o arquivo JÁ SALVO — não remonta o PDF
@@ -5727,6 +5744,25 @@ const LOG_KEY='garagespot_log_sistema';
 // de quem tem o aparelho, só na fase de servidor.
 const LOG_COMUM_MAX = 200;
 const LOG_AUD_MAX   = 1000;
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.6.6 — O TETO DE 1000 SÓ DESCARTA O QUE JÁ ESTÁ ARQUIVADO NA NUVEM
+// ════════════════════════════════════════════════════════════════════════
+// O defeito que isto corrige não era visível de dentro: cada backup é uma FOTO
+// do app naquele instante, então um backup feito depois do teto encher já nasce
+// com a trilha truncada. A poda de backups antigos elimina, com o tempo, o
+// último lugar onde aqueles registros existiam. Com o objetivo de valor
+// jurídico, perder registro assim é inaceitável.
+//
+// REGRA: uma entrada de auditoria só pode ser descartada pelo teto depois de
+// CONFIRMADA como arquivada em `GarageSpot Auditoria` (marca `nuv:1`). Sem
+// confirmação, ela FICA — e a trilha CRESCE ALÉM DE 1000. É a mesma regra dos
+// backups ("sem confirmação na nuvem o arquivo fica, por mais velho que seja"),
+// aplicada ao único dado do app que não pode ser regerado de lugar nenhum.
+//
+// ⚠️ A marca `nuv` é METADADO de arquivamento, não conteúdo: `ts`, `msg`,
+// `quem`, `acao`, `alvo` e `origem` nunca são tocados. Arquivar não é editar, e
+// continua não existindo caminho no app para apagar ou alterar uma entrada.
+function _logAudArquivada(e){ return !!(e && e.nuv); }
 // NUNCA registrar o VALOR de um PIN na trilha (só quem/quando/o quê).
 function addLogSistema(msg, meta){
   try{
@@ -5760,11 +5796,28 @@ function addLogSistema(msg, meta){
   }catch(e){ console.warn('[LOG] não foi possível registrar:',e&&e.message); }
 }
 // Poda separada: auditoria sobrevive à poda do log comum.
+// v1.9.6.6: e, dentro da auditoria, só o que já está ARQUIVADO NA NUVEM pode
+// ceder. Um tablet dias sem internet acumula trilha acima de 1000 em vez de
+// perder prova — inchar o armazenamento é um problema reversível, perder um
+// registro de auditoria não é.
 function _logPodar(log){
   try{
     const aud=[], comum=[];
     log.forEach(function(e){ if(e&&e.aud) aud.push(e); else comum.push(e); });
-    const audCortado   = aud.length   > LOG_AUD_MAX   ? aud.slice(-LOG_AUD_MAX)     : aud;
+    let audCortado = aud;
+    if(aud.length > LOG_AUD_MAX){
+      // Só as ARQUIVADAS entram na fila de descarte, e saem as mais antigas
+      // primeiro. As não arquivadas são preservadas INTEGRALMENTE, mesmo que
+      // isso deixe o total acima do teto — é exatamente o comportamento
+      // desejado quando o aparelho está sem conexão.
+      const naoArquivadas = aud.filter(function(e){ return !_logAudArquivada(e); });
+      const arquivadas    = aud.filter(_logAudArquivada);
+      const podeSair = Math.min(arquivadas.length, aud.length - LOG_AUD_MAX);
+      if(podeSair > 0){
+        const sai = new Set(arquivadas.slice(0, podeSair));   // as mais antigas já arquivadas
+        audCortado = naoArquivadas.concat(arquivadas.filter(function(e){ return !sai.has(e); }));
+      }
+    }
     const comumCortado = comum.length > LOG_COMUM_MAX ? comum.slice(-LOG_COMUM_MAX) : comum;
     return audCortado.concat(comumCortado).sort(function(a,b){ return (a.ts||0)-(b.ts||0); });
   }catch(e){ return log; }
@@ -6515,6 +6568,10 @@ function assinarVistoria(id){
       // nenhuma. LEVE de propósito: a imagem da assinatura vive no IndexedDB e sobe
       // com a próxima COMPLETA — o rolante leva os dados, não as fotos.
       _gsBackupAuto('assinatura de vistoria '+id);
+      // v1.9.6.6 — GATILHO OBRIGATÓRIO: a assinatura é um dos três motivos pelos
+      // quais o Hospedados Hoje existe. `_vtAnexarDocumento` já cobre o caminho em
+      // que o documento é recomposto; esta marcação garante o caso em que não é.
+      try{ _hhjMarcar((v&&(v.hospedagem||v.hospedagem_gs))||'', 'assinatura de vistoria '+id); }catch(e){}
     });
   };
 }
@@ -8340,6 +8397,9 @@ async function _nciFotosSalvarESegue(){
     // garantir persistência imediata após anexar fotos (não confia só no debounce/visibilitychange)
     try { if(typeof saveData==='function') saveData(); } catch(e){ console.error('[BUG #1] saveData falhou:', e); }
     console.log('[BUG #1] salvou', _nciFotos.length, 'fotos em', chaveAnexo, '— total agora:', ANEXOS[chaveAnexo].length, '— anexos persistidos após nova vistoria');
+    // v1.9.6.6 — GATILHO OBRIGATÓRIO: as fotos da etapa do check-in também
+    // alimentam o documento vivo.
+    try{ _hhjMarcar(_nciD && (_nciD._gsExistente || _nciD.gs), 'fotos do check-in'); }catch(e){}
   }
   _nciFotos=[];
   _nciFotosPromisesPendentes = [];
@@ -8472,6 +8532,8 @@ function _nciCommitCheckin(){
     const nome=`${d.apt||'000'}_${ds}_${limpa(d.model)}-${limpa(d.color)}_${numero}.png`;
     ANEXOS[keyH].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
     saveAnexos();
+    // v1.9.6.6 — GATILHO OBRIGATÓRIO: a vistoria de entrada do check-in.
+    try{ _hhjMarcar(gs, 'vistoria de entrada ' + numero); }catch(e){}
   }
 }
 
@@ -8515,6 +8577,8 @@ function _nciCommitNovaVistoriaAdicional(){
     const nome=`${d.apt||hosp.apt||'000'}_${ds}_${limpa(d.model||hosp.model)}-${limpa(d.color||hosp.color)}_${numero}.png`;
     ANEXOS[anexoKey].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
     saveAnexos();
+    // v1.9.6.6 — GATILHO OBRIGATÓRIO: vistoria adicional.
+    try{ _hhjMarcar(gs, 'vistoria adicional ' + numero); }catch(e){}
   }
   // v1.9.6.3: vistoria adicional cria documento e anexo e não disparava cadência
   // nenhuma. COMPLETA porque o que ela produz é justamente uma FOTO — o rolante,
@@ -9069,6 +9133,11 @@ function _vtAnexarDocumento(vagaId,v){
   const ix=ANEXOS[key].findIndex(function(a){return a.vistoria===v.numero;});
   if(ix>=0) ANEXOS[key][ix]=item; else ANEXOS[key].push(item);
   saveAnexos();
+  // v1.9.6.6 — GATILHO OBRIGATÓRIO do Hospedados Hoje. Este é o ponto de
+  // estrangulamento de TODA vistoria: criação, edição e assinatura passam por aqui
+  // para recompor o documento final. Um gatilho só, no lugar por onde tudo passa,
+  // vale mais que três espalhados que alguém esquece de manter.
+  try{ _hhjMarcar(gs, 'vistoria/assinatura ' + v.numero); }catch(e){}
 }
 
 function _vtRecomporVistoria(id){
@@ -9178,6 +9247,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   showToast('✅ '+p.gs+' · Apt. '+p.apt+' → vaga '+vagaId,3500);
   if(typeof addLogSistema==='function') addLogSistema('NCI designação: '+p.gs+' → '+vagaId+' por '+(usuario&&usuario.nome?usuario.nome:usuario));
   _gsBackupAuto('designação '+p.gs); // v1.9.4.11
+  try{ _hhjMarcar(p.gs, 'designação de vaga'); }catch(e){}   // v1.9.6.6
 }
 // ── BACKUP LOCAL ──────────────────────────────────────────────────────────
 // ATENÇÃO (v1.9.5.0): `ultimo_backup` e `falha_backup` são do BACKUP LOCAL — estão
@@ -9800,10 +9870,157 @@ async function _gsPodaExecutarLocal(){
   return { ok:true, apagados:apagados.length, plano:plano };
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.6 — OS PDFs DO APARELHO ENTRAM NA MESMA REGRA DOS BACKUPS
+// ════════════════════════════════════════════════════════════════════════════
+// O QUE MUDA E O QUE NÃO MUDA — e a distinção é o coração desta parte:
+//   • NA NUVEM, PDF NUNCA É APAGADO. Nem por poda, nem por escada, nem por cota.
+//     Regra ABSOLUTA. Continua não existindo caminho de código da poda até
+//     `GarageSpot Hospedagens` ou `GarageSpot Recargas` — e agora há spec provando.
+//   • NO APARELHO, o PDF passa a seguir a regra dos backups: sai só depois de
+//     CONFIRMADO na nuvem e de passados 7 dias DESSA confirmação. Sem confirmação
+//     ele FICA, por mais velho que seja. É a filosofia de armazenamento aplicada:
+//     a nuvem é o backup de verdade, o aparelho é rede de segurança — e rede de
+//     segurança não guarda o que já está a salvo em outro lugar.
+//
+// UM PDF SÓ EXISTE AQUI SE FOI REGISTRADO. Documento que o app nunca registrou
+// (os meses de PDFs que já estavam no tablet, exports manuais, relatórios de
+// período) não tem entrada, logo não tem confirmação, logo é INALCANÇÁVEL pela
+// limpeza. O registro nasce vazio e só cresce por caminhos explícitos — o
+// contrário disto (varrer a pasta e apagar o que parecer velho) seria justamente
+// o que a v1.9.6.4 tomou o cuidado de não fazer.
+const GS_PDFS_LS = 'garagespot_pdfs_local';
+
+function _gsPDFsRegistro(){
+  try{ const a = JSON.parse(localStorage.getItem(GS_PDFS_LS) || '[]'); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function _gsPDFsSalvar(a){
+  try{ _gsSetItemSeguro(GS_PDFS_LS, JSON.stringify(a), 'registro de PDFs'); }catch(e){}
+}
+// `tipo` é 'fechamento' ou 'recarga' — os dois únicos que a v1.9.6.4 declarou no
+// escopo de envio à nuvem. Nada mais entra.
+function _gsRegistrarPDFLocal(nome, tipo){
+  try{
+    if(!nome) return;
+    const reg = _gsPDFsRegistro();
+    if(reg.some(function(p){ return p && p.nome === nome; })) return;   // idempotente
+    reg.push({ nome:String(nome), tipo:String(tipo || 'fechamento'), ts:Date.now() });
+    _gsPDFsSalvar(reg);
+  }catch(e){ console.warn('[PODA] PDF não registrado:', e && e.message); }
+}
+// Confirmação de que ESTE PDF está na nuvem. É daqui que a janela de 7 dias conta —
+// exatamente como `_gsMarcarBackupNaNuvem` faz com os backups.
+function _gsMarcarPDFNaNuvem(nome, driveId){
+  try{
+    if(!nome) return;
+    const reg = _gsPDFsRegistro();
+    let achou = false, mudou = false;
+    for(let i = 0; i < reg.length; i++){
+      if(reg[i] && reg[i].nome === nome){
+        achou = true;
+        if(!reg[i].nuvem_ok){
+          reg[i].nuvem_ok = true;
+          reg[i].nuvem_ts = Date.now();
+          if(driveId) reg[i].nuvem_id = String(driveId);
+          mudou = true;
+        }
+        break;
+      }
+    }
+    if(!achou){
+      // Documento que já estava no aparelho e subiu pela varredura do histórico:
+      // nasce no registro JÁ confirmado. A janela de 7 dias começa agora, não na
+      // data em que o arquivo foi criado — a proteção é sobre a confirmação.
+      reg.push({ nome:String(nome), tipo:'fechamento', ts:Date.now(),
+                 nuvem_ok:true, nuvem_ts:Date.now(), nuvem_id:driveId ? String(driveId) : '' });
+      mudou = true;
+    }
+    if(mudou) _gsPDFsSalvar(reg);
+  }catch(e){ console.warn('[PODA] confirmação de PDF não gravada:', e && e.message); }
+}
+
+// Mesmas peneiras dos backups, na mesma ordem: o que protege vem antes do que apaga.
+function _gsPodaAvaliarPDFLocal(reg, agora){
+  const nome = String((reg && reg.nome) || '');
+  if(!/\.pdf$/i.test(nome))          return { podar:false, motivo:'não é um PDF — fora do escopo da limpeza' };
+  if(!reg.nuvem_ok || !reg.nuvem_ts) return { podar:false, motivo:'ainda não confirmado na nuvem' };
+  const dias = (agora - reg.nuvem_ts) / (24*60*60*1000);
+  if(dias < GS_PODA_DIAS_LOCAL){
+    return { podar:false, motivo:'confirmado na nuvem há ' + Math.floor(dias) + 'd — faltam ' +
+                                 Math.ceil(GS_PODA_DIAS_LOCAL - dias) + 'd' };
+  }
+  return { podar:true, motivo:'na nuvem há ' + Math.floor(dias) + 'd (≥ ' + GS_PODA_DIAS_LOCAL + 'd) — a cópia da nuvem fica para sempre' };
+}
+
+// SOMENTE LEITURA, como a dos backups.
+function _gsPodaSimularPDFs(){
+  const out = { remover:[], manter:[], teto:GS_PODA_TETO, truncado:false };
+  try{
+    const reg = _gsPDFsRegistro();
+    const agora = Date.now();
+    reg.forEach(function(p){
+      if(!p) return;
+      const v = _gsPodaAvaliarPDFLocal(p, agora);
+      const linha = { nome:p.nome, ts:p.nuvem_ts || p.ts, tipo:p.tipo, motivo:v.motivo };
+      if(v.podar) out.remover.push(linha); else out.manter.push(linha);
+    });
+    out.remover.sort(function(a,b){ return (a.ts||0) - (b.ts||0); });
+    if(out.remover.length > GS_PODA_TETO){
+      out.truncado = true;
+      out.excedente = out.remover.length - GS_PODA_TETO;
+      out.remover = out.remover.slice(0, GS_PODA_TETO);
+    }
+  }catch(e){ console.warn('[PODA] simulação de PDFs falhou:', e && e.message); }
+  return out;
+}
+
+// PDFs vivem na RAIZ `GarageSpot/` — não em `Dados/`, que é dos backups.
+async function _gsPodaApagarPDFLocal(nome){
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  if(!F) return false;
+  await F.deleteFile({ path:'GarageSpot/' + nome, directory:'DOCUMENTS' });
+  return true;
+}
+
+async function _gsPodaExecutarPDFs(){
+  if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
+  const plano = _gsPodaSimularPDFs();
+  if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
+  const apagados = [];
+  let erro = null;
+  for(let i = 0; i < plano.remover.length; i++){
+    const it = plano.remover[i];
+    try{ await _gsPodaApagarPDFLocal(it.nome); apagados.push(it); }
+    catch(e){ erro = (e && e.message) || String(e); break; }   // ABORTA, como nos backups
+  }
+  try{
+    const fora = {};
+    apagados.forEach(function(a){ fora[a.nome] = true; });
+    _gsPDFsSalvar(_gsPDFsRegistro().filter(function(p){ return !(p && fora[p.nome]); }));
+  }catch(e){ console.warn('[PODA] registro de PDFs não atualizado:', e && e.message); }
+  apagados.forEach(function(a){
+    try{ addLogSistema('Limpeza: documento do aparelho apagado — ' + a.nome + ' (' + a.motivo + ')',
+      {aud:true, acao:'poda_pdf_local', alvo:a.nome}); }catch(e){}
+  });
+  if(erro){
+    try{ addLogSistema('Limpeza de documentos ABORTADA após ' + apagados.length + ' arquivo(s): ' + erro,
+      {aud:true, acao:'poda_abortada', alvo:String(erro).slice(0,80)}); }catch(e){}
+    return { ok:false, erro:erro, apagados:apagados.length, plano:plano };
+  }
+  return { ok:true, apagados:apagados.length, plano:plano };
+}
+
 // ── Poda da NUVEM ──────────────────────────────────────────────────────────
 // Escopo: SÓ a pasta de backups (`GarageSpot Backups`). A árvore de hospedagens,
 // onde vivem os PDFs de fechamento, não é sequer listada aqui — não existe
 // caminho de código que a alcance, o que é uma garantia melhor que uma condição.
+//
+// v1.9.6.6 — REGRA ABSOLUTA, e ela vale a repetição: NA NUVEM, PDF NUNCA É
+// APAGADO. Nem por idade, nem por escada, nem por cota cheia, nem por teto. A
+// pasta de auditoria também nunca é alcançada. As duas coisas estão travadas por
+// spec (`pdf-na-nuvem-nunca-e-apagado`, `auditoria-na-nuvem-nunca-e-podada`) e
+// por `GD_PASTAS_INTOCAVEIS`.
 function _gdPodaChaveSemana(d){
   // Segunda-feira da semana daquele arquivo — agrupador estável, sem depender de locale.
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -9913,6 +10130,10 @@ async function _gsPodaRodarSeLigada(){
     try{ localStorage.setItem(GS_PODA_ULT_LS, String(Date.now())); }catch(e){}
     const rl = await _gsPodaExecutarLocal();
     if(rl && rl.apagados) console.log('[PODA] local:', rl.apagados, 'arquivo(s)');
+    // v1.9.6.6: os PDFs do APARELHO, com a mesma regra. Só o aparelho — a cópia da
+    // nuvem nunca é tocada por caminho nenhum.
+    const rp = await _gsPodaExecutarPDFs();
+    if(rp && rp.apagados) console.log('[PODA] documentos do aparelho:', rp.apagados, 'arquivo(s)');
     const cfg = _gsPodaConfig();
     if(cfg.nuvem){
       const rn = await _gdPodaExecutarNuvem();
@@ -9943,8 +10164,11 @@ function _renderPodaStatus(){
       Use a <strong>simulação</strong> para conferir antes.
     </div>
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:6px;padding:8px 10px;color:#0F6E56;font-size:11px;line-height:1.5;margin-bottom:8px">
-      Os <strong>PDFs de fechamento nunca são apagados</strong> pelo app — nem no aparelho, nem na nuvem.
-      A limpeza alcança <strong>somente arquivos de backup</strong>.
+      <strong>Na nuvem, nenhum documento é apagado — nunca.</strong> PDFs de fechamento e relatórios de
+      recarga ficam lá para sempre.<br>
+      <span style="color:#155">No aparelho</span>, esses documentos seguem a mesma regra dos backups:
+      saem <strong>só depois de confirmados na nuvem</strong> e de passados <strong>${GS_PODA_DIAS_LOCAL} dias
+      dessa confirmação</strong>. Sem confirmação, ficam.
     </div>
     <button class="bcx" id="btn-poda-simular" onclick="simularLimpeza()" style="width:100%">🔍 Simular limpeza (não apaga nada)</button>
     <button class="bcx" id="btn-poda-toggle" onclick="alternarLimpeza()" style="width:100%;margin-top:6px">${c.ligada?'Desligar limpeza automática':'Ligar limpeza automática'}</button>
@@ -9975,6 +10199,7 @@ async function simularLimpeza(){
     <button class="bcx" onclick="showConexoes()" style="width:100%;margin-top:12px">← Voltar</button>`;
   document.getElementById('ov').classList.add('on');
   const local = _gsPodaSimularLocal();
+  const pdfs  = _gsPodaSimularPDFs();          // v1.9.6.6 — mesma transparência
   let nuvem = { remover:[], manter:[], indisponivel:true };
   try{ nuvem = await _gdPodaSimularNuvem(); }catch(e){ nuvem = { remover:[], manter:[], erro:(e&&e.message)||String(e) }; }
   const fmtL = function(it){
@@ -9993,10 +10218,18 @@ async function simularLimpeza(){
        Simulação <strong>somente leitura</strong> — nenhum arquivo foi tocado. A limpeza está
        <strong>${_gsPodaLigada()?'LIGADA':'DESLIGADA'}</strong>.
      </div>
-     <div class="gestao-menu-sep" style="margin-top:12px">No aparelho</div>
+     <div class="gestao-menu-sep" style="margin-top:12px">Backups no aparelho</div>
      ${bloco('Sairiam', '#A32D2D', local.remover, 'Nada seria apagado agora.')}
      ${local.truncado?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${local.teto} por execução: outros ${local.excedente} ficariam para a próxima.</div>`:''}
      ${bloco('Ficariam', '#0F6E56', local.manter, 'Nenhuma cópia registrada.')}
+     <div class="gestao-menu-sep" style="margin-top:14px">Documentos no aparelho</div>
+     <div style="color:#666;font-size:11px;line-height:1.5;padding:2px 0">
+       PDFs de fechamento e relatórios de recarga. A cópia da <strong>nuvem nunca é apagada</strong> —
+       aqui só se decide o que sai <strong>do aparelho</strong>.
+     </div>
+     ${bloco('Sairiam do aparelho', '#A32D2D', pdfs.remover, 'Nenhum documento seria apagado agora.')}
+     ${pdfs.truncado?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${pdfs.teto} por execução: outros ${pdfs.excedente} ficariam para a próxima.</div>`:''}
+     ${bloco('Ficariam no aparelho', '#0F6E56', pdfs.manter, 'Nenhum documento registrado.')}
      <div class="gestao-menu-sep" style="margin-top:14px">Na nuvem</div>
      ${nuvem.indisponivel?'<div style="color:#999;font-size:11px;padding:4px 0">Drive não conectado — nada a analisar.</div>':''}
      ${nuvem.erro?`<div style="color:#A32D2D;font-size:11px;padding:4px 0">Não deu para listar: ${_vtEsc(nuvem.erro)}</div>`:''}
@@ -11069,7 +11302,37 @@ async function _gdGarantirPastaEm(token, nome, paiId){
 //
 // v1.9.5.3: TUDO passa a viver sob a pasta principal `GarageSpot` — antes as duas
 // pastas ficavam soltas na raiz do Drive do hotel.
-async function _gdGarantirCaminho(token, segmentos){
+// ⚠️ v1.9.6.6 — SERIALIZADO, E ISTO NÃO É ZELO EXCESSIVO: é correção de um defeito
+// REAL, pego pela suíte no momento em que passaram a existir duas operações de
+// nuvem simultâneas (o envio do PDF de fechamento e a retirada do provisório de
+// `Hospedados Hoje`, ambos disparados no mesmo check-out).
+//
+// A criação de pasta é um "procurar, não achou, criar" — e isso não é atômico. Com
+// dois chamadores ao mesmo tempo e a árvore ainda inexistente, OS DOIS procuram,
+// OS DOIS não acham e OS DOIS criam: o Drive do hotel terminava com DUAS pastas
+// `GarageSpot`, cada uma com metade dos documentos. Medido: `PASTA2:GarageSpot` e
+// `PASTA3:GarageSpot`, com um `Apt05` em cada.
+//
+// A fila resolve na raiz do problema: enquanto um caminho está sendo resolvido,
+// nenhum outro resolve. Resolver caminho custa poucas requisições e nunca precisou
+// de paralelismo, então o custo é nulo e a classe INTEIRA de corrida desaparece —
+// não só a instância que apareceu agora.
+//
+// ⚠️ Só `_gdGarantirCaminho` pode entrar na fila. `_gdGarantirPasta` CHAMA esta
+// função; serializar as duas travaria uma esperando a outra para sempre.
+let _gdFilaPastas = Promise.resolve();
+function _gdGarantirCaminho(token, segmentos){
+  const proximo = _gdFilaPastas.then(
+    function(){ return _gdGarantirCaminhoInterno(token, segmentos); },
+    function(){ return _gdGarantirCaminhoInterno(token, segmentos); }   // falha anterior não trava a fila
+  );
+  // A fila avança independentemente do resultado — um erro aqui não pode deixar
+  // toda a nuvem pendurada.
+  _gdFilaPastas = proximo.then(function(){}, function(){});
+  return proximo;
+}
+
+async function _gdGarantirCaminhoInterno(token, segmentos){
   const raiz = await _gdGarantirPastaRaiz(token, GD_PASTA_RAIZ);
   let paiId = raiz;
   let primeiro = true;
@@ -11140,12 +11403,16 @@ async function _gdGarantirPasta(token){
 }
 
 // Upload multipart (metadados + conteúdo numa requisição só).
-async function _gdEnviarArquivo(token, pastaId, nome, texto){
+// v1.9.6.6: `mime` é OPCIONAL e o padrão é o de sempre (`application/json`) — os
+// backups, que são todos os chamadores anteriores, não mudam em nada. O arquivo de
+// auditoria precisa subir como `text/csv` para o Drive abri-lo em planilha.
+async function _gdEnviarArquivo(token, pastaId, nome, texto, mime){
+  const tipo = mime || 'application/json';
   const lim = 'gsbnd' + Date.now() + Math.random().toString(36).slice(2, 8);
-  const meta = JSON.stringify({ name: nome, parents: [pastaId], mimeType: 'application/json' });
+  const meta = JSON.stringify({ name: nome, parents: [pastaId], mimeType: tipo });
   const corpo =
     '--' + lim + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n' +
-    '--' + lim + '\r\nContent-Type: application/json\r\n\r\n' + texto + '\r\n' +
+    '--' + lim + '\r\nContent-Type: ' + tipo + '; charset=UTF-8\r\n\r\n' + texto + '\r\n' +
     '--' + lim + '--';
   const r = await _gdFetch(GD_API_UPLOAD + '/files?uploadType=multipart&fields=id,name,size,createdTime', {
     method: 'POST',
@@ -11726,8 +11993,11 @@ function _gdTirarPDFPendente(nomeArquivo){
 function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
   try{
     if(!_gdDisponivel() || !_gdConectado()){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'Drive não conectado'); return; }
-    _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs).then(function(){
+    _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs).then(function(r){
       _gdTirarPDFPendente(nomeArquivo);
+      // v1.9.6.6: CONFIRMADO na nuvem. É daqui que a janela de 7 dias do aparelho
+      // começa a contar — e é a única coisa que autoriza a limpeza a alcançá-lo.
+      try{ _gsMarcarPDFNaNuvem(nomeArquivo, r && r.id); }catch(eM){}
       addLogSistema('PDF de fechamento enviado à nuvem: ' + nomeArquivo);
     }, function(e){
       _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, (e && e.message) || 'falha no envio');
@@ -11754,11 +12024,346 @@ async function _gdTentarPDFsPendentes(){
     }catch(e){ return; }                            // arquivo sumiu do aparelho: NÃO apagamos o registro
     if(!b64) return;
     try{
-      await _gdEnviarPDFFechamento(item.nome, b64, item.apt, item.checkin);
+      const rr = await _gdEnviarPDFFechamento(item.nome, b64, item.apt, item.checkin);
       _gdTirarPDFPendente(item.nome);
+      try{ _gsMarcarPDFNaNuvem(item.nome, rr && rr.id); }catch(eM){}   // v1.9.6.6
       addLogSistema('PDF de fechamento pendente enviado: ' + item.nome);
     }catch(e){ _gdAgendarRetentativa(); }
   }catch(e){ console.warn('[DRIVE] pendentes de PDF não rodaram:', e && e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.6 — "HOSPEDADOS HOJE": O DOCUMENTO VIVO DE QUEM AINDA ESTÁ NO HOTEL
+// ════════════════════════════════════════════════════════════════════════════
+// O gestor só enxergava vistoria e fotos DEPOIS do check-out. Enquanto o hóspede
+// está no hotel — que é exatamente quando uma dúvida vira discussão — não havia
+// nada na nuvem para consultar. Esta pasta fecha isso.
+//
+// ┌── A MEDIÇÃO QUE DECIDIU O DESENHO (Parte 1, item 3.1) ──────────────────┐
+// │ Medido no Chromium de mesa, com fotos DISTINTAS (jsPDF deduplica imagens │
+// │ idênticas e falsearia o número), 1920×1080 recomprimidas pelo pipeline   │
+// │ real do app:                                                            │
+// │    6 fotos + 1 vistoria → 160–470 ms · PDF 2,9 MB                       │
+// │    9 fotos + 1 vistoria →      375 ms · PDF 4,3 MB                      │
+// │   12 fotos + 2 vistoria →      477 ms · PDF 5,7 MB                      │
+// │    0 fotos + 1 vistoria →       37 ms · PDF  24 KB                      │
+// │ As FOTOS respondem por ~93% do custo; as tabelas de movimentação e       │
+// │ recarga custam os ~37 ms restantes. Num SM-T585 (Exynos 7870, 2 GB) a    │
+// │ conta é de 8 a 15× mais lenta: 1,3 s a 7 s por documento, com 5,7 MB de  │
+// │ string viva num WebView apertado.                                       │
+// │                                                                          │
+// │ CONCLUSÃO HONESTA, e ela tem duas partes:                               │
+// │  (1) Escolhida a versão ENXUTA — o prompt manda escolhê-la diante de     │
+// │      QUALQUER risco de atraso perceptível, e 1,3–7 s é atraso            │
+// │      perceptível. Ela também derruba o pico de memória e os megabytes    │
+// │      enviados a cada atualização, que num tablet de 2 GB pesam mais que  │
+// │      os milissegundos.                                                  │
+// │  (2) A escolha enxuta×completa NÃO é o que protege o manobrista — as     │
+// │      fotos dominam nas duas. Quem protege é o AGRUPAMENTO (nada roda     │
+// │      durante a rajada de toques) somado ao segundo plano. Registrado     │
+// │      aqui para que ninguém "otimize" removendo o debounce achando que a  │
+// │      versão enxuta já resolve.                                          │
+// └─────────────────────────────────────────────────────────────────────────┘
+const GD_PASTA_HOJE = 'Hospedados Hoje';
+const HHJ_LS        = 'garagespot_hhoje';
+
+// AGRUPAMENTO (resposta ao item 3.1.4). 20 segundos contados do ÚLTIMO toque.
+// Por quê: o manobrista age em rajada — abre a hospedagem, tira 8 fotos seguidas,
+// assina, fecha. Sem agrupamento seriam 8 gerações e 8 envios de megabytes durante
+// a rajada, que é justamente o pior momento possível. Com 20 s a rajada inteira
+// vira UM documento. Curto o bastante para o gestor ver a atualização em menos de
+// meio minuto; longo o bastante para nenhuma sequência humana normal escapar dele.
+const HHJ_DEBOUNCE_MS = 20000;
+// Respiro entre dois documentos quando há vários pendentes: um por vez, nunca
+// em paralelo, com folga para a interface entre eles.
+const HHJ_INTERVALO_MS = 3000;
+
+let _hhjTimer = null, _hhjRodando = false;
+
+function _hhjEstado(){
+  try{
+    const e = JSON.parse(localStorage.getItem(HHJ_LS) || 'null');
+    return Object.assign({ arquivos:{}, pendentes:{}, falhas:0 }, e || {});
+  }catch(e){ return { arquivos:{}, pendentes:{}, falhas:0 }; }
+}
+function _hhjSalvar(e){
+  try{ _gsSetItemSeguro(HHJ_LS, JSON.stringify(e), 'fila do Hospedados Hoje'); }catch(x){}
+}
+
+// "ATIVA" = ainda sem check-out. Inclui DE PROPÓSITO o carro a passeio: o hóspede
+// continua hospedado, o carro só está na rua — e é justamente aí que a vistoria de
+// entrada mais importa. Não depende de haver vaga ocupada.
+function _hhjAtiva(gs){
+  try{
+    const h = HOSPEDAGENS && HOSPEDAGENS[gs];
+    return !!(h && (h.checkout_ts == null || h.checkout_ts === undefined));
+  }catch(e){ return false; }
+}
+function _hhjAtivas(){
+  try{ return Object.keys(HOSPEDAGENS || {}).filter(_hhjAtiva); }catch(e){ return []; }
+}
+
+// NOME DO ARQUIVO — e por que este.
+//   `_EM-ANDAMENTO_GS058_apt05_in02-08-26.pdf`
+// • o `_` inicial agrupa os provisórios no topo de qualquer listagem do Drive;
+// • `_EM-ANDAMENTO_` diz o que é sem manual, para quem abrir a pasta pelo celular;
+// • NÃO tem o segmento `_out<data>` — e é ele que dá identidade ao documento
+//   FINAL (`GS058_apt05_in02-08-26_out04-08-26.pdf`). A ausência do fecho é o
+//   sinal mais forte possível de que a hospedagem não terminou: não há como
+//   confundir um com o outro, nem por engano nem de má-fé;
+// • pela mesma razão, `_gdHistClassificar` (que exige `^GS…`) nunca o reconhece
+//   como PDF de fechamento — mesmo que um dia ele parasse no aparelho por engano.
+function _hhjNome(gs){
+  const h = (HOSPEDAGENS && HOSPEDAGENS[gs]) || {};
+  const ent = _dataCurtaLocal(h.checkin_ts);
+  return '_EM-ANDAMENTO_' + (gs || 'semGS') + '_apt' + _apt2Txt(h.apt) +
+         (ent ? '_in' + ent : '') + '.pdf';
+}
+
+// Monta o material da versão ENXUTA: dados da hospedagem, a vistoria e as fotos.
+// Reaproveita EXATAMENTE o mesmo gerador do fechamento — nada de segundo desenho
+// de documento, que é o que o prompt exige e também o que evita duas verdades.
+function _hhjMaterial(gs){
+  const h = (HOSPEDAGENS && HOSPEDAGENS[gs]) || {};
+  const apt = h.apt || '';
+  // O veículo pode estar numa vaga, ou fora (a passeio), ou ainda sem designação.
+  let vagaId = '', dv = null;
+  try{
+    vagaId = Object.keys(S || {}).filter(function(k){ return S[k] && S[k].hospedagem === gs; })[0] || '';
+  }catch(e){}
+  if(vagaId && S[vagaId]){
+    const d = S[vagaId];
+    dv = { model:d.model, color:d.color, plate:d.plate, guest:d.guest, obs:d.obs||'',
+           size:d.size||'small', vaga:vagaId, hospedagem:gs, apt:apt };
+  } else if(apt && PASSEIO && PASSEIO[apt] && PASSEIO[apt].hospedagem === gs){
+    const p = PASSEIO[apt];
+    dv = { model:p.model, color:p.color, plate:p.plate, guest:p.guest, obs:p.obs||'',
+           size:p.size||'small', vaga:p.lastVaga||'', hospedagem:gs, apt:apt };
+  } else {
+    dv = { model:h.model||'', color:h.color||'', plate:h.plate||'', guest:h.guest||h.hospede||'',
+           obs:'', size:'small', vaga:h.vaga_inicial||'', hospedagem:gs, apt:apt };
+  }
+
+  // VERSÃO ENXUTA: só o check-in entra no histórico. É ele que preenche "Entrada"
+  // e deixa "Saída: Em andamento" — que é a informação certa para um documento de
+  // hospedagem viva. Movimentações e recarga ficam de fora por decisão da medição.
+  const hist = [];
+  if(h.checkin_ts) hist.push({ tipo:'checkin', ts:h.checkin_ts, vaga:(h.vaga_inicial||dv.vaga||''),
+                               usuario:h.usuario_checkin||'', hospedagem:gs, apt:apt });
+
+  // Fotos e documentos de vistoria da hospedagem. Mesma leitura do check-out, mas
+  // SEM recargas — que são movimentação financeira, não estado do veículo.
+  const todos = [].concat((ANEXOS && ANEXOS['h_' + gs]) || [],
+                          vagaId ? ((ANEXOS && ANEXOS['v_' + vagaId]) || []) : []);
+  const snapshot = { vagaId:vagaId, gs:gs, recargas:[], todos:todos,
+    fotos: todos.filter(function(a){
+      if(!a) return false;
+      const ehFoto = a.tipo === 'foto' || (a.isImg === true && a.tipo !== 'vistoria' && !a.tipo);
+      return ehFoto && !!(a.data || a.base64Original);
+    }),
+    vistorias: todos.filter(function(a){ return a && a.tipo === 'vistoria' && !!(a.data || a.base64Original); }),
+  };
+  return { apt:apt, dv:dv, hist:hist, snapshot:snapshot };
+}
+
+async function _hhjGerarDoc(gs){
+  const m = _hhjMaterial(gs);
+  // Mesmo gerador do fechamento. O único ajuste é o RÓTULO: chamar de "Comprovante
+  // de Check-out" um hóspede que não saiu seria dizer no documento uma coisa que os
+  // dados desmentem — o oposto do que este recurso existe para garantir.
+  return await buildRegistroDocAsync(m.apt, m.dv, m.hist, m.snapshot, null, {
+    titulo:  'Hospedagem em andamento',
+    eyebrow: 'Documento provisório · atualizado automaticamente',
+    semSelo: true,
+  });
+}
+
+// Atualiza o CONTEÚDO de um PDF que já existe na nuvem, preservando o id (e, com
+// ele, qualquer link que o gestor tenha guardado). Criar um arquivo novo a cada
+// atualização encheria a pasta de duplicatas do mesmo hóspede.
+async function _hhjAtualizarBin(token, id, b64, mime){
+  const lim = 'gsbnd' + Date.now() + Math.random().toString(36).slice(2, 8);
+  const meta = JSON.stringify({ mimeType: mime });
+  const corpo =
+    '--' + lim + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n' +
+    '--' + lim + '\r\nContent-Type: ' + mime + '\r\nContent-Transfer-Encoding: base64\r\n\r\n' + b64 + '\r\n' +
+    '--' + lim + '--';
+  const r = await _gdFetch(GD_API_UPLOAD + '/files/' + encodeURIComponent(id) +
+    '?uploadType=multipart&fields=id,name,size', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'multipart/related; boundary=' + lim },
+      body: corpo,
+    }, token, 'atualizar o documento da hospedagem');
+  return await r.json();
+}
+
+async function _hhjPastaId(token){
+  return await _gdGarantirCaminho(token, [GD_PASTA_HOSP, GD_PASTA_HOJE]);
+}
+async function _hhjAcharPorNome(token, pastaId, nome){
+  const q = "name='" + _gdEscQ(nome) + "' and '" + _gdEscQ(pastaId) + "' in parents and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&fields=files(id,name)&pageSize=5', {method:'GET'}, token, 'procurar o documento da hospedagem');
+  const j = await r.json();
+  return (j && j.files && j.files[0]) || null;
+}
+// Lixeira, não exclusão definitiva — 30 dias de arrependimento, como no resto do app.
+async function _hhjLixeira(token, id){
+  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,trashed', {
+    method:'PATCH', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ trashed:true }),
+  }, token, 'retirar o documento de Hospedados Hoje');
+  return await r.json();
+}
+
+// Gera e envia o documento de UMA hospedagem. Nunca é chamada de dentro de uma
+// ação do manobrista — só do trabalhador de segundo plano.
+async function _hhjEnviarUm(gs){
+  if(!_hhjAtiva(gs)) { await _hhjRetirar(gs); return { retirado:true }; }
+  const doc = await _hhjGerarDoc(gs);
+  if(!doc) throw new Error('gerador de PDF indisponível');
+  await _pdfCeder();                                   // respiro antes de serializar
+  const b64 = doc.output('datauristring').split(',')[1];
+  const nome = _hhjNome(gs);
+  return await _gdComToken(async function(token){
+    const pasta = await _hhjPastaId(token);
+    const est = _hhjEstado();
+    const reg = est.arquivos[gs];
+    // 1) id lembrado. 2) busca pelo NOME (aparelho restaurado, ou id perdido).
+    //    3) só então cria. Esta ordem é o que impede duplicata.
+    let id = (reg && reg.id) || '';
+    if(id){
+      try{ await _hhjAtualizarBin(token, id, b64, 'application/pdf'); }
+      catch(e){
+        if(e && e.gdAuth) throw e;
+        if(!(e && e.gdDet && e.gdDet.status === 404)) throw e;
+        id = '';                                       // alguém apagou no Drive: recria
+      }
+    }
+    if(!id){
+      const achado = await _hhjAcharPorNome(token, pasta, nome);
+      if(achado && achado.id){ id = achado.id; await _hhjAtualizarBin(token, id, b64, 'application/pdf'); }
+      else {
+        const criado = await _gdEnviarArquivoBin(token, pasta, nome, b64, 'application/pdf');
+        id = (criado && criado.id) || '';
+      }
+    }
+    const e2 = _hhjEstado();
+    e2.arquivos[gs] = { id:id, nome:nome, ts:Date.now() };
+    delete e2.pendentes[gs];
+    _hhjSalvar(e2);
+    return { id:id, nome:nome };
+  }, false);
+}
+
+// Tira o documento provisório da pasta. Chamado no check-out e pela conferência.
+// NUNCA falha para fora: um provisório que sobrou é conserto da próxima rodada.
+async function _hhjRetirar(gs){
+  try{
+    const est = _hhjEstado();
+    const reg = est.arquivos[gs];
+    const nome = (reg && reg.nome) || _hhjNome(gs);
+    await _gdComToken(async function(token){
+      const pasta = await _hhjPastaId(token);
+      let id = (reg && reg.id) || '';
+      if(!id){ const a = await _hhjAcharPorNome(token, pasta, nome); id = (a && a.id) || ''; }
+      if(id) await _hhjLixeira(token, id);
+      return true;
+    }, false);
+    const e2 = _hhjEstado();
+    delete e2.arquivos[gs];
+    delete e2.pendentes[gs];
+    _hhjSalvar(e2);
+    return true;
+  }catch(e){ console.warn('[HHJ] não retirou', gs, '—', e && e.message); return false; }
+}
+
+// ── O GATILHO ──────────────────────────────────────────────────────────────
+// É a ÚNICA função chamada de dentro das ações do manobrista, e ela é O(1): grava
+// um marcador pequeno e (re)arma um temporizador. Nada de PDF, nada de rede, nada
+// que possa demorar. Se ela falhar, falha em silêncio — a ação segue igual.
+function _hhjMarcar(gs, motivo){
+  try{
+    if(!gs || !_hhjAtiva(gs)) return;
+    const est = _hhjEstado();
+    est.pendentes[gs] = { ts:Date.now(), motivo:String(motivo || '') };
+    _hhjSalvar(est);
+    if(_hhjTimer) clearTimeout(_hhjTimer);
+    _hhjTimer = setTimeout(function(){ _hhjTimer = null; _hhjProcessar(); }, HHJ_DEBOUNCE_MS);
+  }catch(e){ console.warn('[HHJ] marcação ignorada:', e && e.message); }
+}
+
+// Trabalhador de segundo plano. UM documento por vez, com respiro entre eles.
+// Qualquer condição ruim: sai calado e tenta no tique de 10 min.
+async function _hhjProcessar(){
+  if(_hhjRodando) return;
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(DRIVE_STATUS.nuvem_cheio) return;
+    if(_gdEnviando) return;                            // backup completo tem prioridade
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(typeof gsPronto === 'function' && !gsPronto()) return;
+    // MODAL ABERTO = manobrista no meio de alguma coisa. A regra do projeto é que a
+    // fluidez da operação tem prioridade sobre a completude do recurso, e gerar um
+    // PDF de megabytes por baixo de um modal aberto é exatamente o oposto disso.
+    // Adiar não custa nada: o tique de 10 min retoma.
+    try{
+      const ov = document.getElementById('ov');
+      if(ov && ov.classList.contains('on')) return;
+    }catch(e){}
+    const est = _hhjEstado();
+    const alvos = Object.keys(est.pendentes || {});
+    if(!alvos.length) return;
+    _hhjRodando = true;
+    for(const gs of alvos){
+      try{
+        await _hhjEnviarUm(gs);
+      }catch(e){
+        // A FALHA NÃO CUSTA A AÇÃO NEM O REGISTRO: o pendente continua na fila e a
+        // próxima rodada tenta de novo. Só o documento de consulta atrasa.
+        const e2 = _hhjEstado();
+        e2.falhas = (e2.falhas || 0) + 1;
+        _hhjSalvar(e2);
+        console.warn('[HHJ] documento de', gs, 'não subiu (fica pendente):', e && e.message);
+        try{ addLogSistema('Hospedados Hoje: documento de ' + gs + ' não subiu — ' +
+          ((e && e.message) || 'erro') + ' (fica pendente)'); }catch(_){}
+        break;                                         // rede ruim: para o lote aqui
+      }
+      await new Promise(function(r){ setTimeout(r, HHJ_INTERVALO_MS); });
+    }
+  }catch(e){ console.warn('[HHJ] lote não rodou:', e && e.message); }
+  finally{ _hhjRodando = false; }
+}
+
+// CONFERÊNCIA DA PASTA. Garante as duas promessas que não podem depender de um
+// envio ter dado certo na hora: ninguém que já saiu continua lá, e sem hospedagem
+// ativa a pasta fica VAZIA. Roda no tique, depois do lote.
+async function _hhjConferir(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(_gdEnviando) return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(typeof gsPronto === 'function' && !gsPronto()) return;
+    const ativas = {};
+    _hhjAtivas().forEach(function(g){ ativas[_hhjNome(g)] = true; });
+    await _gdComToken(async function(token){
+      const pasta = await _hhjPastaId(token);
+      const filhos = await _gdFilhos(token, pasta);
+      for(const f of filhos){
+        if(!f || f.mimeType === GD_MIME_PASTA) continue;
+        if(ativas[f.name]) continue;                   // hospedagem ainda ativa: fica
+        await _hhjLixeira(token, f.id);
+        addLogSistema('Hospedados Hoje: documento retirado (hospedagem encerrada) — ' + f.name);
+      }
+      return true;
+    }, false);
+    // limpa do registro local o que não é mais ativo
+    const est = _hhjEstado();
+    let mudou = false;
+    Object.keys(est.arquivos || {}).forEach(function(g){ if(!_hhjAtiva(g)){ delete est.arquivos[g]; mudou = true; } });
+    Object.keys(est.pendentes || {}).forEach(function(g){ if(!_hhjAtiva(g)){ delete est.pendentes[g]; mudou = true; } });
+    if(mudou) _hhjSalvar(est);
+  }catch(e){ console.warn('[HHJ] conferência não rodou:', e && e.message); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -11837,14 +12442,34 @@ function _gdHistClassificar(nome){
   return null;   // backups, exports, relatórios de período, qualquer outra coisa
 }
 
+// v1.9.6.6 — QUANDO NÃO HÁ CHECK-IN, VALE A DATA DE CHECK-OUT.
+// A v1.9.6.4 recusou-se a usar a data de check-out e mandou o arquivo para um balde,
+// e o raciocínio dela continua certo: a árvore é organizada por CHECK-IN, e usar a
+// de check-out arquiva no mês errado toda hospedagem que virou o mês. O que mudou é
+// a comparação. A alternativa real não é "mês certo × mês errado": é "mês
+// aproximado × pasta onde ninguém procura". Uma hospedagem de hotel dura poucos
+// dias, então na maioria esmagadora dos casos o mês do check-out É o do check-in; e
+// mesmo quando não é, errar por um mês num documento que o gestor acha pelo apto e
+// pelo GS é incomparavelmente melhor que deixá-lo num balde sem organização.
+// A origem da data continua declarada na trilha — não se apaga o fato, só se
+// arquiva melhor.
+function _gdDataChecagemFallback(item){
+  if(!item || !item.checkoutIso) return null;
+  const p = String(item.checkoutIso).split('-');
+  if(p.length !== 3) return null;
+  const ts = new Date(parseInt(p[0],10), parseInt(p[1],10) - 1, parseInt(p[2],10), 12, 0, 0).getTime();
+  return isNaN(ts) ? null : ts;
+}
+
 // Onde cada arquivo vai parar na nuvem.
 function _gdHistDestino(item){
   if(item.tipo === 'recarga') return [GD_PASTA_RECARGAS];
   if(item.checkin) return [GD_PASTA_HOSP].concat(_gdPastasHospedagem(item.apt, item.checkin));
-  // SEM DATA RECUPERÁVEL. Não se arquiva pelo check-out (arquivaria no mês errado)
-  // e não se inventa nada: vai para uma pasta declarada, com o apartamento
-  // preservado, e o gestor decide depois o que fazer. Silêncio aqui seria pior que
-  // o problema.
+  const alt = _gdDataChecagemFallback(item);
+  if(alt) return [GD_PASTA_HOSP].concat(_gdPastasHospedagem(item.apt, alt));
+  // SEM DATA NENHUMA RECUPERÁVEL — nem de entrada, nem de saída. Aí sim não se
+  // inventa: vai para a pasta declarada, com o apartamento preservado, e o fato é
+  // dito na trilha e no card de nuvem.
   return [GD_PASTA_HOSP, GD_PASTA_SEM_DATA, 'Apt' + _apt2Txt(item.apt)];
 }
 
@@ -11874,7 +12499,9 @@ async function _gdHistVarrer(){
     if(jaEnviado[n] || jaNaFila[n]) return;      // idempotência da própria varredura
     const c = _gdHistClassificar(n);
     if(!c) return;
-    if(c.tipo === 'fechamento' && !c.checkin) semData++;
+    // v1.9.6.6: "sem data" agora significa SEM NENHUMA data — nem de entrada, nem
+    // de saída. Quem tem só a de check-out passa a ser arquivado por ela.
+    if(c.tipo === 'fechamento' && !c.checkin && !_gdDataChecagemFallback(c)) semData++;
     novos.push(c);
   });
   // Mais antigos primeiro: se o envio for interrompido, o que já subiu é o histórico
@@ -11947,9 +12574,16 @@ async function _gdHistProcessar(){
         est.pendentes = est.pendentes.filter(function(x){ return x.nome !== item.nome; });
         est.enviados = (est.enviados || []).concat([item.nome]);
         _gdHistSalvar(est);
+        // v1.9.6.6: o documento está COMPROVADAMENTE na nuvem (enviado agora, ou já
+        // encontrado lá pela conferência por nome). Só a partir daqui ele pode um dia
+        // sair do aparelho — e ainda assim só depois dos 7 dias.
+        try{ _gsMarcarPDFNaNuvem(item.nome, res && res.id); }catch(eM){}
         if(!(res && res.pulado)){
+          const _semData = (item.tipo === 'fechamento' && !item.checkin && !_gdDataChecagemFallback(item));
+          const _porSaida = (item.tipo === 'fechamento' && !item.checkin && !_semData);
           addLogSistema('Histórico enviado à nuvem: ' + item.nome +
-            (item.tipo === 'fechamento' && !item.checkin ? ' → ' + GD_PASTA_SEM_DATA : ''),
+            (_semData ? ' → ' + GD_PASTA_SEM_DATA : '') +
+            (_porSaida ? ' (arquivado pela data de check-out — sem check-in recuperável)' : ''),
             {aud:true, acao:'historico_enviado', alvo:item.nome});
         }
       }catch(e){
@@ -11967,6 +12601,110 @@ async function _gdHistProcessar(){
     }
     try{ if(typeof _gdReabrirConexoes === 'function') _gdReabrirConexoes(); }catch(e){}
   }catch(e){ console.warn('[HIST] lote não rodou:', e && e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.6 — ESVAZIAR O BALDE `_Sem data de check-in`
+// ════════════════════════════════════════════════════════════════════════════
+// O que já foi arquivado no balde pela v1.9.6.4 é reclassificado com a regra nova
+// (data de check-out) e MOVIDO para a árvore definitiva.
+//
+// MOVER, NUNCA RECRIAR — é a regra de ouro da migração de pastas da v1.9.5.3, e
+// pelos mesmos motivos: mover é uma alteração de metadados que PRESERVA o id e o
+// conteúdo; recriar e reenviar duplicaria megabytes, geraria um id novo (quebrando
+// qualquer link que o gestor tenha guardado) e criaria uma janela em que o
+// documento existe em dois lugares — ou em nenhum.
+//
+// IDEMPOTENTE E RETOMÁVEL: cada arquivo é movido individualmente e o progresso é
+// gravado a cada um. Interrompeu no meio, continua de onde parou; rodou de novo,
+// não acha mais nada para mover porque a pasta de origem já está vazia daquele item.
+const GD_REORG_LS   = 'garagespot_reorg_semdata';
+const GD_REORG_LOTE = 10;   // por rodada — mover é barato (metadados), mas não há pressa
+
+function _gdReorgEstado(){
+  try{
+    const e = JSON.parse(localStorage.getItem(GD_REORG_LS) || 'null');
+    return Object.assign({ concluida:false, movidos:0, permaneceram:0, ts:0 }, e || {});
+  }catch(e){ return { concluida:false, movidos:0, permaneceram:0, ts:0 }; }
+}
+function _gdReorgSalvar(e){
+  try{ _gsSetItemSeguro(GD_REORG_LS, JSON.stringify(e), 'reorganização do balde'); }catch(x){}
+}
+
+async function _gdReorganizarSemData(){
+  try{
+    const est0 = _gdReorgEstado();
+    if(est0.concluida) return;
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(DRIVE_STATUS.nuvem_cheio) return;
+    if(_gdEnviando) return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(typeof gsPronto === 'function' && !gsPronto()) return;
+
+    let movidos = 0, ficaram = 0, acabou = false;
+    await _gdComToken(async function(token){
+      const raizHosp = await _gdGarantirCaminho(token, [GD_PASTA_HOSP]);
+      // A pasta do balde pode nem existir — nesse caso não há nada a fazer, e
+      // criá-la só para conferir seria sujeira.
+      const baldeId = await (async function(){
+        const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(GD_PASTA_SEM_DATA) +
+                  "' and '" + _gdEscQ(raizHosp) + "' in parents and trashed=false";
+        const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+          '&spaces=drive&fields=files(id,name)&pageSize=5', {method:'GET'}, token, 'procurar o balde sem data');
+        const j = await r.json();
+        return (j && j.files && j.files[0] && j.files[0].id) || '';
+      })();
+      if(!baldeId){ acabou = true; return true; }
+
+      const subs = (await _gdFilhos(token, baldeId)).filter(function(f){ return f.mimeType === GD_MIME_PASTA; });
+      let orcamento = GD_REORG_LOTE;
+      for(const sub of subs){                       // sub = `Apt<n>`
+        if(orcamento <= 0) break;
+        const arquivos = (await _gdFilhos(token, sub.id)).filter(function(f){ return f.mimeType !== GD_MIME_PASTA; });
+        for(const f of arquivos){
+          if(orcamento <= 0) break;
+          const c = _gdHistClassificar(f.name);
+          // Reclassifica com os dados de HOJE: `HOSPEDAGENS` pode ter sido
+          // restaurado de um backup e agora conhecer o check-in que faltava.
+          const ts = (c && c.checkin) || (c && _gdDataChecagemFallback(c)) || null;
+          if(!c || !ts){ ficaram++; continue; }      // sem data nenhuma: permanece no balde
+          const destino = await _gdGarantirCaminho(token,
+            [GD_PASTA_HOSP].concat(_gdPastasHospedagem(c.apt, ts)));
+          if(destino === sub.id){ ficaram++; continue; }
+          await _gdMover(token, f.id, destino, sub.id);
+          movidos++; orcamento--;
+          // Gravado A CADA arquivo, não no fim do lote — é o que torna retomável.
+          const e1 = _gdReorgEstado();
+          e1.movidos = (e1.movidos || 0) + 1; e1.ts = Date.now();
+          _gdReorgSalvar(e1);
+          addLogSistema('Balde sem data: ' + f.name + ' arquivado por ' +
+            (c.checkin ? 'check-in recuperado' : 'data de check-out'),
+            {aud:true, acao:'reorg_sem_data', alvo:f.name});
+        }
+      }
+      // Terminou de verdade quando um passe inteiro não moveu nada e o orçamento
+      // ainda sobrava — ou seja, não há mais nada movível.
+      if(orcamento > 0) acabou = true;
+      return true;
+    }, false);
+
+    const est = _gdReorgEstado();
+    est.permaneceram = ficaram;
+    est.ts = Date.now();
+    if(acabou){
+      est.concluida = true;
+      addLogSistema('Balde sem data: reorganização concluída — ' + (est.movidos || 0) +
+        ' movido(s), ' + ficaram + ' permaneceu(ram) sem data recuperável',
+        {aud:true, acao:'reorg_sem_data_fim', alvo:String(est.movidos || 0)});
+    }
+    _gdReorgSalvar(est);
+    if(movidos){ try{ if(typeof _gdReabrirConexoes === 'function') _gdReabrirConexoes(); }catch(e){} }
+  }catch(e){
+    // ABORTO SEGURO: não marca como concluída, não apaga nada, não recria nada. O
+    // que já foi movido está inteiro no lugar novo; o resto tenta na próxima rodada.
+    console.warn('[REORG] abortada (nada ficou pela metade):', e && e.message);
+    try{ addLogSistema('Balde sem data: reorganização adiada — ' + ((e && e.message) || 'erro')); }catch(_){}
+  }
 }
 
 // Progresso DISCRETO no card de nuvem — sem modal, sem roubar foco. Some sozinho
@@ -11988,6 +12726,212 @@ function _gdHistProgressoHTML(){
     return `<div id="hist-progresso" style="background:#F1F5FA;border:1px solid #2E6DB4;border-radius:6px;padding:7px 9px;margin-top:6px;color:#153E6B;font-size:11px;line-height:1.5">
       ⬆️ Enviando histórico: <strong>${env} de ${total}</strong>. Continua sozinho, aos poucos — nada é apagado do aparelho.</div>`;
   }catch(e){ return ''; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.6 — ARQUIVAMENTO DA TRILHA DE AUDITORIA NA NUVEM
+// ════════════════════════════════════════════════════════════════════════════
+// POR QUE UMA PASTA SEPARADA, E NÃO DENTRO DE `GarageSpot Backups`:
+// a pasta de backups É ALCANÇADA PELA PODA. A de auditoria NUNCA pode ser. Separar
+// por DESTINO, e não por condição dentro de um mesmo lugar, elimina a chance de um
+// erro de lógica um dia apagar auditoria — a mesma razão pela qual os PDFs de
+// fechamento vivem fora de `Dados/`. Uma pasta que o código da poda nem lista vale
+// mais do que um `if` que promete não tocar nela.
+const GD_PASTA_AUDITORIA = 'GarageSpot Auditoria';
+// Pastas que a poda NUNCA pode alcançar, por nome. É cinto além do suspensório: a
+// poda só lista `GarageSpot Backups`, então já não há caminho de código até aqui;
+// esta lista existe para que uma mudança futura falhe na spec, e não no hotel.
+const GD_PASTAS_INTOCAVEIS = [GD_PASTA_AUDITORIA, GD_PASTA_HOSP, GD_PASTA_RECARGAS];
+function _gdPodaPastaProibida(nome){
+  return GD_PASTAS_INTOCAVEIS.indexOf(String(nome || '')) >= 0;
+}
+
+// FORMATO: CSV mensal, ponto-e-vírgula, com BOM UTF-8.
+//   `trilha-2026-08.csv`  ·  `sistema-2026-08.csv`
+//
+// Por que CSV e não JSON: o requisito é "legível por um humano anos depois". Um CSV
+// abre em qualquer planilha, em qualquer aparelho, sem ferramenta nenhuma e sem
+// depender de o app existir — que é justamente o cenário em que uma trilha de
+// auditoria é consultada. Ponto-e-vírgula é o separador que o Excel em pt-BR assume,
+// e o BOM é o que faz os acentos aparecerem certos ao abrir com dois toques.
+// Por que MENSAL e não um arquivo único: o arquivo é reescrito a cada acréscimo (o
+// Drive não tem append), então o custo de cada envio é o TAMANHO DO ARQUIVO. Mensal
+// mantém esse custo estável para sempre; um arquivo único cresceria indefinidamente
+// até um envio de megabytes por causa de uma linha nova.
+const GD_AUD_CAB_TRILHA  = 'id;quando;acao;quem;alvo;origem;mensagem';
+const GD_AUD_CAB_SISTEMA = 'id;quando;mensagem';
+const GD_AUD_BOM         = '﻿';
+
+// Identidade estável de um registro. Não depende de estado local nenhum: dois
+// aparelhos, ou o mesmo aparelho restaurado do zero, calculam o MESMO id para o
+// MESMO registro. É o que torna o arquivamento idempotente de verdade.
+function _gdAudId(e){
+  const base = String((e && e.ts) || 0) + '|' + String((e && e.acao) || '') + '|' +
+               String((e && e.quem) || '') + '|' + String((e && e.alvo) || '') + '|' +
+               String((e && e.msg) || '');
+  let h = 5381;
+  for(let i = 0; i < base.length; i++){ h = ((h * 33) ^ base.charCodeAt(i)) >>> 0; }
+  return String((e && e.ts) || 0) + '-' + h.toString(36);
+}
+function _gdAudCampo(v){
+  const s = String(v == null ? '' : v);
+  // O separador é `;`. Trocar por `,` dentro do campo é mais legível numa planilha
+  // do que aspas escapadas, e nenhum campo da trilha depende de pontuação exata.
+  return s.replace(/[;\r\n]+/g, ', ').trim();
+}
+function _gdAudLinha(e){
+  if(e && e.aud){
+    return [_gdAudId(e), new Date(e.ts || 0).toLocaleString('pt-BR'), _gdAudCampo(e.acao),
+            _gdAudCampo(e.quem), _gdAudCampo(e.alvo), _gdAudCampo(e.origem), _gdAudCampo(e.msg)].join(';');
+  }
+  return [_gdAudId(e), new Date((e && e.ts) || 0).toLocaleString('pt-BR'), _gdAudCampo(e && e.msg)].join(';');
+}
+// Mês LOCAL do registro — `_localISO`, nunca `toISOString()`: das 21h à meia-noite o
+// UTC já virou o dia (e, no dia 31, o mês) seguinte. Mesmo motivo da v1.9.4.14.
+function _gdAudMes(ts){
+  const iso = _localISO(new Date(ts || Date.now())) || _hojeLocalISO();
+  return iso.slice(0, 7);                                  // AAAA-MM
+}
+function _gdAudNomeArquivo(prefixo, mes){ return prefixo + '-' + mes + '.csv'; }
+
+// Lê o arquivo do mês, se existir. Devolve {id, texto} ou null.
+async function _gdAudLerMes(token, pastaId, nome){
+  const q = "name='" + _gdEscQ(nome) + "' and '" + _gdEscQ(pastaId) + "' in parents and trashed=false";
+  const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
+    '&spaces=drive&fields=files(id,name)&pageSize=5', {method:'GET'}, token, 'procurar o arquivo de auditoria');
+  const j = await r.json();
+  const f = j && j.files && j.files[0];
+  if(!f || !f.id) return null;
+  const texto = await _gdBaixarArquivo(token, f.id);
+  return { id: f.id, texto: String(texto == null ? '' : texto) };
+}
+
+// Grava o arquivo do mês. SÓ ACRESCENTA: o conteúdo novo é sempre
+// `conteúdo anterior + linhas novas`. Não existe caminho aqui que encurte ou
+// reescreva o que já estava — e a leitura precisa ter dado certo para chegar
+// até aqui (falha de leitura ABORTA lá em cima, sem escrever nada).
+async function _gdAudGravarMes(token, pastaId, nome, id, conteudo){
+  if(id){
+    const r = await _gdFetch(GD_API_UPLOAD + '/files/' + encodeURIComponent(id) +
+      '?uploadType=media&fields=id,name,size', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'text/csv; charset=UTF-8' },
+        body: conteudo,
+      }, token, 'atualizar o arquivo de auditoria');
+    return await r.json();
+  }
+  return await _gdEnviarArquivo(token, pastaId, nome, conteudo, 'text/csv');
+}
+
+// Arquiva UM grupo (um mês, de uma das duas séries). Devolve os registros que
+// ficaram COMPROVADAMENTE gravados na nuvem — e só esses podem ser marcados.
+async function _gdAudArquivarGrupo(token, pastaId, prefixo, cabecalho, mes, registros){
+  const nome = _gdAudNomeArquivo(prefixo, mes);
+  const atual = await _gdAudLerMes(token, pastaId, nome);   // falha aqui PROPAGA: não grava nada
+  const anterior = atual ? atual.texto : '';
+  // IDEMPOTÊNCIA QUE NÃO DEPENDE DO REGISTRO LOCAL: os ids já presentes no arquivo
+  // são lidos do PRÓPRIO arquivo. Rodar de novo, ou rodar num aparelho restaurado
+  // sem marca nenhuma, não duplica uma linha sequer.
+  const presentes = {};
+  anterior.split('\n').forEach(function(l){
+    const id = l.split(';')[0];
+    if(id) presentes[id.replace(GD_AUD_BOM, '')] = true;
+  });
+  const novos = registros.filter(function(e){ return !presentes[_gdAudId(e)]; });
+  if(!novos.length) return { gravados: registros, novos: 0 };   // já estava tudo lá
+  const linhas = novos.map(_gdAudLinha).join('\n') + '\n';
+  const base = anterior || (GD_AUD_BOM + cabecalho + '\n');
+  const conteudo = (base.slice(-1) === '\n' ? base : base + '\n') + linhas;
+  await _gdAudGravarMes(token, pastaId, nome, atual && atual.id, conteudo);
+  return { gravados: registros, novos: novos.length, arquivo: nome };
+}
+
+// Marca as entradas como arquivadas, na fonte, sem tocar em campo nenhum de
+// conteúdo. Só é chamada DEPOIS de o Drive ter confirmado a gravação.
+function _gdAudMarcarArquivadas(ids){
+  try{
+    if(!ids || !ids.length) return 0;
+    const alvo = {};
+    ids.forEach(function(i){ alvo[i] = true; });
+    const log = _lerLog();
+    let n = 0;
+    log.forEach(function(e){
+      if(e && !e.nuv && alvo[_gdAudId(e)]){ e.nuv = 1; n++; }
+    });
+    if(n){
+      // `localStorage.setItem` direto, pelo mesmo motivo do `addLogSistema`:
+      // `_gsSetItemSeguro` chama `addLogSistema` com a cota cheia e as duas
+      // entrariam em laço infinito.
+      try{ localStorage.setItem(LOG_KEY, JSON.stringify(log)); }
+      catch(eW){ console.warn('[AUD] marca de arquivamento não gravada:', eW && eW.message); return 0; }
+    }
+    return n;
+  }catch(e){ console.warn('[AUD] marcação falhou:', e && e.message); return 0; }
+}
+
+// Quantos registros por rodada. O arquivo do mês é reescrito inteiro a cada envio,
+// então lotes grandes não economizam nada e prendem a rede por mais tempo; 200 cobre
+// com folga o acúmulo de um dia inteiro de operação.
+const GD_AUD_LOTE = 200;
+
+// Roda no tique. Sai calada em qualquer condição ruim — nada aqui pode atrasar,
+// travar ou sequer aparecer para quem está operando o app.
+async function _gdArquivarAuditoria(){
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return;
+    if(DRIVE_STATUS.nuvem_cheio) return;
+    if(_gdEnviando) return;                          // backup completo tem prioridade
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(typeof gsPronto === 'function' && !gsPronto()) return;
+
+    const log = _lerLog();
+    const pendentes = log.filter(function(e){ return e && !e.nuv; });
+    if(!pendentes.length) return;
+
+    // Duas séries, arquivos DISTINTOS de propósito: a trilha é auditoria (o que
+    // alguém fez, com quem e quando); o log é diagnóstico (o que o app fez). Juntar
+    // as duas num arquivo só faria o valor probatório da primeira depender do ruído
+    // da segunda.
+    const series = [
+      { chave:'trilha',  prefixo:'trilha',  cab:GD_AUD_CAB_TRILHA,  itens:pendentes.filter(function(e){ return e.aud; }) },
+      { chave:'sistema', prefixo:'sistema', cab:GD_AUD_CAB_SISTEMA, itens:pendentes.filter(function(e){ return !e.aud; }) },
+    ];
+
+    await _gdComToken(async function(token){
+      const pasta = await _gdGarantirCaminho(token, [GD_PASTA_AUDITORIA]);
+      for(const s of series){
+        if(!s.itens.length) continue;
+        // Agrupa por mês: cada mês é um arquivo, e cada arquivo é uma gravação.
+        const porMes = {};
+        s.itens.slice(0, GD_AUD_LOTE).forEach(function(e){
+          const m = _gdAudMes(e.ts);
+          (porMes[m] = porMes[m] || []).push(e);
+        });
+        for(const mes of Object.keys(porMes).sort()){
+          const grupo = porMes[mes];
+          try{
+            const r = await _gdAudArquivarGrupo(token, pasta, s.prefixo, s.cab, mes, grupo);
+            // SÓ AGORA a marca é aplicada — e só sobre o que o Drive confirmou.
+            _gdAudMarcarArquivadas(grupo.map(_gdAudId));
+            if(r && r.novos){
+              console.log('[AUD]', s.chave, mes + ':', r.novos, 'registro(s) arquivado(s)');
+            }
+          }catch(e){
+            // Falha NÃO marca nada. Os registros seguem pendentes, a trilha segue
+            // crescendo além do teto se preciso, e a próxima rodada tenta de novo.
+            console.warn('[AUD] mês', mes, 'não arquivado (fica pendente):', e && e.message);
+            return true;
+          }
+        }
+      }
+      return true;
+    }, false);
+  }catch(e){ console.warn('[AUD] arquivamento não rodou (ignorado):', e && e.message); }
+}
+
+// Quantos registros de auditoria ainda não estão na nuvem — para o card de conexões.
+function _gdAudPendentes(){
+  try{ return _lerLog().filter(function(e){ return e && e.aud && !e.nuv; }).length; }catch(e){ return 0; }
 }
 
 // ── v1.9.5.1 — REAGENDAMENTO APÓS FALHA ────────────────────────────────────
@@ -13310,9 +14254,12 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   if(docPdf){
     // A entrega resolve assim que o arquivo está salvo; a oferta da fila espera o
     // modal sair da tela, para os dois não disputarem o overlay.
-    await _pdfEntregar('Registro de Recarga', docPdf, nome,
+    const _ent = await _pdfEntregar('Registro de Recarga', docPdf, nome,
       'Vaga '+vagaId+' · Apt '+(r.apt||'—')+' · R$ '+valor.toFixed(2).replace('.',','),
       function(){ try{ _verificarFilaRecarga(vagaId); }catch(e){} });
+    // v1.9.6.6: entra no registro de documentos do aparelho. Sem registro não há
+    // confirmação na nuvem, e sem confirmação a limpeza nunca o alcança.
+    try{ if(_ent && _ent.salvo && _ent.nome) _gsRegistrarPDFLocal(_ent.nome, 'recarga'); }catch(e){}
   }
   else {
     showToast('Recarga encerrada — R$ '+valor.toFixed(2).replace('.',','),3500);
@@ -14618,7 +15565,7 @@ function _renderNuvemStatus(){
     <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
     <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
-    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. Os <strong>PDFs de fechamento nunca são apagados</strong> pelo app, nem no aparelho nem na nuvem.</div>
+    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. <strong>Na nuvem, nenhum documento é apagado</strong>; no aparelho, PDFs saem só depois de confirmados na nuvem e de passados ${GS_PODA_DIAS_LOCAL} dias.</div>
   </div>`;
 }
 
@@ -16099,8 +17046,14 @@ function _pdfPermanencia(ini, fim){
 // v1.9.4.12: `imgCache` (opcional) traz as imagens já comprimidas por
 // _pdfPrepararImagens. Sem ele, a função se comporta exatamente como antes —
 // nenhum chamador existente quebra.
-function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
+// v1.9.6.6: `opts` é OPCIONAL e, ausente, produz EXATAMENTE o documento de sempre —
+// o PDF de fechamento não muda em nada (é o que as specs de conteúdo travam). Ele
+// existe só para o documento vivo de `Hospedados Hoje` poder se chamar pelo que é,
+// em vez de anunciar um check-out que não aconteceu.
+function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
   if(!window.jspdf) return null;
+  opts=opts||{};
+  const _tit=opts.titulo||'Comprovante de Check-out';
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const L=10,W=190;
@@ -16109,15 +17062,15 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
   const tsCO=(hist||[]).slice().reverse().find(e=>e.tipo==='checkout')?.ts;
   const periodo=tsCI?fmtDt(tsCI)+(tsCO?' a '+fmtDt(tsCO):''):'';
   const subtitulo=(hospNum?hospNum+' · ':'')+'Apt. '+apt+(dv.guest?' · '+dv.guest:'')+( periodo?' · '+periodo:'');
-  let y=_pdfBarraMarca(doc,'Comprovante de Check-out',subtitulo);
+  let y=_pdfBarraMarca(doc,_tit,subtitulo);
 
   // Cabeçalho do documento: logo do Hotel Gumz + título + bloco de referência
   y=_pdfCabecalhoDoc(doc,y,{
-    eyebrow:'Registro de Movimentação',
-    titulo:'Comprovante de Check-out',
+    eyebrow:opts.eyebrow||'Registro de Movimentação',
+    titulo:_tit,
     refs:[['Hospedagem',hospNum||'—'],['Apartamento',apt||'—'],['Emitido em',fmtDt(Date.now())]],
   });
-  if(tsCO){ _pdfSelo(doc, L+W, y-6, 'Check-out concluído', PDF_COR.verde); y+=4; }
+  if(tsCO && !opts.semSelo){ _pdfSelo(doc, L+W, y-6, 'Check-out concluído', PDF_COR.verde); y+=4; }
 
   // ── Card de resumo ──────────────────────────────────────────────────────
   const vagaFinal=(hist||[]).slice().reverse().find(function(e){return e&&e.vaga;});
@@ -16405,7 +17358,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache){
 // (cedendo a interface entre elas, com progresso) e só então monta o PDF — que aí
 // vira rápido, porque recebe tudo pronto e leve. Fail-safe: se a preparação
 // falhar, cai na montagem antiga, com as imagens originais.
-async function buildRegistroDocAsync(apt, dv, hist, snapshotCheckout, onProgresso){
+async function buildRegistroDocAsync(apt, dv, hist, snapshotCheckout, onProgresso, opts){
   let cache = null;
   try{
     const itens = [];
@@ -16429,7 +17382,7 @@ async function buildRegistroDocAsync(apt, dv, hist, snapshotCheckout, onProgress
     cache = null;
   }
   await _pdfCeder();
-  return buildRegistroDoc(apt, dv, hist, snapshotCheckout, cache);
+  return buildRegistroDoc(apt, dv, hist, snapshotCheckout, cache, opts);
 }
 
 function buildRelMovimentacoesDoc(evts, deVal, ateVal){
@@ -16640,6 +17593,8 @@ function addAnexo(id, fromPasseio, file){
       const apt = fromPasseio ? id : (S[id]?.apt||'');
       const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
       if(apt) addHistorico(apt,'edicao',fromPasseio?'':id,`Foto adicionada: ${nome}`,'',hospNum);
+      // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto nova entra no documento vivo.
+      try{ _hhjMarcar(hospNum, 'foto adicionada'); }catch(e){}
       resolve(true);
     };
     reader.readAsDataURL(file);
@@ -16655,6 +17610,8 @@ function removeAnexo(id, fromPasseio, idx){
     const apt = fromPasseio ? id : (S[id]?.apt||'');
     const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
     if(apt && nome) addHistorico(apt,'edicao',fromPasseio?'':id,`Foto removida: ${nome}`,'',hospNum);
+    // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto removida também altera o documento vivo.
+    try{ _hhjMarcar(hospNum, 'foto removida'); }catch(e){}
   }
 }
 
@@ -17764,7 +18721,22 @@ checkLicense().then(async (ativo)=>{
       // incremental e retomável. A primeira varredura roda 25 s após o init, longe
       // do arranque e depois da migração de pastas.
       try { setInterval(function(){ _gdHistProcessar(); }, 10 * 60 * 1000); } catch(e){}
+      // ── v1.9.6.6 ──────────────────────────────────────────────────────────
+      // Arquivamento da TRILHA na nuvem. É o que autoriza o teto de 1000 a
+      // descartar alguma coisa; enquanto não roda, a trilha só cresce.
+      try { setInterval(function(){ _gdArquivarAuditoria(); }, 10 * 60 * 1000); } catch(e){}
+      // Hospedados Hoje: retentativa do que ficou pendente e conferência da pasta
+      // (ninguém que já saiu pode continuar lá). O caminho normal é o debounce de
+      // 20 s disparado pela própria ação; isto é a rede de segurança.
+      try { setInterval(function(){ _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){}); }, 10 * 60 * 1000); } catch(e){}
+      // Esvaziamento do balde `_Sem data de check-in`. Para sozinho quando termina.
+      try { setInterval(function(){ _gdReorganizarSemData(); }, 10 * 60 * 1000); } catch(e){}
       try { setTimeout(function(){ _gdHistProcessar(); }, 25000); } catch(e){}
+      // v1.9.6.6: as três tarefas novas entram escalonadas DEPOIS da varredura do
+      // histórico, para não disputarem rede nem CPU com o arranque nem entre si.
+      try { setTimeout(function(){ _gdArquivarAuditoria(); }, 40000); } catch(e){}
+      try { setTimeout(function(){ _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){}); }, 55000); } catch(e){}
+      try { setTimeout(function(){ _gdReorganizarSemData(); }, 70000); } catch(e){}
       // v1.9.5.3: quando o app VOLTA (ou a rede volta), tenta o que ficou adiado —
       // com uma folga para a conectividade estabilizar. Sem isso, o que foi adiado
       // no 'hidden' esperaria até 10 min pelo tique.
