@@ -395,7 +395,11 @@ textarea.campo-input{min-height:60px;resize:vertical;line-height:1.4}
 }
 .vst-mk-debug{position:absolute;width:6px;height:6px;background:#00c853;border-radius:50%;border:1px solid #fff;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 2px rgba(0,0,0,.4);z-index:10}
 /* Popup avaria */
-.vst-popup{position:absolute;transform:translate(-50%,-130%);background:#fff;border:1.5px solid #bbb;border-radius:8px;padding:5px;display:flex;gap:5px;box-shadow:0 3px 12px rgba(0,0,0,.28);z-index:25;white-space:nowrap;pointer-events:auto}
+/* v1.9.6.7: z-index 25 → 45. A `.nci2-footer` tem 40 e passava POR CIMA do menu,
+   que ficava visível e intocável. O posicionamento agora evita a barra, então
+   sobreposição não deve mais acontecer; este 45 é a rede: se algum layout futuro
+   derrotar a conta, o menu fica por cima e acionável em vez de sumir. */
+.vst-popup{position:absolute;transform:translate(-50%,-130%);background:#fff;border:1.5px solid #bbb;border-radius:8px;padding:5px;display:flex;gap:5px;box-shadow:0 3px 12px rgba(0,0,0,.28);z-index:45;white-space:nowrap;pointer-events:auto}
 .vst-popup button{padding:8px 14px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;min-height:38px}
 .vst-popup .pop-del{background:#A32D2D;color:#fff}
 .vst-popup .pop-keep{background:#eee;color:#333}
@@ -1323,9 +1327,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.6';
+const GS_VERSION = 'v1.9.6.7';
 const GS_VERSION_CODE = 28;
-const GS_BUILD_TS = '2026-08-13';
+const GS_BUILD_TS = '2026-08-14';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -2100,6 +2104,7 @@ function executarMove(ms, destId, usuario){
       saveV(destId,ms.apt,ms.model,ms.color,ms.plate,ms.guest,ms.obs);
       addHistorico(ms.apt,'movimentacao_vaga',destId,'Movido de '+ms.id+' para '+destId,usuarioStr,hospedagem);
       _gsBackupAuto('movimentação de vaga '+ms.id+'→'+destId);   // v1.9.6.3
+      try{ _hhjMarcar(hospedagem, 'mudança de vaga'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
       refByApt(ms.apt);upd();_refrescarRecargaTodos();closeOv();setTimeout(positionPilares,150);
     };
   } else {
@@ -2848,6 +2853,7 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     // apaga o registro de PASSEIO. Não disparava cadência nenhuma (só o check-in,
     // logo acima, disparava). Agora o par saída/volta fica consistente na nuvem.
     _gsBackupAuto('retorno do passeio '+apt);
+    try{ _hhjMarcar(hospNum, 'retorno do passeio'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
   } else {
     ref(id);refByApt(d.apt);
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
@@ -3032,6 +3038,7 @@ function doOut(id){
     // horário. Um carro fora da garagem é exatamente o estado que precisa estar
     // atualizado na nuvem se o aparelho se perder.
     _gsBackupAuto('saída para passeio '+aptKey);
+    try{ _hhjMarcar(hospNum, 'saída para passeio'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
   });
 }
 
@@ -3461,6 +3468,7 @@ function showEdit(id, fromPasseio){
       }
       try { if(typeof renderAgrupadoresPainel==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderAgrupadoresPainel(); } catch(e){}
       _gsBackupAuto('edição de hospedagem '+(hospNum||novoApt));   // v1.9.6.3
+      try{ _hhjMarcar(hospNum, 'edição de dados'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
       showToast('✓ Dados atualizados',2500);
       showDet(fromPasseio?novoApt:id, fromPasseio);
     });
@@ -7501,27 +7509,102 @@ function _vtMostrarPopupAvaria(idx){
 // v1.9.6.3 — MARCAÇÃO PERTO DA BORDA.
 // O popup era posicionado em `left:x% / top:y%` com `translate(-50%,-130%)` fixo:
 // uma avaria marcada no alto jogava o menu para fora por cima, e nas laterais
-// metade dele saía da tela — o operador não conseguia concluir a ação num ponto
-// legítimo da imagem. Agora, depois de anexado (que é quando se pode MEDIR), o
-// menu é reposicionado para caber: vira para baixo quando não há espaço acima e
-// desliza na horizontal até encostar na borda, sem nunca sair.
+// metade dele saía da tela. A 6.3 passou a reposicioná-lo dentro da IMAGEM.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.7 — O QUE A 6.3 NÃO VIA: O MENU NÃO ESTAVA SENDO CORTADO, ESTAVA
+// SENDO COBERTO.
+// ════════════════════════════════════════════════════════════════════════════
+// MEDIDO, nas três geometrias (tablet 800×1280, celular 380×720, paisagem
+// 1280×800) e nos 9 pontos extremos da imagem: com a área da vistoria inteira
+// dentro da rolagem, os 27 casos já davam **100% visível e tocável** — a
+// correção da 6.3 funciona. O defeito aparecia só quando a imagem estava
+// rolada para o FIM: aí o menu de uma marcação da linha de baixo ficava
+// **100% visível pela geometria e mesmo assim INTOCÁVEL**, porque a
+// `.nci2-footer` (barra de ações, `position:absolute`, `z-index:40`) passava
+// POR CIMA dele (`.vst-popup` tinha `z-index:25`). `elementFromPoint` no centro
+// de cada botão devolvia a barra, não o botão.
+//
+// Ou seja: não era `overflow`, nem posicionamento dentro da imagem. Era
+// OCLUSÃO — e a lógica antiga não tinha como enxergar, porque só comparava o
+// menu com a IMAGEM. A imagem não é a área livre da tela.
+//
+// A correção troca a referência: em vez da imagem, o menu passa a caber na
+// **área realmente livre** — a interseção de tudo que recorta com a viewport,
+// menos as barras que ficam por cima. Isso resolve o rodapé, o contêiner de
+// rolagem e a viewport com a MESMA conta, e não só o sintoma relatado.
+function _vtAreaLivrePopup(layer){
+  let t = 0, l = 0;
+  let r = (typeof window !== 'undefined' && window.innerWidth)  || 1e6;
+  let b = (typeof window !== 'undefined' && window.innerHeight) || 1e6;
+  // 1) Tudo que RECORTA no caminho até o corpo: o wrap da imagem, o card da
+  //    vistoria e o contêiner de rolagem do NCI.
+  let el = layer;
+  while(el && el !== document.body){
+    try{
+      const cs = getComputedStyle(el);
+      if(cs.overflowX !== 'visible' || cs.overflowY !== 'visible'){
+        const q = el.getBoundingClientRect();
+        t = Math.max(t, q.top);  l = Math.max(l, q.left);
+        r = Math.min(r, q.right); b = Math.min(b, q.bottom);
+      }
+    }catch(e){}
+    el = el.parentElement;
+  }
+  // 2) As barras do overlay. Elas NÃO recortam — ficam por cima, que é pior:
+  //    o menu parece visível e não responde ao toque. São faixas de largura
+  //    inteira, então descontá-las é encolher o topo e a base.
+  const descontar = function(sel, ehTopo){
+    try{
+      const bar = document.querySelector(sel);
+      if(!bar) return;
+      const q = bar.getBoundingClientRect();
+      if(q.width < 1 || q.height < 1) return;
+      if(ehTopo) t = Math.max(t, q.bottom);
+      else       b = Math.min(b, q.top);
+    }catch(e){}
+  };
+  descontar('#nci-overlay.on .nci2-footer', false);
+  descontar('#nci-overlay.on .nci2-header', true);
+  return { t:t, l:l, r:r, b:b };
+}
+
 function _vtAjustarPopupNaBorda(pop, layer){
   try{
     if(!pop || !layer || typeof pop.getBoundingClientRect !== 'function') return;
-    const lr = layer.getBoundingClientRect();
-    const pr = pop.getBoundingClientRect();
-    if(!lr.width || !pr.width) return;          // ainda sem layout: deixa como está
+    let pr = pop.getBoundingClientRect();
+    if(!pr.width) return;                       // ainda sem layout: deixa como está
+    const livre = _vtAreaLivrePopup(layer);
+    if(!(livre.r > livre.l) || !(livre.b > livre.t)) return;
     const folga = 4;
-    let dx = 0;
-    // Sem espaço acima → abre para BAIXO do ponto (mantém o ponto visível).
-    const paraBaixo = (pr.top < lr.top + folga);
-    // Horizontal: empurra para dentro do lado que estourou.
-    if(pr.left < lr.left + folga)          dx = (lr.left + folga) - pr.left;
-    else if(pr.right > lr.right - folga)   dx = (lr.right - folga) - pr.right;
-    if(!dx && !paraBaixo) return;
-    pop.style.transform = 'translate(-50%, ' + (paraBaixo ? '30%' : '-130%') + ') translate(' + dx + 'px, 0)';
-    if(paraBaixo) pop.setAttribute('data-borda', 'abaixo');
-    else if(dx)   pop.setAttribute('data-borda', 'lateral');
+
+    // ── VERTICAL: acima do ponto é o padrão; abaixo só se não couber acima ──
+    let paraBaixo = (pr.top < livre.t + folga);
+    if(paraBaixo){
+      pop.style.transform = 'translate(-50%, 30%)';
+      pr = pop.getBoundingClientRect();
+      // Não coube nem abaixo (área livre curta dos dois lados): volta para cima
+      // e deixa o empurrão em pixels resolver — melhor colado no topo do que
+      // metade escondido embaixo do rodapé.
+      if(pr.bottom > livre.b - folga && (livre.b - livre.t) > pr.height){
+        paraBaixo = false;
+        pop.style.transform = 'translate(-50%, -130%)';
+        pr = pop.getBoundingClientRect();
+      }
+    }
+
+    // ── EMPURRÃO em pixels, nos DOIS eixos, até caber na área livre ─────────
+    let dx = 0, dy = 0;
+    if(pr.left   < livre.l + folga)      dx = (livre.l + folga) - pr.left;
+    else if(pr.right  > livre.r - folga) dx = (livre.r - folga) - pr.right;
+    if(pr.top    < livre.t + folga)      dy = (livre.t + folga) - pr.top;
+    else if(pr.bottom > livre.b - folga) dy = (livre.b - folga) - pr.bottom;
+
+    pop.style.transform = 'translate(-50%, ' + (paraBaixo ? '30%' : '-130%') + ')' +
+                          ' translate(' + dx + 'px, ' + dy + 'px)';
+    if(dy)             pop.setAttribute('data-borda', paraBaixo ? 'abaixo' : 'vertical');
+    else if(paraBaixo) pop.setAttribute('data-borda', 'abaixo');
+    else if(dx)        pop.setAttribute('data-borda', 'lateral');
   }catch(e){ /* posicionamento é conforto: nunca pode quebrar a vistoria */ }
 }
 
@@ -11013,9 +11096,15 @@ function _gdErroDeDriveCheio(detalhe){
   }catch(e){ return false; }
 }
 
+// v1.9.6.7: a mensagem passa a dizer O QUE FAZER, com as duas saídas reais, e a
+// deixar explícito de quem é a decisão. "Está cheio" sozinho não ajuda ninguém a
+// destravar a operação — e quem lê isto é o manobrista, não o gestor.
+// ⚠️ CABE EM 180 CARACTERES, e isso não é capricho: `_gdMarcarFalha` corta
+// `nuvem_ultimo_erro` em 180. Uma mensagem mais longa seria truncada justamente
+// no fim — que é onde está a parte que o operador precisa ler.
 function _gdMsgDriveCheio(){
-  return 'O Google Drive do hotel está SEM ESPAÇO. Os backups não estão subindo. ' +
-         'Libere espaço na conta ou fale com o gestor — os PDFs de fechamento NÃO são apagados pelo app.';
+  return 'O Google Drive do hotel está SEM ESPAÇO — nada sobe. Libere espaço no Drive, ' +
+         'ou baixe e arquive documentos antigos fora dele. O app NÃO apaga documentos da nuvem.';
 }
 
 function _gdMarcarFalha(msg, detalhe, transitorio){
@@ -12053,16 +12142,22 @@ async function _gdTentarPDFsPendentes(){
 // │ string viva num WebView apertado.                                       │
 // │                                                                          │
 // │ CONCLUSÃO HONESTA, e ela tem duas partes:                               │
-// │  (1) Escolhida a versão ENXUTA — o prompt manda escolhê-la diante de     │
-// │      QUALQUER risco de atraso perceptível, e 1,3–7 s é atraso            │
-// │      perceptível. Ela também derruba o pico de memória e os megabytes    │
-// │      enviados a cada atualização, que num tablet de 2 GB pesam mais que  │
-// │      os milissegundos.                                                  │
-// │  (2) A escolha enxuta×completa NÃO é o que protege o manobrista — as     │
-// │      fotos dominam nas duas. Quem protege é o AGRUPAMENTO (nada roda     │
-// │      durante a rajada de toques) somado ao segundo plano. Registrado     │
-// │      aqui para que ninguém "otimize" removendo o debounce achando que a  │
-// │      versão enxuta já resolve.                                          │
+// │  (1) A v1.9.6.6 escolheu a versão ENXUTA diante do risco de atraso.      │
+// │  (2) Mas a parte que importa: a escolha enxuta×completa NUNCA foi o que  │
+// │      protege o manobrista — as fotos dominam nas DUAS, e a enxuta        │
+// │      também leva fotos. Quem protege é o AGRUPAMENTO (nada roda durante  │
+// │      a rajada de toques) somado ao segundo plano.                       │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌── v1.9.6.7 — PROMOVIDO PARA A VERSÃO COMPLETA ──────────────────────────┐
+// │ Se as tabelas custam ~37 ms e as fotos ~93% do total, a versão completa  │
+// │ custa quase nada a mais que a enxuta — e entrega o documento que o       │
+// │ gestor precisa consultar. Medido de novo, lado a lado, na promoção:      │
+// │ o acréscimo ficou dentro do esperado (ver RELATORIO-v1.9.6.7.md).        │
+// │                                                                          │
+// │ ⚠️ O DEBOUNCE DE 20 s CONTINUA SENDO A PROTEÇÃO. Não removê-lo. Se um    │
+// │ dia parecer "rápido o bastante", releia esta caixa: o custo nunca esteve │
+// │ nas tabelas, e tirar o agrupamento devolve N gerações por rajada.        │
 // └─────────────────────────────────────────────────────────────────────────┘
 const GD_PASTA_HOJE = 'Hospedados Hoje';
 const HHJ_LS        = 'garagespot_hhoje';
@@ -12144,24 +12239,49 @@ function _hhjMaterial(gs){
            obs:'', size:'small', vaga:h.vaga_inicial||'', hospedagem:gs, apt:apt };
   }
 
-  // VERSÃO ENXUTA: só o check-in entra no histórico. É ele que preenche "Entrada"
-  // e deixa "Saída: Em andamento" — que é a informação certa para um documento de
-  // hospedagem viva. Movimentações e recarga ficam de fora por decisão da medição.
-  const hist = [];
-  if(h.checkin_ts) hist.push({ tipo:'checkin', ts:h.checkin_ts, vaga:(h.vaga_inicial||dv.vaga||''),
-                               usuario:h.usuario_checkin||'', hospedagem:gs, apt:apt });
+  // ── v1.9.6.7: VERSÃO COMPLETA ────────────────────────────────────────────
+  // A 6.6 entregou a versão ENXUTA (só dados + vistoria + fotos) porque a medição
+  // apontava 1,3–7 s no SM-T585. A própria medição, porém, mostrou que **as FOTOS
+  // são ~93% desse custo** e as tabelas custam os ~37 ms restantes — e a enxuta
+  // TAMBÉM leva fotos. Ou seja: a diferença entre as duas sempre foi de
+  // milissegundos, e a versão enxuta nunca foi o que protegia o manobrista.
+  // Quem protege é o DEBOUNCE de 20 s (nada roda durante a rajada de toques) e o
+  // segundo plano — os dois mantidos e inegociáveis.
+  //
+  // ⚠️ NÃO REMOVER O DEBOUNCE. Se um dia alguém achar que "agora está rápido",
+  // releia esta caixa: o custo nunca esteve nas tabelas.
+  //
+  // Histórico COMPLETO: movimentações, saídas e retornos de passeio, mudanças de
+  // vaga. `getHistorico` é a mesma fonte que o check-out usa.
+  let hist = [];
+  try{ hist = (typeof getHistorico === 'function' && apt) ? (getHistorico(apt) || []) : []; }catch(e){ hist = []; }
+  // O histórico é por APARTAMENTO e sobrevive a hospedagens anteriores do mesmo
+  // apto. Filtrar pela hospedagem evita que o documento de um hóspede mostre a
+  // movimentação do anterior — que seria pior que não mostrar nada.
+  try{
+    const doGs = hist.filter(function(ev){ return ev && ev.hospedagem === gs; });
+    if(doGs.length) hist = doGs;
+    else if(h.checkin_ts) hist = hist.filter(function(ev){ return ev && (ev.ts||0) >= h.checkin_ts; });
+  }catch(e){}
+  // Rede de segurança: sem nenhum evento, ao menos o check-in — é ele que
+  // preenche "Entrada" e deixa "Saída: Em andamento".
+  if(!hist.length && h.checkin_ts){
+    hist = [{ tipo:'checkin', ts:h.checkin_ts, vaga:(h.vaga_inicial||dv.vaga||''),
+              usuario:h.usuario_checkin||'', hospedagem:gs, apt:apt }];
+  }
 
-  // Fotos e documentos de vistoria da hospedagem. Mesma leitura do check-out, mas
-  // SEM recargas — que são movimentação financeira, não estado do veículo.
+  // Anexos: fotos, documentos de vistoria E comprovantes de recarga — a mesma
+  // leitura que `doChk` faz para o PDF de fechamento.
   const todos = [].concat((ANEXOS && ANEXOS['h_' + gs]) || [],
                           vagaId ? ((ANEXOS && ANEXOS['v_' + vagaId]) || []) : []);
-  const snapshot = { vagaId:vagaId, gs:gs, recargas:[], todos:todos,
+  const snapshot = { vagaId:vagaId, gs:gs, todos:todos,
     fotos: todos.filter(function(a){
       if(!a) return false;
       const ehFoto = a.tipo === 'foto' || (a.isImg === true && a.tipo !== 'vistoria' && !a.tipo);
       return ehFoto && !!(a.data || a.base64Original);
     }),
     vistorias: todos.filter(function(a){ return a && a.tipo === 'vistoria' && !!(a.data || a.base64Original); }),
+    recargas:  todos.filter(function(a){ return a && a.tipo === 'recarga'  && !!(a.data || a.base64Original); }),
   };
   return { apt:apt, dv:dv, hist:hist, snapshot:snapshot };
 }
@@ -13831,6 +13951,7 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   showToast('⚡ Recarga iniciada — Vaga '+vagaId);
   _gsBackupAuto('recarga iniciada '+vagaId); // v1.9.4.11
+  try{ _hhjMarcar(hospedagem, 'recarga iniciada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
 }
 
 // ── v1.9.6.1 — PROLONGAR RECARGA ───────────────────────────────────────────
@@ -13899,6 +14020,7 @@ function _prolongarRecargaAplicar(vagaId){
   if(document.getElementById('recarga-wrap')?.style?.display !== 'none') renderTelaRecarga();
   showToast('⏱ Recarga prolongada até ' + hrNovo, 3500);
   _gsBackupAuto('recarga prolongada ' + vagaId);
+  try{ _hhjMarcar(r && r.hospedagem, 'recarga prolongada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
 }
 
 function showRecargaModal(vagaId){
@@ -14241,6 +14363,7 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   try{ _rcCancelarNotificacao(vagaId); }catch(e){}
   try{ if(_recTimers[vagaId]){ clearTimeout(_recTimers[vagaId]); delete _recTimers[vagaId]; } }catch(e){}
   _gsBackupAuto('recarga encerrada '+vagaId); // v1.9.4.11
+  try{ _hhjMarcar(r && r.hospedagem, 'recarga encerrada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
   if(typeof ref === 'function') ref(vagaId);
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   // PDF
@@ -15575,6 +15698,16 @@ function _renderNuvemStatus(){
 // vem de `about.get?fields=storageQuota` (o escopo `drive.file` basta), feita
 // no máximo 1×/6h e guardada em `DRIVE_STATUS.nuvem_cota_*`. Se a consulta
 // falhar, o aviso simplesmente não aparece — nunca vira erro na cara do usuário.
+// LIMITE = 85%, e a justificativa é operacional, não estética:
+//  • o que se quer comprar com o aviso é TEMPO para agir antes de a nuvem parar.
+//    Numa conta grátis de 15 GB, 15% de folga são ~2,2 GB — várias semanas de
+//    backups e PDFs no ritmo do hotel. Espaço de sobra para o gestor resolver sem
+//    pressa, que é o ponto;
+//  • abaixo disso (70–80%) o aviso apareceria cedo demais e por tempo demais —
+//    e aviso que fica meses na tela vira paisagem, deixa de ser lido, e aí não
+//    avisa mais nada quando importa;
+//  • acima disso (90–95%) a folga cai para ~750 MB: um punhado de check-outs com
+//    fotos e a nuvem para. Tarde demais para um aviso "preventivo".
 const GD_ESPACO_ALERTA_PCT = 85;
 
 function _gdEspacoAvisoHTML(){
@@ -15585,8 +15718,14 @@ function _gdEspacoAvisoHTML(){
     const pct = Math.round((uso / lim) * 100);
     if(pct < GD_ESPACO_ALERTA_PCT) return '';
     const gb = function(b){ return (b / (1024*1024*1024)).toFixed(1).replace('.', ','); };
+    // Informação, NUNCA interrupção: é um bloco discreto dentro do card de nuvem.
+    // Sem modal, sem toast, sem roubar foco — quem está operando o app não pode
+    // ser parado por um aviso de espaço.
     return `<div id="nuvem-espaco" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:6px;padding:7px 9px;margin-top:6px;color:#633806;font-size:11px;line-height:1.5">
-      💾 <strong>Drive em ${pct}%</strong> — ${gb(uso)} GB de ${gb(lim)} GB usados. Vale liberar espaço antes que os backups parem de subir.</div>`;
+      💾 <strong>Drive em ${pct}%</strong> — ${gb(uso)} GB de ${gb(lim)} GB usados.
+      Vale agir antes que os backups parem de subir: <strong>liberar espaço</strong> na conta do Drive,
+      ou <strong>baixar e arquivar documentos antigos fora do Drive</strong> (num computador ou HD).
+      <br>O app <strong>não apaga documentos da nuvem</strong> — o que sai de lá é decisão da gestão.</div>`;
   }catch(e){ return ''; }
 }
 
