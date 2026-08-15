@@ -1327,7 +1327,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.7';
+const GS_VERSION = 'v1.9.6.8';
 const GS_VERSION_CODE = 28;
 const GS_BUILD_TS = '2026-08-14';
 
@@ -3076,7 +3076,11 @@ function doChk(id){
         saveHospedagens();
       }
       // Salva histórico e anexos antes de apagar os dados
-      const histChk=getHistorico(aptKey);
+      // v1.9.6.8: recortado pela HOSPEDAGEM, não pelo apartamento. Reúne os dois
+      // apartamentos numa troca e, ao mesmo tempo, deixa de fora a movimentação de
+      // hóspedes anteriores daquele apartamento — que antes entrava no documento.
+      const histChk=_gsHistoricoDaHospedagem(aptKey, hospNum,
+        (HOSPEDAGENS[hospNum]&&HOSPEDAGENS[hospNum].checkin_ts)||null);
       const dvChk={model:dadosVeiculo.model,color:dadosVeiculo.color,plate:dadosVeiculo.plate,
                    guest:dadosVeiculo.guest,obs:dadosVeiculo.obs,size:dadosVeiculo.size,
                    vaga:id,hospedagem:hospNum,apt:aptKey};
@@ -3452,7 +3456,36 @@ function showEdit(id, fromPasseio){
         }
       }
       // 5) Auditoria: registra o que mudou + por quem (aparece no painel e nos detalhes)
-      addHistorico(novoApt,'edicao', fromPasseio?'':id, 'Edição de detalhes — '+mudancas.join(' · '), usuarioStr, hospNum);
+      // ══════════════════════════════════════════════════════════════════════
+      // v1.9.6.8 — A TROCA DE APARTAMENTO GANHA REGISTRO PRÓPRIO.
+      // ══════════════════════════════════════════════════════════════════════
+      // Ela já acontecia e já era gravada, mas diluída dentro de um evento
+      // genérico `edicao` cujo texto o PDF NEM RENDERIZA (a tabela de
+      // movimentações mostra tipo/vaga/responsável, não o detalhe). Ou seja: a
+      // troca era feita, era registrada, e **não aparecia no documento** — que é
+      // justamente onde ela precisa aparecer.
+      //
+      // Agora é um tipo de evento próprio, com rótulo e cor, e o detalhe
+      // (origem → destino) é renderizado ao lado do rótulo. O `edicao` genérico
+      // só é emitido se houve OUTRA mudança além do apartamento — duas linhas
+      // dizendo a mesma coisa seria ruído num documento com valor probatório.
+      if(aptMudou){
+        addHistorico(novoApt,'troca_apartamento', fromPasseio?'':id,
+          (aptAtual||'—')+' → '+novoApt, usuarioStr, hospNum);
+      }
+      const _outrasMudancas = mudancas.filter(function(m){ return String(m).indexOf('Apartamento:') !== 0; });
+      if(_outrasMudancas.length){
+        addHistorico(novoApt,'edicao', fromPasseio?'':id, 'Edição de detalhes — '+_outrasMudancas.join(' · '), usuarioStr, hospNum);
+      }
+      // TRILHA DE AUDITORIA: a troca muda a que apartamento a hospedagem pertence,
+      // e com ela o nome e a pasta de todo documento futuro. É alteração de
+      // identidade — tem de ficar na trilha, não só no histórico de movimentação.
+      if(aptMudou){
+        try{ addLogSistema('Troca de apartamento: '+(aptAtual||'—')+' → '+novoApt+
+          ' (hospedagem '+(hospNum||'s/n')+')',
+          {aud:true, acao:'troca_apartamento', quem:usuarioStr,
+           alvo:(hospNum||'s/n')+' · '+(aptAtual||'—')+' → '+novoApt}); }catch(eT){}
+      }
       // 6) Persistir + atualizar UI
       if(fromPasseio){
         upd();
@@ -12252,17 +12285,12 @@ function _hhjMaterial(gs){
   // releia esta caixa: o custo nunca esteve nas tabelas.
   //
   // Histórico COMPLETO: movimentações, saídas e retornos de passeio, mudanças de
-  // vaga. `getHistorico` é a mesma fonte que o check-out usa.
+  // vaga e TROCA DE APARTAMENTO. Mesma fonte e mesmo recorte do check-out —
+  // v1.9.6.8: o filtro ad-hoc que existia aqui virou `_gsHistoricoDaHospedagem`,
+  // compartilhado com o `doChk`. Dois recortes diferentes para o mesmo documento
+  // era exatamente o tipo de divergência que um dia apareceria como bug.
   let hist = [];
-  try{ hist = (typeof getHistorico === 'function' && apt) ? (getHistorico(apt) || []) : []; }catch(e){ hist = []; }
-  // O histórico é por APARTAMENTO e sobrevive a hospedagens anteriores do mesmo
-  // apto. Filtrar pela hospedagem evita que o documento de um hóspede mostre a
-  // movimentação do anterior — que seria pior que não mostrar nada.
-  try{
-    const doGs = hist.filter(function(ev){ return ev && ev.hospedagem === gs; });
-    if(doGs.length) hist = doGs;
-    else if(h.checkin_ts) hist = hist.filter(function(ev){ return ev && (ev.ts||0) >= h.checkin_ts; });
-  }catch(e){}
+  try{ hist = _gsHistoricoDaHospedagem(apt, gs, h.checkin_ts || null) || []; }catch(e){ hist = []; }
   // Rede de segurança: sem nenhum evento, ao menos o check-in — é ele que
   // preenche "Entrada" e deixa "Saída: Em andamento".
   if(!hist.length && h.checkin_ts){
@@ -12361,12 +12389,28 @@ async function _hhjEnviarUm(gs){
       }
     }
     if(!id){
-      const achado = await _hhjAcharPorNome(token, pasta, nome);
+      // v1.9.6.8: numa TROCA DE APARTAMENTO o nome muda (ele carrega o apto), então
+      // procurar só pelo nome NOVO não acharia o arquivo que já existe — e o app
+      // criaria um SEGUNDO para a mesma hospedagem. Procura-se pelo nome antigo
+      // também; achando, é o mesmo arquivo, e ele será renomeado logo abaixo.
+      let achado = await _hhjAcharPorNome(token, pasta, nome);
+      if(!achado && reg && reg.nome && reg.nome !== nome){
+        achado = await _hhjAcharPorNome(token, pasta, reg.nome);
+      }
       if(achado && achado.id){ id = achado.id; await _hhjAtualizarBin(token, id, b64, 'application/pdf'); }
       else {
         const criado = await _gdEnviarArquivoBin(token, pasta, nome, b64, 'application/pdf');
         id = (criado && criado.id) || '';
       }
+    }
+    // RENOMEIA em vez de criar outro: uma hospedagem tem UM documento vivo, e o
+    // nome tem de refletir o apartamento atual. `_gdRenomear` mexe só em metadados
+    // — preserva id e conteúdo, e não reenvia um byte.
+    if(id && reg && reg.nome && reg.nome !== nome){
+      try{
+        await _gdRenomear(token, id, nome);
+        addLogSistema('Hospedados Hoje: documento de ' + gs + ' renomeado — ' + reg.nome + ' → ' + nome);
+      }catch(eR){ console.warn('[HHJ] rename falhou (o conteúdo já está certo):', eR && eR.message); }
     }
     const e2 = _hhjEstado();
     e2.arquivos[gs] = { id:id, nome:nome, ts:Date.now() };
@@ -16468,6 +16512,46 @@ function iniciarHistorico(apt, vaga, hospedagem, usuario){
 
 function getHistorico(apt){ return HISTORICO[apt]||[]; }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.6.8 — A MOVIMENTAÇÃO DE **UMA HOSPEDAGEM**, NÃO DE UM APARTAMENTO
+// ════════════════════════════════════════════════════════════════════════════
+// `HISTORICO` é indexado por APARTAMENTO e nunca é apagado — então
+// `getHistorico(apt)` devolve também o que aconteceu com HÓSPEDES ANTERIORES
+// daquele apartamento. O PDF de fechamento usava exatamente isso, o que já era
+// contaminação antes de existir troca de apartamento; com a troca (o hóspede
+// entra num apartamento que teve outros antes) o defeito deixa de ser raro.
+//
+// A hospedagem é a única identidade estável do app — o número GS nunca muda,
+// nem numa troca de apartamento. Então é por ele que se recorta.
+//
+// VARRE TODOS OS APARTAMENTOS de propósito: numa troca, parte da movimentação
+// pode ter ficado no apartamento antigo (se a migração não rodou, ou se o
+// hóspede trocou mais de uma vez). Reunir por GS é imune a isso — e é
+// justamente o que faz o documento contar a história inteira, dos dois
+// apartamentos, sem trazer a de mais ninguém.
+function _gsHistoricoDaHospedagem(apt, gs, checkinTs){
+  try{
+    if(gs){
+      const out = [];
+      for(const a in HISTORICO){
+        (HISTORICO[a] || []).forEach(function(e){ if(e && e.hospedagem === gs) out.push(e); });
+      }
+      if(out.length){
+        out.sort(function(x, y){ return (x.ts || 0) - (y.ts || 0); });
+        return out;
+      }
+    }
+    // LEGADO: registros antigos não têm o campo `hospedagem`. Aí o melhor recorte
+    // possível é o apartamento a partir do check-in — nunca o apartamento inteiro.
+    const base = (HISTORICO[apt] || []).slice();
+    if(checkinTs){
+      const f = base.filter(function(e){ return e && (e.ts || 0) >= checkinTs; });
+      if(f.length) return f;
+    }
+    return base;
+  }catch(e){ return (HISTORICO[apt] || []); }
+}
+
 function aptJaFezCheckout(apt){
   return (HISTORICO[apt]||[]).some(e=>e.tipo==='checkout');
 }
@@ -17138,6 +17222,7 @@ const MOV_LABEL = {
   checkin:'Check-in', checkout:'Check-out',
   saida_passeio:'Saída a passeio', retorno_passeio:'Retorno do passeio',
   edicao:'Edição de dados', movimentacao_vaga:'Designação/mudança de vaga',
+  troca_apartamento:'Troca de apartamento',   // v1.9.6.8
   tornar_grande:'Vaga ampliada (carro grande)', tornar_pequeno:'Vaga reduzida (carro pequeno)',
   merge_lateral:'Mesclagem lateral', desfaz_merge_lateral:'Mesclagem desfeita',
   vistoria_criada:'Vistoria criada', vistoria_vinculada:'Vistoria vinculada',
@@ -17157,6 +17242,7 @@ const MOV_COR = {
   exclusao_anexo:PDF_COR.vermelho,
   recarga_iniciada:PDF_COR.ambar, recarga_encerrada:PDF_COR.teal,
   recarga_editada:PDF_COR.roxo, edicao:PDF_COR.roxo,
+  troca_apartamento:PDF_COR.acento,   // v1.9.6.8: cor propria — nao se confunde com uma edicao qualquer
 };
 // Último recurso: tipo desconhecido vira texto legível em vez de `snake_case`.
 function _movLabel(tipo){
@@ -17253,7 +17339,20 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
     body:(hist||[]).map(function(ev){
       const resp=[ev.usuario||'—',ev.cargo||''].filter(Boolean).join(' · ');
       const via=(ev.tipo==='exclusao_anexo')?' (via PIN)':'';
-      return [fmtDt(ev.ts),'   '+_movLabel(ev.tipo),ev.vaga||'—',resp+via];
+      // v1.9.6.8: a TROCA DE APARTAMENTO leva o detalhe (origem → destino) junto do
+      // rótulo. Sem isto ela apareceria como uma linha muda — a tabela não tem
+      // coluna para o `extra`, e criar uma só para este caso mexeria no desenho do
+      // documento de fechamento, que não se mexe. A célula existente comporta, e o
+      // autoTable quebra a linha sozinho se precisar.
+      // ⚠️ A SETA `→` NÃO EXISTE NO WinAnsi que o jsPDF usa por padrão. MEDIDO: com
+      // ela na célula, a linha inteira deixa de sair como texto legível no PDF (o
+      // jsPDF troca a codificação da string), enquanto "Check-in" na linha de cima
+      // saía normal. Ou seja, a troca seria registrada e continuaria invisível no
+      // documento — exatamente o defeito que esta versão veio corrigir. No
+      // histórico e na trilha a seta continua (lá é UTF-8 e fica mais legível).
+      const det=(ev.tipo==='troca_apartamento'&&ev.extra)
+        ?(' · '+String(ev.extra).replace(/\s*→\s*/g,' para ')):'';
+      return [fmtDt(ev.ts),'   '+_movLabel(ev.tipo)+det,ev.vaga||'—',resp+via];
     }),
     theme:'plain',
     headStyles:{fillColor:PDF_COR.marinho,textColor:255,fontSize:7.5,fontStyle:'bold',cellPadding:{top:2.6,bottom:2.6,left:2.5,right:2.5}},
