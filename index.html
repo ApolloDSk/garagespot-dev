@@ -1327,9 +1327,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.6.8';
+const GS_VERSION = 'v1.9.7.0';
 const GS_VERSION_CODE = 28;
-const GS_BUILD_TS = '2026-08-14';
+const GS_BUILD_TS = '2026-08-26';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -1424,6 +1424,185 @@ function _gsContar(v){
     if(!v) return 0;
     return Array.isArray(v) ? v.length : Object.keys(v).length;
   } catch(e){ return 0; }
+}
+
+// v1.9.7.0: contagem de ITENS (soma dos comprimentos das listas). `_gsContar`
+// conta BALDES: um save que mantém 8 chaves de ANEXOS e esvazia 90% das fotos
+// passava batido por ela.
+function _gsContarItens(v){
+  try {
+    if(!v) return 0;
+    if(Array.isArray(v)) return v.length;
+    let t=0;
+    Object.keys(v).forEach(function(k){ if(Array.isArray(v[k])) t+=v[k].length; });
+    return t;
+  } catch(e){ return 0; }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.7.0 — LEI REITORA: TUDO É VINCULADO À HOSPEDAGEM (GS), NUNCA À VAGA
+// NEM AO APARTAMENTO.
+//
+// A hospedagem nasce no check-in, encerra no check-out, tem GS único e
+// imutável, e carrega consigo — onde quer que esteja — vistoria, fotos,
+// documentação e eventos. Vaga e apartamento são apenas ONDE a hospedagem
+// está no momento: PONTEIROS, nunca a fonte da verdade. Cada vaga e cada
+// apartamento passam por milhares de hospedagens; isso é indiferente ao dado.
+//
+// O que quebrava antes desta versão, e por quê:
+//   • apartamento com DOIS carros: a vistoria do 2º era resolvida por um
+//     `find()` de apartamento e recebia o GS do 1º. No check-out do 1º, o
+//     app apagava o balde `h_<gs1>` inteiro e levava junto a vistoria do
+//     carro que ainda estava ATIVO — mudo, sem trilha;
+//   • vaga GRANDE: a célula que o operador toca ficava com `hospedagem`
+//     vazia, os anexos caíam no balde órfão `v_<id>` e o check-out nunca
+//     gravava `checkout_ts` (hospedagem órfã eterna).
+//
+// Este é o RESOLVEDOR ÚNICO. Todo caminho que decide vínculo ou apagamento
+// passa por aqui. Devolve sempre {gs, ambiguo, candidatos, origem}: quando
+// não dá para ter CERTEZA, devolve gs:'' com ambiguo:true — e o chamador
+// PERGUNTA ou ABORTA. Ele nunca chuta: chutar foi exatamente o que apagou a
+// vistoria do segundo carro.
+// ════════════════════════════════════════════════════════════════════════
+
+// Células que formam a MESMA unidade física da vaga `id` (merge vertical A/B
+// e merge lateral). Na vaga grande, a célula tocada pode não ser a que guarda
+// o GS — mas a parceira guarda.
+function _gsParesDaVaga(id){
+  const pares=[];
+  try{
+    if(!id || typeof S==='undefined' || !S[id]) return pares;
+    if(/[AB]$/.test(id)){
+      const par = id.slice(0,-1) + (id.slice(-1)==='A' ? 'B' : 'A');
+      if(S[par]) pares.push(par);
+    }
+    const hm=S[id].hmergeWith;
+    if(hm && S[hm] && pares.indexOf(hm)<0) pares.push(hm);
+  }catch(e){}
+  return pares;
+}
+
+// ctx: {vaga, apt, fromPasseio, gs}. `gs` é o GS que a tela aberta já
+// carregava — ele É a hospedagem, tem prioridade sobre qualquer ponteiro.
+function _gsResolverHosp(ctx){
+  const out={gs:'', ambiguo:false, candidatos:[], origem:''};
+  try{
+    ctx = ctx || {};
+    const vaga = ctx.vaga || '';
+    const fromPasseio = !!ctx.fromPasseio;
+    const _S = (typeof S!=='undefined' && S) ? S : {};
+    const _P = (typeof PASSEIO!=='undefined' && PASSEIO) ? PASSEIO : {};
+    const _H = (typeof HOSPEDAGENS!=='undefined' && HOSPEDAGENS) ? HOSPEDAGENS : {};
+
+    // 1) O GS do contexto manda. Não é um palpite: é a própria hospedagem.
+    if(ctx.gs){ out.gs=String(ctx.gs); out.origem='contexto'; return out; }
+
+    // 2) O ponteiro da vaga (ou do passeio), quando preenchido.
+    const direto = fromPasseio
+      ? ((_P[vaga] && _P[vaga].hospedagem) || '')
+      : ((_S[vaga] && _S[vaga].hospedagem) || '');
+    if(direto){ out.gs=direto; out.origem='vaga'; return out; }
+
+    // 3) VAGA GRANDE: a célula tocada pode estar vazia; a parceira do merge não.
+    if(!fromPasseio && vaga){
+      const doPar = _gsParesDaVaga(vaga)
+        .map(function(p){ return (_S[p] && _S[p].hospedagem) || ''; })
+        .filter(Boolean)
+        .filter(function(v,i,a){ return a.indexOf(v)===i; });
+      if(doPar.length===1){ out.gs=doPar[0]; out.origem='vaga_par'; return out; }
+      if(doPar.length>1){ out.ambiguo=true; out.candidatos=doPar; out.origem='vaga_par'; return out; }
+    }
+
+    // 4) Último recurso: hospedagens ATIVAS deste apartamento. Aqui mora o
+    //    apartamento com dois carros — havendo mais de uma, é AMBÍGUO e quem
+    //    chamou tem de perguntar. NUNCA pegar "a primeira".
+    const apt = String(ctx.apt || (fromPasseio ? vaga : ((_S[vaga] && _S[vaga].apt) || '')) || '');
+    if(!apt) return out;
+    // 4a) GSs distintos grudados nas vagas OCUPADAS deste apartamento. Cobre o
+    //     dado legado em que HOSPEDAGENS está incompleto mas a vaga sabe o GS.
+    //     Só conta quem NÃO tem check-out: um GS encerrado numa vaga é lixo.
+    const dasVagas = Object.keys(_S).filter(function(k){
+      return _S[k] && _S[k].status==='occupied' && String(_S[k].apt||'')===apt && _S[k].hospedagem;
+    }).map(function(k){ return _S[k].hospedagem; })
+      .filter(function(g){ return !(_H[g] && _H[g].checkout_ts); })
+      .filter(function(v,i,a){ return a.indexOf(v)===i; });
+    // 4b) Hospedagens ATIVAS registradas para este apartamento.
+    const ativas = Object.keys(_H).filter(function(gs){
+      const h=_H[gs];
+      return h && !h.checkout_ts && String(h.apt||'')===apt;
+    });
+    const uniao = dasVagas.concat(ativas.filter(function(g){ return dasVagas.indexOf(g)<0; }));
+    if(uniao.length===1){ out.gs=uniao[0]; out.origem=dasVagas.length?'apto_vaga':'apto'; return out; }
+    if(uniao.length>1){
+      // Desempate SEGURO: só vale se exatamente uma delas apontar para ESTA vaga.
+      // Sem desempate certo, é AMBÍGUO — e quem chamou pergunta ou aborta.
+      const naVaga = vaga ? uniao.filter(function(gs){
+        return (_S[vaga] && _S[vaga].hospedagem===gs) || (_H[gs] && _H[gs].vaga_inicial===vaga);
+      }) : [];
+      if(naVaga.length===1){ out.gs=naVaga[0]; out.origem='apto_vaga'; return out; }
+      out.ambiguo=true; out.candidatos=uniao.slice(); out.origem='apto';
+    }
+  }catch(e){ console.warn('[GS] _gsResolverHosp falhou:', e && e.message); }
+  return out;
+}
+
+// INVARIANTE v1.9.7.0: nenhuma célula `occupied` de uma hospedagem ativa pode
+// ficar com `hospedagem` vazio. Na vaga grande o operador toca a célula B
+// (mergedMaster) — se ela não carregar o GS, o anexo cai num balde órfão e o
+// check-out não fecha a hospedagem.
+function _gsSincronizarHospPares(id){
+  try{
+    const gs=(S[id] && S[id].hospedagem) || ''; if(!gs) return;
+    _gsParesDaVaga(id).forEach(function(p){
+      if(S[p] && S[p].status==='occupied') S[p].hospedagem=gs;
+    });
+  }catch(e){}
+}
+
+// TRAVA DURA DO APAGAMENTO NO CHECK-OUT (v1.9.7.0).
+//
+// Só apaga o balde `h_<gs>` daquela hospedagem; só com o GS resolvido SEM
+// ambiguidade; e só depois de o PDF de fechamento estar salvo (quem chama
+// garante essa última). NUNCA toca `v_`/`p_` às cegas — apagar o balde por
+// vaga e por apartamento junto com o da hospedagem foi como o check-out de um
+// carro levou embora a vistoria do outro carro do MESMO apartamento, que ainda
+// estava ativo. E nunca é mudo: apagou ou abortou, a trilha registra.
+function _gsApagarAnexosDoCheckout(res, ctx){
+  ctx = ctx || {};
+  const motivo = !res ? 'sem resolução'
+    : (res.ambiguo ? 'hospedagem ambígua (' + (res.candidatos||[]).join(', ') + ')'
+    : (!res.gs ? 'hospedagem não resolvida' : ''));
+  if(motivo){
+    console.warn('[CHECKOUT] apagamento de anexos ABORTADO —', motivo);
+    try{
+      addLogSistema('Apagamento de anexos ABORTADO no check-out — ' + motivo +
+        ' (vaga ' + (ctx.vaga||'?') + ', apto ' + (ctx.apt||'?') + '). Os anexos foram PRESERVADOS.',
+        {aud:true, acao:'checkout_anexo_abortado', alvo:(ctx.vaga||'') + '/' + (ctx.apt||''), origem:'automatico'});
+    }catch(e){}
+    return { apagou:false, motivo:motivo, quantidade:0 };
+  }
+  const kh='h_' + res.gs;
+  const qtd=Array.isArray(ANEXOS[kh]) ? ANEXOS[kh].length : 0;
+  if(!ANEXOS[kh]){
+    console.log('[CHECKOUT] nada a apagar em', kh);
+    return { apagou:false, motivo:'balde vazio', quantidade:0 };
+  }
+  delete ANEXOS[kh];
+  saveAnexos({permitirVazio:true});   // limpeza INTENCIONAL do check-out
+  try{
+    addLogSistema('Anexos do check-out apagados: ' + qtd + ' item(ns) de ' + res.gs +
+      ' (apto ' + (ctx.apt||'?') + ', vaga ' + (ctx.vaga||'?') + ')',
+      {aud:true, acao:'anexos_checkout', alvo:res.gs, origem:'automatico'});
+  }catch(e){}
+  console.log('[CHECKOUT] apagados', qtd, 'anexo(s) de', kh);
+  return { apagou:true, motivo:'', quantidade:qtd };
+}
+
+// Liberar uma vaga SEMPRE apaga o ponteiro do GS. Um GS grudado numa vaga
+// livre é bomba-relógio: o próximo check-out o resolve e apaga o balde do
+// hóspede ANTERIOR. Ponto único de desvinculação.
+function _gsLimparVinculoVaga(id){
+  try{ if(S[id]) S[id].hospedagem=''; }catch(e){}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2061,12 +2240,12 @@ function executarMove(ms, destId, usuario){
       const aId=ms.id.slice(0,-1)+'A';
       const tdB=getTd(ms.id);if(tdB)tdB.rowSpan=1;
       src.mergedMaster=false;
-      if(S[aId]){S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';ref(aId);}
+      if(S[aId]){S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';_gsLimparVinculoVaga(aId);ref(aId);}
     }
     if(ms.id.endsWith('A') && src.mergedSlave){
       const bId2=ms.id.slice(0,-1)+'B';
       const tdB=getTd(bId2);if(tdB)tdB.rowSpan=1;
-      if(S[bId2]){S[bId2].mergedMaster=false;S[bId2].status='free';S[bId2].apt='';ref(bId2);}
+      if(S[bId2]){S[bId2].mergedMaster=false;S[bId2].status='free';S[bId2].apt='';_gsLimparVinculoVaga(bId2);ref(bId2);}
       src.mergedSlave=false;
     }
     src.status='free';src.apt='';src.model='';src.color='';src.plate='';
@@ -2237,6 +2416,9 @@ function aplicarHMerge(id, alvoId, usuario){
   S[alvoId].hmergeWith = id; // referência cruzada para desfazer
   S[alvoId].status = 'occupied';
   S[alvoId].apt    = S[id].apt;
+  // v1.9.7.0: a célula que passa a OCUPAR carrega o GS. Sem isto ela herdava um
+  // GS obsoleto de uma ocupação anterior — ou nenhum, e o anexo virava órfão.
+  S[alvoId].hospedagem = (S[id] && S[id].hospedagem) || '';
   tdSrc.colSpan = 2;
   tdAlvo.classList.add('hmerge-hidden');
   ref(id);
@@ -2261,6 +2443,7 @@ function desfazHMerge(id, usuario){
     S[alvoId].hmergeWith = null;
     S[alvoId].status = 'free';
     S[alvoId].apt    = '';
+    _gsLimparVinculoVaga(alvoId);   // v1.9.7.0: vaga liberada nunca retém o GS
     ref(alvoId);
   }
   S[id].hmergeWith = null;
@@ -2821,6 +3004,7 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
   if(isCheckin){
     const numH=nextNumHospedagem();
     d.hospedagem=numH;
+    _gsSincronizarHospPares(id);   // v1.9.7.0: vaga grande — a célula TOCADA tem de carregar o GS
     // v1.9.4.11 (Bug B): ponto único de criação — `saida_prevista` SEMPRE gravada.
     HOSPEDAGENS[numH]=_novaHospedagem({
       numero:numH, apt:apt, checkin_ts:Date.now(), vaga_inicial:id,
@@ -2844,6 +3028,7 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
   } else if(isCheckin===false){
     const hospNum=(PASSEIO[apt]?.hospedagem)||d.hospedagem||'';
     if(hospNum) d.hospedagem=hospNum;
+    _gsSincronizarHospPares(id);   // v1.9.7.0: invariante do merge também no retorno
     addHistorico(apt,'retorno_passeio',id,'',usuarioStr,hospNum);
     ref(id);refByApt(d.apt);
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
@@ -2855,6 +3040,7 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     _gsBackupAuto('retorno do passeio '+apt);
     try{ _hhjMarcar(hospNum, 'retorno do passeio'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
   } else {
+    _gsSincronizarHospPares(id);   // v1.9.7.0: invariante do merge também na edição
     ref(id);refByApt(d.apt);
     if(HMERGE_OPTS[id]){ upd(); perguntarHMerge(id,d.apt,d.model,d.color,d.plate,d.guest,d.obs,usuario); return; }
     upd();closeOv();
@@ -2922,10 +3108,11 @@ window.trocarParaPequeno = function(id){
 
     // Desfaz merge vertical: libera AMBAS as células antes de re-ocupar só uma
     const tdB=getTd(bId);if(tdB)tdB.rowSpan=1;
-    if(S[bId]){S[bId].mergedMaster=false;S[bId].status='free';S[bId].apt='';S[bId].size='small';}
+    if(S[bId]){S[bId].mergedMaster=false;S[bId].status='free';S[bId].apt='';S[bId].size='small';_gsLimparVinculoVaga(bId);}
     if(S[aId]){
       S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';
       S[aId].model='';S[aId].color='';S[aId].plate='';S[aId].guest='';S[aId].obs='';S[aId].size='small';
+      _gsLimparVinculoVaga(aId);   // v1.9.7.0: a vaga A fica LIVRE — não pode reter o GS
       ref(aId);
     }
 
@@ -2978,7 +3165,7 @@ window.trocarParaGrande = function(id){
 
     function aplicarOpcao(op){
       if(op.tipo==='vertical'){
-        S[id].status='free';S[id].apt='';S[id].size='small';S[id].mergedMaster=false;S[id].mergedSlave=false;ref(id);
+        S[id].status='free';S[id].apt='';S[id].size='small';S[id].mergedMaster=false;S[id].mergedSlave=false;_gsLimparVinculoVaga(id);ref(id);
         ssz='large';
         S[aId].hospedagem=hospedagem;
         saveV(aId,apt,model,color,plate,guest,obs);
@@ -3022,12 +3209,12 @@ function doOut(id){
       const aId=id.slice(0,-1)+'A';
       const tdB=getTd(id);if(tdB)tdB.rowSpan=1;
       d.mergedMaster=false;
-      if(S[aId]){S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';ref(aId);}
+      if(S[aId]){S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';_gsLimparVinculoVaga(aId);ref(aId);}
     }
     if(id.endsWith('A')&&d.mergedSlave){
       const bId=id.slice(0,-1)+'B';
       const tdB=getTd(bId);if(tdB)tdB.rowSpan=1;
-      if(S[bId]){S[bId].mergedMaster=false;S[bId].status='free';S[bId].apt='';ref(bId);}
+      if(S[bId]){S[bId].mergedMaster=false;S[bId].status='free';S[bId].apt='';_gsLimparVinculoVaga(bId);ref(bId);}
       d.mergedSlave=false;
     }
     d.status='free';d.apt='';d.model='';d.color='';d.plate='';d.guest='';d.hospedagem='';
@@ -3052,7 +3239,11 @@ function doChk(id){
     obs:d.obs||'',size:d.size||'small',vaga:id
   };
 
-  const _vstChk=getVistoriaByHosp(d.hospedagem||'')||getVistoriaByApt(aptKey);
+  // v1.9.7.0: decisão SEMPRE pela hospedagem. `getVistoriaByApt` devolvia a
+  // vistoria mais recente do APARTAMENTO — no apartamento com dois carros, a do
+  // carro errado, e era ela que decidia o aviso de "sem vistoria assinada".
+  const _gsChkModal=_gsResolverHosp({vaga:id});
+  const _vstChk=(_gsChkModal.gs && !_gsChkModal.ambiguo)?getVistoriaByHosp(_gsChkModal.gs):null;
   const _temVstPend=_vstChk&&!_vstChk.ts_assinada;
   mc.innerHTML=`
     <div class="mt">🚪 Check-out — Apt. ${aptKey}</div>
@@ -3068,7 +3259,11 @@ function doChk(id){
   document.getElementById('chk-sim').onclick=function(){
     confirmarUsuario('realizando o check-out',function(usuario){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
-      const hospNum=d.hospedagem||'';
+      // v1.9.7.0: resolvido ANTES de qualquer apagamento. `d.hospedagem` sozinho
+      // ficava vazio na vaga grande (a célula tocada nunca recebia o GS) — e o
+      // check-out então NUNCA gravava `checkout_ts`: hospedagem órfã eterna.
+      const _resChk=_gsResolverHosp({vaga:id});
+      const hospNum=_resChk.ambiguo?'':(_resChk.gs||'');
       addHistorico(aptKey,'checkout',id,'',usuarioStr,hospNum);
       if(hospNum&&HOSPEDAGENS[hospNum]){
         HOSPEDAGENS[hospNum].checkout_ts=Date.now();
@@ -3117,25 +3312,21 @@ function doChk(id){
         const aId=id.slice(0,-1)+'A';
         const tdB=getTd(id);if(tdB)tdB.rowSpan=1;
         d.mergedMaster=false;
-        if(S[aId]){S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';ref(aId);}
+        if(S[aId]){S[aId].mergedSlave=false;S[aId].status='free';S[aId].apt='';_gsLimparVinculoVaga(aId);ref(aId);}
       }
       if(id.endsWith('A')&&d.mergedSlave){
         const bId=id.slice(0,-1)+'B';
         const tdB=getTd(bId);if(tdB)tdB.rowSpan=1;
-        if(S[bId]){S[bId].mergedMaster=false;S[bId].status='free';S[bId].apt='';ref(bId);}
+        if(S[bId]){S[bId].mergedMaster=false;S[bId].status='free';S[bId].apt='';_gsLimparVinculoVaga(bId);ref(bId);}
         d.mergedSlave=false;
       }
       d.status='free';d.apt='';d.model='';d.color='';d.plate='';d.guest='';d.obs='';d.hospedagem='';
       d.mergedMaster=false;d.mergedSlave=false;
       ref(id);refByApt(aptKey);upd();saveData();
-      // v1.9.4.5: anexos atados ao ID da hospedagem — limpar h_<gs> no check-out
-      // (+ chaves legadas v_/p_ por segurança).
-      const keyH2='h_'+(hospNum||''), keyV='v_'+id, keyP='p_'+aptKey;
-      let _limpou=false;
-      if(hospNum && ANEXOS[keyH2]){ delete ANEXOS[keyH2]; _limpou=true; }
-      if(ANEXOS[keyV]){ delete ANEXOS[keyV]; _limpou=true; }
-      if(ANEXOS[keyP]){ delete ANEXOS[keyP]; _limpou=true; }
-      if(_limpou) saveAnexos({permitirVazio:true}); // v1.9.4.10: limpeza INTENCIONAL do check-out
+      // v1.9.7.0 — O APAGAMENTO SAIU DAQUI. Ele agora acontece mais abaixo, no
+      // bloco assíncrono, SÓ DEPOIS de o PDF de fechamento estar gerado e salvo,
+      // e SÓ do balde `h_<gs>` desta hospedagem. Apagar `v_`/`p_` às cegas era
+      // como a vistoria do segundo carro do apartamento sumia.
       // v1.9.4.11: check-out é evento crítico → backup COMPLETO (com fotos) agora
       _gsBackupAuto('check-out '+(hospNum||aptKey), {completo:true});
       // v1.9.6.6: o provisório sai de `Hospedados Hoje` — NENHUM hóspede que já
@@ -3206,6 +3397,20 @@ function doChk(id){
               _coNuvem=_gdConectado()?' · enviando para a nuvem':' · na fila para a nuvem';
             }
           }catch(ePdfNuvem){ console.warn('[DRIVE] PDF de fechamento não agendado:',ePdfNuvem&&ePdfNuvem.message); }
+        }
+        // ══════════════════════════════════════════════════════════════════
+        // v1.9.7.0 — DOCUMENTAÇÃO É SAGRADA. Os anexos só são apagados DEPOIS de
+        // o PDF de fechamento estar gerado e salvo. Se o documento não saiu, os
+        // anexos FICAM: um balde a mais é recuperável, uma foto perdida não é.
+        // ══════════════════════════════════════════════════════════════════
+        if(_salvo && _salvo.sucesso){
+          _gsApagarAnexosDoCheckout(_resChk, {vaga:id, apt:aptKey});
+        } else {
+          console.warn('[CHECKOUT] PDF não salvo — anexos PRESERVADOS');
+          try{
+            addLogSistema('Apagamento de anexos ABORTADO no check-out — o PDF de fechamento não foi salvo (vaga '+id+', apto '+aptKey+'). Os anexos foram PRESERVADOS.',
+              {aud:true, acao:'checkout_anexo_abortado', alvo:(hospNum||aptKey), origem:'automatico'});
+          }catch(eAb){}
         }
         _prog(100);
         const pw=document.getElementById('co-prog-wrap'); if(pw) pw.style.display='none';
@@ -3522,7 +3727,9 @@ function showPasseioCheckout(apt){
   const d=PASSEIO[apt];
   if(!d)return;
   const info=[d.model,d.color,d.plate].filter(Boolean).join(' · ');
-  const _vstP=getVistoriaByHosp(d.hospedagem||'')||getVistoriaByApt(apt);
+  // v1.9.7.0: decisão por hospedagem, nunca por apartamento.
+  const _resP=_gsResolverHosp({vaga:apt, apt:apt, fromPasseio:true});
+  const _vstP=(_resP.gs && !_resP.ambiguo)?getVistoriaByHosp(_resP.gs):null;
   const _temVstPendP=_vstP&&!_vstP.ts_assinada;
   showM(`<div class="mt">Check-out — Apt. ${apt}</div>
     <div class="ms">${info||'Sem detalhes'} · 🛣️ A passeio</div>
@@ -6097,13 +6304,41 @@ function _vstStep1(){
     _vstD.apt=aptV;_vstD.modelo=modV;_vstD.cor=corV;
     _vstD.placa=document.getElementById('vst-pla').value.trim().toUpperCase();
     _vstD.hospede=document.getElementById('vst-gst').value.trim();
+    // v1.9.7.0: a vistoria nasce no contexto da HOSPEDAGEM. Antes, um `find()`
+    // pelo apartamento devolvia a PRIMEIRA vaga ocupada — e no apartamento com
+    // dois carros a vistoria do 2º recebia o GS do 1º, indo parar no balde
+    // errado, que o check-out do 1º apagava inteiro. Agora: resolvedor único e,
+    // na dúvida, PERGUNTA em vez de chutar.
     if(!_vstD.hospedagem){
-      const vagaId=Object.keys(S).find(k=>S[k].apt===aptV&&S[k].status==='occupied');
-      if(vagaId&&S[vagaId].hospedagem) _vstD.hospedagem=S[vagaId].hospedagem;
-      else if(PASSEIO[aptV]?.hospedagem) _vstD.hospedagem=PASSEIO[aptV].hospedagem;
+      const r=_gsResolverHosp({apt:aptV});
+      if(r.ambiguo){ _vstEscolherHosp(r.candidatos, aptV); return; }
+      if(r.gs) _vstD.hospedagem=r.gs;
+      else {
+        const rp=_gsResolverHosp({apt:aptV, vaga:aptV, fromPasseio:true});
+        if(rp.gs && !rp.ambiguo) _vstD.hospedagem=rp.gs;
+      }
     }
     _vstStep2();
   };
+}
+
+// v1.9.7.0: desambiguação. O apartamento tem mais de uma hospedagem ativa (dois
+// carros) — o app NÃO escolhe por conta própria, porque escolher errado grava a
+// vistoria no balde do outro hóspede. Pergunta.
+function _vstEscolherHosp(candidatos, apt){
+  const lista=(candidatos||[]).map(function(gs,i){
+    const h=(typeof HOSPEDAGENS!=='undefined'&&HOSPEDAGENS[gs])||{};
+    const info=[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'sem detalhes';
+    return '<button class="ab ao" id="vhs-'+i+'" style="margin-bottom:6px">'+gs+' — '+info+'</button>';
+  }).join('');
+  showM('<div class="mt">📋 Qual hospedagem?</div>'+
+    '<div class="ms" style="margin-bottom:10px">O apto. '+apt+' tem mais de um carro. Escolha a hospedagem desta vistoria:</div>'+
+    lista+
+    '<button class="bcx" style="margin-top:8px;width:100%" onclick="_vstStep1()">← Voltar</button>');
+  (candidatos||[]).forEach(function(gs,i){
+    const b=document.getElementById('vhs-'+i);
+    if(b) b.onclick=function(){ _vstD.hospedagem=gs; _vstStep2(); };
+  });
 }
 
 function _vstStep2(){
@@ -8578,6 +8813,7 @@ function _aplicarDesignacaoAutomatica(vagaId,gs){
   v.status='occupied'; v.apt=hosp.apt; v.model=hosp.model; v.color=hosp.color;
   v.plate=hosp.plate; v.guest=hosp.guest; v.obs=hosp.obs; v.hospedagem=gs;
   v.size=v.size||'small';
+  _gsSincronizarHospPares(vagaId);   // v1.9.7.0
   hosp.vaga_inicial=vagaId;
   hosp.status='ativa';
   addHistorico(hosp.apt,'checkin',vagaId,'Check-in via NCI (designação auto pela vaga)',hosp.usuario_checkin,gs);
@@ -9023,6 +9259,7 @@ function _aplicarDesignacaoExec(vagaId){
   v.status='occupied'; v.apt=m.apt; v.model=m.model; v.color=m.color;
   v.plate=m.plate; v.guest=m.guest; v.obs=m.obs; v.hospedagem=m.gs;
   v.size=v.size||'small';
+  _gsSincronizarHospPares(vagaId);   // v1.9.7.0
   hosp.vaga_inicial=vagaId;
   hosp.status='ativa';
   // Bug L: garantir que vistorias[] foi preservado
@@ -9343,7 +9580,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   v.plate=p.plate; v.guest=p.guest; v.obs=p.obs; v.size=p.size; v.hospedagem=p.gs;
   if(p.size==='large'&&vagaId.endsWith('A')){
     const bId=vagaId.slice(0,-1)+'B';
-    if(S[bId]&&S[bId].status==='free'){ S[bId].status='occupied'; S[bId].mergedSlave=vagaId; v.mergedMaster=true; }
+    if(S[bId]&&S[bId].status==='free'){ S[bId].status='occupied'; S[bId].mergedSlave=vagaId; S[bId].hospedagem=p.gs; v.mergedMaster=true; }   // v1.9.7.0
   }
   // v1.9.4.11 (Bug B): ponto único de criação (designação a partir do pendente legado)
   HOSPEDAGENS[p.gs]=_novaHospedagem({numero:p.gs,apt:p.apt,checkin_ts:p.ts_inicio,vaga_inicial:vagaId,model:p.model,color:p.color,plate:p.plate,guest:p.guest,obs:p.obs,size:p.size,saida_prevista:p.saida_prevista||'',usuario_checkin:p.usuario,vistorias:[],status:'ativa'});
@@ -17758,8 +17995,11 @@ const MAX_ANEXOS = 20;
 // vaga (drag&drop), mudança de apartamento (edição) e passeio (sair/voltar).
 // ════════════════════════════════════════════════════════════════════════
 function _gsDaVaga(id, fromPasseio){
-  if(fromPasseio) return (PASSEIO[id] && PASSEIO[id].hospedagem) || '';
-  return (S[id] && S[id].hospedagem) || '';
+  // v1.9.7.0: a vaga é só o PONTEIRO. Quem decide é `_gsResolverHosp`, que cobre
+  // a vaga grande (célula tocada sem GS) e RECUSA o chute quando o apartamento
+  // tem duas hospedagens ativas — devolvendo '' em vez da hospedagem errada.
+  const r=_gsResolverHosp({vaga:id, fromPasseio:!!fromPasseio});
+  return r.ambiguo ? '' : r.gs;
 }
 // Migração NÃO destrutiva: dobra chaves legadas (v_<vaga>/p_<apto>) para h_<gs>.
 function _migrarAnexosParaHosp(gs, legadoKeys){
@@ -17776,15 +18016,180 @@ function _migrarAnexosParaHosp(gs, legadoKeys){
   if(mudou) saveAnexos();
   return kh;
 }
-function getAnexoKey(id, fromPasseio){
+// v1.9.7.0: a chave de ESCRITA é sempre `h_<gs>`. Os baldes `v_`/`p_` viraram
+// SOMENTE LEITURA legada — a migração de recuperação os dobra em `h_`, e nada
+// novo é escrito neles. Sem GS resolvível, a escrita devolve '' e quem chamou
+// recusa: um balde órfão novo é exatamente o que esta versão veio extinguir.
+function getAnexoKey(id, fromPasseio, opts){
   const gs=_gsDaVaga(id, fromPasseio);
   if(gs){
     // dobra qualquer chave legada desta vaga/apto para o id da hospedagem
     _migrarAnexosParaHosp(gs, [fromPasseio?('p_'+id):('v_'+id)]);
     return 'h_'+gs;
   }
-  // Sem hospedagem resolvível (estado legado): mantém a chave antiga como fallback.
+  if(opts && opts.paraEscrita) return '';
+  // LEITURA de estado legado: a chave antiga ainda responde até a migração passar.
   return fromPasseio ? 'p_'+id : 'v_'+id;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.7.0 — MIGRAÇÃO DE RECUPERAÇÃO DO VÍNCULO
+//
+// Roda UMA vez (marcada por `garagespot_migr_vinc_v1970`) e ANTES que qualquer
+// check-out apague coisa alguma. Varre ANEXOS e reancora cada anexo ao GS
+// correto:
+//   • baldes órfãos `v_<vaga>` / `p_<apto>` → descobre o GS pela vistoria do
+//     próprio anexo, pela hospedagem ativa daquela vaga/apto, ou pelo
+//     HISTORICO (que guarda `vaga` e `hospedagem` em cada evento);
+//   • anexo de vistoria parado no `h_` de OUTRA hospedagem → volta para o `h_`
+//     do GS que a própria VISTORIA declara.
+//
+// NÃO DESTRUTIVA E IDEMPOTENTE: concatena e deduplica; NUNCA apaga um anexo
+// sem antes religá-lo. O que não dá para religar com certeza FICA ONDE ESTÁ —
+// documentação é sagrada, e um balde órfão preservado é infinitamente melhor
+// que um anexo perdido. Rodar duas vezes dá o mesmo resultado.
+// ════════════════════════════════════════════════════════════════════════
+const MIGR_VINC_LS = 'garagespot_migr_vinc_v1970';
+
+// Assinatura barata e estável de um anexo, para deduplicar sem comparar
+// megabytes de base64 item a item.
+function _gsAssinaturaAnexo(a){
+  if(!a) return '';
+  const d=a.data || a.base64Original || '';
+  return [a.name||'', a.tipo||'', a.vistoria||'', a.recarga_ts||'', String(d).length].join('|');
+}
+
+// O GS que ESTE anexo declara por si só (vistoria vence tudo: a VISTORIA sabe
+// a que hospedagem pertence, independentemente do balde em que caiu).
+function _gsDoAnexo(a){
+  try{
+    if(!a || !a.vistoria || typeof VISTORIAS==='undefined') return '';
+    const v = VISTORIAS[a.vistoria] ||
+      Object.values(VISTORIAS||{}).find(function(x){ return x && x.numero===a.vistoria; });
+    return (v && (v.hospedagem || v.hospedagem_gs)) || '';
+  }catch(e){ return ''; }
+}
+
+// GS provável de um balde legado, sem chutar entre hospedagens ativas.
+function _gsDeBaldeLegado(chave){
+  try{
+    if(chave.indexOf('v_')===0){
+      const vaga=chave.slice(2);
+      const r=_gsResolverHosp({vaga:vaga});
+      if(r.gs && !r.ambiguo) return r.gs;
+      // HISTORICO: último evento registrado NAQUELA vaga que traga hospedagem.
+      let melhor=null;
+      Object.keys(HISTORICO||{}).forEach(function(apt){
+        (HISTORICO[apt]||[]).forEach(function(e){
+          if(e && e.vaga===vaga && e.hospedagem && (!melhor || (e.ts||0)>(melhor.ts||0))) melhor=e;
+        });
+      });
+      return melhor ? melhor.hospedagem : '';
+    }
+    if(chave.indexOf('p_')===0){
+      const apt=chave.slice(2);
+      const r=_gsResolverHosp({apt:apt, vaga:apt, fromPasseio:true});
+      if(r.gs && !r.ambiguo) return r.gs;
+      let melhor=null;
+      (HISTORICO && HISTORICO[apt] || []).forEach(function(e){
+        if(e && e.hospedagem && (!melhor || (e.ts||0)>(melhor.ts||0))) melhor=e;
+      });
+      return melhor ? melhor.hospedagem : '';
+    }
+  }catch(e){}
+  return '';
+}
+
+// Move um anexo para `h_<gs>` sem duplicar. Devolve true se entrou de fato.
+function _gsReancorar(anexo, gs, assinaturasPorBalde){
+  const kh='h_'+gs;
+  if(!Array.isArray(ANEXOS[kh])) ANEXOS[kh]=[];
+  if(!assinaturasPorBalde[kh]){
+    assinaturasPorBalde[kh]=ANEXOS[kh].map(_gsAssinaturaAnexo);
+  }
+  const sig=_gsAssinaturaAnexo(anexo);
+  if(assinaturasPorBalde[kh].indexOf(sig)>=0) return false;  // já está lá
+  ANEXOS[kh].push(anexo);
+  assinaturasPorBalde[kh].push(sig);
+  return true;
+}
+
+function _gsMigrarVinculoAnexos(opts){
+  opts = opts || {};
+  const res = { rodou:false, religados:0, baldesLegados:0, movidosEntreHosp:0,
+                baldesPreservados:0, semDestino:[] };
+  try{
+    if(!opts.forcar){
+      try{ if(localStorage.getItem(MIGR_VINC_LS)) return res; }catch(e){}
+    }
+    if(typeof ANEXOS==='undefined' || !ANEXOS) return res;
+    res.rodou = true;
+    const assinaturas = {};
+    let mudou = false;
+
+    // ── Passo 1: baldes legados `v_` / `p_` ────────────────────────────────
+    Object.keys(ANEXOS).forEach(function(chave){
+      if(chave.indexOf('v_')!==0 && chave.indexOf('p_')!==0) return;
+      const lista = Array.isArray(ANEXOS[chave]) ? ANEXOS[chave] : [];
+      if(!lista.length){ delete ANEXOS[chave]; mudou=true; return; }
+      const gsBalde = _gsDeBaldeLegado(chave);
+      const sobraram = [];
+      lista.forEach(function(a){
+        const gs = _gsDoAnexo(a) || gsBalde;
+        if(!gs){ sobraram.push(a); return; }          // sem destino: PRESERVA
+        if(_gsReancorar(a, gs, assinaturas)) res.religados++;
+        mudou = true;
+      });
+      if(sobraram.length){
+        // Nunca apagamos sem religar: o que não teve destino continua aqui.
+        ANEXOS[chave] = sobraram;
+        res.baldesPreservados++;
+        res.semDestino.push(chave+' ('+sobraram.length+')');
+      } else {
+        delete ANEXOS[chave];
+        res.baldesLegados++;
+      }
+    });
+
+    // ── Passo 2: anexo de vistoria parado no `h_` da hospedagem ERRADA ─────
+    Object.keys(ANEXOS).forEach(function(chave){
+      if(chave.indexOf('h_')!==0) return;
+      const gsBalde = chave.slice(2);
+      const lista = Array.isArray(ANEXOS[chave]) ? ANEXOS[chave] : [];
+      const ficam = [];
+      lista.forEach(function(a){
+        const gsReal = _gsDoAnexo(a);
+        if(!gsReal || gsReal===gsBalde){ ficam.push(a); return; }
+        if(_gsReancorar(a, gsReal, assinaturas)){ res.religados++; res.movidosEntreHosp++; }
+        mudou = true;
+      });
+      if(ficam.length !== lista.length){
+        ANEXOS[chave] = ficam;
+        assinaturas[chave] = ficam.map(_gsAssinaturaAnexo);
+      }
+    });
+
+    if(mudou){
+      // Concatena e move; nunca esvazia. Sem `permitirVazio` de propósito: se
+      // isto for a zero, é bug e a guarda tem de barrar.
+      try{ saveAnexos(); }catch(e){ console.error('[MIGR v1970] saveAnexos falhou:', e); }
+    }
+    try{ localStorage.setItem(MIGR_VINC_LS, String(Date.now())); }catch(e){}
+
+    const resumo = 'Migração de vínculo v1.9.7.0: '+res.religados+' anexo(s) religados ao GS correto ('
+      + res.movidosEntreHosp + ' movidos entre hospedagens), '
+      + res.baldesLegados + ' balde(s) legado(s) dobrados, '
+      + res.baldesPreservados + ' preservado(s) sem destino'
+      + (res.semDestino.length ? ' ['+res.semDestino.join(', ')+']' : '');
+    console.log('[MIGR v1970]', resumo);
+    if(res.religados || res.baldesLegados || res.baldesPreservados){
+      try{ addLogSistema(resumo, {aud:true, acao:'migracao_vinculo_v1970', origem:'automatico'}); }catch(e){}
+    }
+  }catch(e){
+    console.error('[MIGR v1970] falhou (dados intactos):', e && e.message);
+  }
+  return res;
 }
 
 function getAnexos(id, fromPasseio){
@@ -17794,7 +18199,10 @@ function getAnexos(id, fromPasseio){
 function autoRenameAnexo(id, fromPasseio, file){
   if(!file.type.startsWith('image/')) return file.name;
   const apt = fromPasseio ? id : (S[id]?.apt||'');
-  const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
+  // v1.9.7.0: o nome do arquivo também é vínculo — resolve pelo GS, não pelo
+  // ponteiro cru da vaga, senão a foto da vaga grande sai sem o número da
+  // hospedagem no nome.
+  const hospNum = _gsDaVaga(id, fromPasseio);
   if(!hospNum && !apt) return file.name;
   const ext = file.name.lastIndexOf('.')>=0 ? file.name.slice(file.name.lastIndexOf('.')) : '.jpg';
   const now = new Date();
@@ -17814,7 +18222,16 @@ function autoRenameAnexo(id, fromPasseio, file){
 
 function addAnexo(id, fromPasseio, file){
   return new Promise((resolve)=>{
-    const key = getAnexoKey(id, fromPasseio);
+    // v1.9.7.0: sem hospedagem resolvida não há onde ancorar o anexo com
+    // segurança. Escrever num balde por vaga/apto recriaria o órfão que o
+    // check-out do vizinho apaga. Melhor recusar e dizer o porquê.
+    const key = getAnexoKey(id, fromPasseio, {paraEscrita:true});
+    if(!key){
+      console.warn('[ANEXO] recusado: hospedagem não resolvida para', id);
+      if(typeof showToast==='function') showToast('⚠️ Sem hospedagem vinculada a esta vaga — designe a hospedagem antes de anexar.', 5000);
+      try{ addLogSistema('Anexo recusado: hospedagem não resolvida (vaga '+id+')', {aud:true, acao:'anexo_sem_hospedagem', alvo:String(id), origem:'automatico'}); }catch(e){}
+      resolve(false); return;
+    }
     if(!ANEXOS[key]) ANEXOS[key]=[];
     if(ANEXOS[key].length >= MAX_ANEXOS){ resolve(false); return; }
     const reader = new FileReader();
@@ -18044,6 +18461,9 @@ function _atualizarContadores(){
   _contadorAnterior.hospedagens = Object.keys(HOSPEDAGENS || {}).length;
   _contadorAnterior.vistorias   = Object.keys(VISTORIAS   || {}).length;
   _contadorAnterior.anexos      = Object.keys(ANEXOS      || {}).length;
+  // v1.9.7.0: a guarda por itens precisa da linha de base já no fim do init.
+  _contadorAnterior.anexos__itens    = _gsContarItens(ANEXOS || {});
+  _contadorAnterior.historico__itens = _gsContarItens(typeof HISTORICO !== 'undefined' ? HISTORICO : null);
   _contadorAnterior.usuarios    = _gsContar(typeof USUARIOS !== 'undefined' ? USUARIOS : null);
   _contadorAnterior.historico   = _gsContar(typeof HISTORICO !== 'undefined' ? HISTORICO : null);
   _contadorAnterior.turnos      = _gsContar(typeof TURNOS    !== 'undefined' ? TURNOS    : null);
@@ -18082,7 +18502,21 @@ function _gsGuardaSave(tipo, dados, opts){
         return false;
       }
     }
+    // v1.9.7.0 — GUARDA POR ITENS. A guarda de chaves acima só pega o zero
+    // absoluto: um save que mantém os 8 baldes de ANEXOS e esvazia 90% das fotos
+    // passava batido. O check-out legítimo apaga UM balde inteiro e vem com
+    // `permitirVazio`, então não é atingido. O piso de 4 evita falso positivo
+    // aritmético em coleções minúsculas (2 → 1 não é perda abrupta).
+    const novoIt = _gsContarItens(dados);
+    const antIt  = _contadorAnterior[tipo + '__itens'] || 0;
+    if(!opts.permitirVazio && antIt >= 4 && novoIt < antIt * 0.5){
+      console.error('[GUARDA ITENS] save de ' + tipo + ' BLOQUEADO: ' + antIt + ' → ' + novoIt + ' itens (queda > 50% sem permitirVazio)');
+      if(typeof showToast === 'function') showToast('⚠️ Gravação bloqueada: ' + tipo + ' cairia de ' + antIt + ' para ' + novoIt + ' itens (proteção de dados)', 5000);
+      try { addLogSistema('Gravação de ' + tipo + ' bloqueada pela guarda de itens (' + antIt + ' → ' + novoIt + ')', {aud:true, acao:'guarda_itens_bloqueou', alvo:tipo, origem:'automatico'}); } catch(e){}
+      return false;
+    }
     _contadorAnterior[tipo] = novo;
+    _contadorAnterior[tipo + '__itens'] = novoIt;
     try { localStorage.setItem('garagespot_contadores', JSON.stringify(_contadorAnterior)); } catch(e){}
     return true;
   } catch(e){
@@ -18933,6 +19367,9 @@ checkLicense().then(async (ativo)=>{
       // ══════════════════════════════════════════════════════════════════
       _GS_PRONTO = true;
       try { _normalizarHospedagens(); } catch(e){ console.warn('[BUG B] normalização pós-init:', e); }
+      // v1.9.7.0: reancora anexos mal-vinculados ao GS correto ANTES que
+      // qualquer check-out apague. Roda uma vez só; não destrutiva; idempotente.
+      try { _gsMigrarVinculoAnexos(); } catch(e){ console.warn('[MIGR v1970] pós-init:', e); }
       try { _atualizarContadores(); } catch(e){ console.warn('[BUG A] contadores pós-init:', e); }
       console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
       // v1.9.4.16: o hotel opera 24h — o rótulo "check-out" passa a virar sozinho
