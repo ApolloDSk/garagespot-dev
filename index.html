@@ -13,7 +13,30 @@
 html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0efea;height:100%;overflow:hidden}
 html.font-small{zoom:0.87}
 html.font-large{zoom:1.13}
-.page{display:flex;flex-direction:column;height:100dvh;padding:7px;gap:5px}
+/* ── v1.9.7.1 — ALTURA DO MAPA EM NAVEGADOR ANTIGO (Chrome 101 / Android 8.1) ──
+   `dvh` só existe a partir do Chrome 108. Num motor mais velho a declaração
+   inteira é DESCARTADA e `.page` cai para `height:auto` — e como a altura do
+   mapa é 100% percentual da raiz até a célula
+   (.page → .garage-wrap → .garage-inner → .map-container → .map-rel:100%
+    → #gtable:100% → tr com height em % via buildTable),
+   a cadeia toda colapsa: medido em 980x1397, o mapa cai de 1232px para 208px
+   e a vaga de 72px para 15px — intocável no dedo.
+   O Painel não colapsa porque a altura dele vem do CONTEÚDO, não de percentual.
+
+   CORREÇÃO ADITIVA: `height:100%` primeiro (resolve contra `html,body{height:100%}`,
+   vale em qualquer navegador), `100dvh` logo depois sobrescrevendo onde há suporte.
+   Em navegador moderno o resultado é o MESMO de antes — nada muda de aparência. */
+.page{display:flex;flex-direction:column;height:100%;height:100dvh;padding:7px;gap:5px}
+
+/* v1.9.7.1 — REDE DE PROTEÇÃO para aparelhos antigos de clientes futuros.
+   Só entra em navegador SEM `dvh` (ou seja, exatamente o caso do tablet do hotel);
+   onde `dvh` existe a consulta é FALSA e este bloco nunca é aplicado — por
+   construção, zero risco de mudar o layout atual. Garante altura tocável na vaga
+   mesmo que outra coisa da cadeia venha a falhar. */
+@supports not (height: 100dvh){
+  .map-container{min-height:320px}
+  #gtable td{height:44px}
+}
 
 /* ── TOPBAR UNIFICADA ── */
 /* Parte 3 v1.9.4.4: overflow:hidden garante que nada (ex.: o chevron) "saia" da
@@ -1327,7 +1350,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.7.0';
+const GS_VERSION = 'v1.9.7.1';
 const GS_VERSION_CODE = 28;
 const GS_BUILD_TS = '2026-08-26';
 
