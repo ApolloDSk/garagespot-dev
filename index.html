@@ -1350,7 +1350,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.8.0';
+const GS_VERSION = 'v1.9.9.0';
 const GS_VERSION_CODE = 29;
 const GS_BUILD_TS = '2026-09-04';
 
@@ -1375,6 +1375,87 @@ function _localISO(dt){
   }catch(e){ return ''; }
 }
 function _hojeLocalISO(){ return _localISO(new Date()); }
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.0 — A EXIBIÇÃO DA HORA PASSA A VIR DA MESMA FONTE QUE O DIA LOCAL
+// ════════════════════════════════════════════════════════════════════════
+// RELATO DE CAMPO (04/09/2026): o rodapé mostrava 'Hoje às 17:10' com o relógio
+// do aparelho marcando 14:35 — um horário de backup no FUTURO, o que nenhum
+// carimbo legítimo pode ser. Acontecia no tablet do hotel e no aparelho de
+// desenvolvimento, com os dois relógios certos.
+//
+// O QUE FOI VERIFICADO, ponto a ponto:
+//  • O QUE SE GRAVA está CERTO e sempre esteve: todo carimbo é `Date.now()` —
+//    milissegundos desde a Época, um instante absoluto, sem fuso embutido.
+//    Nenhum dado precisa ser (nem foi) reescrito.
+//  • O QUE SE EXIBE saía de `toLocaleDateString`/`toLocaleTimeString`, que são
+//    `Intl`. O resto do app já não usava `Intl` para tempo: `_localISO` (dia
+//    local, v1.9.4.14) e o nome dos arquivos de backup (`getHours()`) leem a
+//    hora pelos GETTERS de `Date`. Eram DUAS fontes de 'local' no mesmo app.
+//    Getters e `Intl` resolvem o fuso por caminhos diferentes, e num WebView
+//    Android eles podem discordar — o que dá exatamente o sintoma medido: o
+//    nome do arquivo certo e a tela errada, ou vice-versa.
+//  • E o rodapé ainda escrevia 'Hoje às' FIXO, para qualquer carimbo. Um backup
+//    de ontem às 17:10 aparecia como 'Hoje às 17:10'. Este segundo defeito
+//    sozinho já explica um horário no futuro, e é independente do primeiro.
+//
+// A CORREÇÃO fecha os dois: uma fonte só de hora local (os getters, iguais aos
+// do nome do arquivo e do `_localISO`) e um rótulo de dia que não mente.
+//
+// ⚠️ REGRA PERMANENTE, junto com a da v1.9.4.14: para EXIBIR ou IMPRIMIR data e
+// hora use SEMPRE estes helpers. Não voltar a usar `toLocale*String` nem
+// `toISOString()` — o formato de saída é o mesmo ('DD/MM/AAAA', 'HH:MM'), o que
+// muda é de onde vem o fuso.
+function _p2GS(n){ n = Number(n) || 0; return (n < 10 ? '0' : '') + n; }
+function _dtObj(ts){ return (ts instanceof Date) ? ts : new Date(ts); }
+// HH:MM local
+function _hLocal(ts){
+  try{ const d = _dtObj(ts); if(isNaN(d.getTime())) return '—';
+    return _p2GS(d.getHours()) + ':' + _p2GS(d.getMinutes()); }catch(e){ return '—'; }
+}
+// HH:MM:SS local
+function _hLocalSeg(ts){
+  try{ const d = _dtObj(ts); if(isNaN(d.getTime())) return '—';
+    return _hLocal(d) + ':' + _p2GS(d.getSeconds()); }catch(e){ return '—'; }
+}
+// DD/MM/AAAA local
+function _dLocal(ts){
+  try{ const d = _dtObj(ts); if(isNaN(d.getTime())) return '—';
+    return _p2GS(d.getDate()) + '/' + _p2GS(d.getMonth()+1) + '/' + d.getFullYear(); }catch(e){ return '—'; }
+}
+// DD/MM/AA local
+function _dLocalCurta(ts){
+  try{ const d = _dtObj(ts); if(isNaN(d.getTime())) return '';
+    return _p2GS(d.getDate()) + '/' + _p2GS(d.getMonth()+1) + '/' + String(d.getFullYear()).slice(-2); }catch(e){ return ''; }
+}
+// DD/MM/AAAA HH:MM local
+function _dtLocal(ts){ return _dLocal(ts) + ' ' + _hLocal(ts); }
+// DD/MM/AAAA, HH:MM:SS local (formato do antigo `toLocaleString('pt-BR')`)
+function _dtLocalSeg(ts){ return _dLocal(ts) + ', ' + _hLocalSeg(ts); }
+// DD/MM/AA, HH:MM local
+function _dtLocalCurta(ts){ return _dLocalCurta(ts) + ', ' + _hLocal(ts); }
+const _GS_DIAS_ABREV  = ['dom.','seg.','ter.','qua.','qui.','sex.','sáb.'];
+const _GS_MESES_ABREV = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
+// 'qui., 4 de set.' — rótulo do Painel
+function _dLocalExtenso(ts){
+  try{ const d = _dtObj(ts); if(isNaN(d.getTime())) return '';
+    return _GS_DIAS_ABREV[d.getDay()] + ', ' + d.getDate() + ' de ' + _GS_MESES_ABREV[d.getMonth()]; }catch(e){ return ''; }
+}
+// Rótulo HONESTO de quando algo aconteceu. 'Hoje às' só quando for hoje mesmo.
+// Sem isto, um carimbo de ontem aparece como se fosse de agora — que foi
+// metade do relato de campo desta versão.
+function _quandoLocal(ts){
+  try{
+    if(!ts) return '—';
+    const iso = _localISO(new Date(ts));
+    if(!iso) return '—';
+    const hoje = _hojeLocalISO();
+    const ontem = _localISO(new Date(Date.now() - 24*60*60*1000));
+    if(iso === hoje)  return 'Hoje às '  + _hLocal(ts);
+    if(iso === ontem) return 'Ontem às ' + _hLocal(ts);
+    return _dLocalCurta(ts) + ' às ' + _hLocal(ts);
+  }catch(e){ return '—'; }
+}
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.16 — REAVALIAÇÃO NA VIRADA DA MEIA-NOITE (local)
@@ -1660,7 +1741,7 @@ function _debugCapturar(nivel, args){
       return String(a);
     }).join(' ');
     if(txt.indexOf('[BUG') >= 0 || txt.indexOf('[VST]') >= 0 || txt.indexOf('[DESIG') >= 0 || nivel === 'ERROR'){
-      const ts = new Date().toLocaleTimeString('pt-BR');
+      const ts = _hLocalSeg(new Date());
       _debugLogs.push('[' + ts + '][' + nivel + '] ' + txt);
       if(_debugLogs.length > 300) _debugLogs.shift();
       const panel = document.getElementById('debug-panel');
@@ -2646,7 +2727,7 @@ function _clkVRotear(id, apt, usuario){
   const pend=typeof getPendentePorApt==='function'?getPendentePorApt(apt):null;
   if(pend){
     const info=[pend.model,pend.color,pend.plate].filter(Boolean).join(' · ')||'Sem detalhes';
-    const hrChk=pend.ts_inicio?new Date(pend.ts_inicio).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+    const hrChk=pend.ts_inicio?_hLocal(new Date(pend.ts_inicio)):'—';
     mc.innerHTML=`
       <div class="mt">Check-in pendente — Vaga ${id}</div>
       <div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:9px;padding:10px 12px;margin-bottom:10px">
@@ -2695,7 +2776,7 @@ function _clkVRotear(id, apt, usuario){
   if(gsPend){
     const h=HOSPEDAGENS[gsPend];
     const info=[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'Sem detalhes';
-    const hrChk=h.checkin_ts?new Date(h.checkin_ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+    const hrChk=h.checkin_ts?_hLocal(new Date(h.checkin_ts)):'—';
     mc.innerHTML=`
       <div class="mt">Aguardando vaga — Vaga ${id}</div>
       <div style="background:#EEF6FF;border:1px solid #378ADD;border-radius:9px;padding:10px 12px;margin-bottom:10px">
@@ -3652,7 +3733,11 @@ function showEdit(id, fromPasseio){
     if(color!==(d.color||'')) mudancas.push("Cor: '"+(d.color||'—')+"' → '"+(color||'—')+"'");
     if(plate!==(d.plate||'')) mudancas.push("Placa: '"+(d.plate||'—')+"' → '"+(plate||'—')+"'");
     if(guest!==(d.guest||'')) mudancas.push("Hóspede: '"+(d.guest||'—')+"' → '"+(guest||'—')+"'");
-    if(obs!==(d.obs||'')) mudancas.push("Observações: '"+(d.obs||'—')+"' → '"+(obs||'—')+"'");
+    // v1.9.9.0: o valor ANTERIOR tem de ser lido AQUI. Dentro de `confirmarUsuario`
+    // o passo 1 já sobrescreveu `d.obs` (`d` É o objeto de `S`/`PASSEIO`), e ler de
+    // lá devolveria o texto novo comparado com ele mesmo — nenhuma linha sairia.
+    const _obsAntes=(d.obs||'');
+    if(obs!==_obsAntes) mudancas.push("Observações: '"+(_obsAntes||'—')+"' → '"+(obs||'—')+"'");
     if(saida!==(saidaAtual||'')) mudancas.push("Data de saída: '"+fmtData(saidaAtual)+"' → '"+fmtData(saida)+"'");
     if(mudancas.length===0){ showToast('Nenhuma alteração',2000); showDet(id, fromPasseio); return; }
 
@@ -3720,7 +3805,30 @@ function showEdit(id, fromPasseio){
         addHistorico(novoApt,'troca_apartamento', fromPasseio?'':id,
           (aptAtual||'—')+' → '+novoApt, usuarioStr, hospNum);
       }
-      const _outrasMudancas = mudancas.filter(function(m){ return String(m).indexOf('Apartamento:') !== 0; });
+      // ════════════════════════════════════════════════════════════════════
+      // v1.9.9.0 — OBSERVAÇÃO É EVENTO PRÓPRIO, UMA LINHA POR EDIÇÃO
+      // ════════════════════════════════════════════════════════════════════
+      // A observação já era gravada (em `S`/`PASSEIO` e na hospedagem) e já entrava
+      // no `extra` de um `edicao` genérico — que o PDF não renderizava. Resultado:
+      // o que o manobrista escreveu sobre o carro NÃO aparecia no documento.
+      //
+      // Agora cada mexida gera a SUA linha, com responsável e horário, e o texto
+      // NOVO vai no detalhe da célula de movimentação (o mesmo lugar onde a troca
+      // de apartamento já mostra origem → destino). A linha anterior NUNCA é
+      // sobrescrita: num documento com valor probatório, o histórico de uma
+      // observação vale mais que o texto que sobrou no fim.
+      if(obs!==_obsAntes){
+        const _tipoObs = !_obsAntes ? 'observacao_adicionada'
+                       : (!obs ? 'observacao_removida' : 'observacao_alterada');
+        addHistorico(novoApt, _tipoObs, fromPasseio?'':id,
+          (obs || '(observação apagada)'), usuarioStr, hospNum);
+      }
+      // O `edicao` genérico não repete o que já virou linha própria (apartamento e
+      // observação). Duas linhas dizendo a mesma coisa seria ruído no documento.
+      const _outrasMudancas = mudancas.filter(function(m){
+        const t = String(m);
+        return t.indexOf('Apartamento:') !== 0 && t.indexOf('Observações:') !== 0;
+      });
       if(_outrasMudancas.length){
         addHistorico(novoApt,'edicao', fromPasseio?'':id, 'Edição de detalhes — '+_outrasMudancas.join(' · '), usuarioStr, hospNum);
       }
@@ -3804,7 +3912,7 @@ const BACKUP_KEY_TUDO    = 'garagespot_backup_tudo';
 
 function fmtTs(ts){
   const d=new Date(ts);
-  return d.toLocaleDateString('pt-BR')+' às '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  return _dLocal(d)+' às '+_hLocal(d);
 }
 
 window.confirmReset = function(){
@@ -4006,7 +4114,7 @@ function _gestaoEsconderBack(){
   const b=document.getElementById('gestao-back-fab'); if(b) b.style.display='none';
 }
 function tick(){
-  document.getElementById('clk').textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('clk').textContent=_hLocal(new Date());
   atualizarPlantao();
   if(Object.keys(PASSEIO).length) renderP();
 }
@@ -5018,13 +5126,13 @@ function renderPainelDia(){
   // backup status
   const lastBkp=DRIVE_STATUS?.ultimo_backup;
 
-  function fmtHr(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+  function fmtHr(ts){ if(!ts) return '—'; const d=new Date(ts); return _hLocal(d); }
 
   pw.innerHTML=`
 
   <!-- SEÇ1: OCUPAÇÃO ATUAL (GARAGEM AGORA — PRESERVADO) -->
   <div class="painel-sec" style="margin-bottom:10px">
-    <div class="painel-sec-title">🏢 Garagem agora — ${now.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})}</div>
+    <div class="painel-sec-title">🏢 Garagem agora — ${_dLocalExtenso(now)}</div>
     <div class="painel-stat-row" style="gap:6px">
       <div class="painel-stat-card" style="background:#EEF9F2;border:1.5px solid #b0dbc0;flex:1">
         <div class="painel-stat-val" style="color:#0F6E56" id="g-livres">${_ind.livres}</div>
@@ -5138,7 +5246,7 @@ function renderPainelDia(){
            title="Tocar para enviar o backup para a nuvem agora"
            style="flex:1;min-width:100px;text-align:right;cursor:pointer;user-select:none;-webkit-tap-highlight-color:rgba(24,95,165,.15);border-radius:8px;padding:6px 8px;margin:-4px -4px -4px 0">
         <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">☁️ Backup</div>
-        <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?'Hoje às '+fmtHr(lastBkp):'Sem backup'}</div>
+        <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?_quandoLocal(lastBkp):'Sem backup'}</div>
         ${_gdRodapeHTML()}
         ${_gdDicaTocarHTML()}
       </div>
@@ -5308,8 +5416,8 @@ document.addEventListener('backbutton', function(e){
   }
 }, false);
 
-function _fmtHrPainel(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
-function _fmtDataHoraPainel(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function _fmtHrPainel(ts){ if(!ts) return '—'; const d=new Date(ts); return _hLocal(d); }
+function _fmtDataHoraPainel(ts){ if(!ts) return '—'; const d=new Date(ts); return _dtLocal(d); }
 function _fmtTempoEspera(tsInicio){
   if(!tsInicio) return '';
   const min=Math.floor((Date.now()-tsInicio)/60000);
@@ -6147,7 +6255,7 @@ function _mostrarAuditoria(){
   const linhas = tr.length===0
     ? '<div style="color:#bbb;font-size:12px;text-align:center;padding:16px">Nenhum registro de auditoria ainda</div>'
     : tr.slice(0,300).map(function(e){
-        const quando=(typeof fmtDt==='function')?fmtDt(e.ts):new Date(e.ts).toLocaleString('pt-BR');
+        const quando=(typeof fmtDt==='function')?fmtDt(e.ts):_dtLocalSeg(new Date(e.ts));
         const acao=rotulos[e.acao]||e.acao||'—';
         const quem=e.quem?('<span style="color:#185FA5;font-weight:700">'+_vtEsc(e.quem)+'</span>'):'<span style="color:#aaa">—</span>';
         const alvo=e.alvo?('<div style="font-size:11px;color:#555;margin-top:1px">'+_vtEsc(e.alvo)+'</div>'):'';
@@ -6703,7 +6811,7 @@ window.abrirMenuVistorias = function(apt, gs, fp){
   function fmtData(ts){
     if(!ts) return '—';
     const d=new Date(ts);
-    return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    return _dtLocal(d);
   }
   let html='<div class="mt" style="font-size:14px">📋 Vistorias';
   html+=apt?(' · Apt '+_vtEsc(apt)):'';
@@ -6975,6 +7083,45 @@ function _vstSvgComDanos(vmId, danos){
   return VST_SVG[vmId].replace('</svg>',marks+'</svg>');
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.0 — A VISTORIA CARIMBA A TROCA DE APARTAMENTO
+// ════════════════════════════════════════════════════════════════════════
+// O documento da vistoria é um PNG COMPOSTO E CONGELADO no momento da assinatura
+// — e tem de continuar sendo: é ele que prova o estado do carro na entrada, e
+// reescrevê-lo depois seria adulterar prova. Só que ele carrega o apartamento
+// daquele instante, e a vistoria costuma ser apresentada SOZINHA (o gestor abre o
+// arquivo da vistoria, não o fechamento inteiro). Depois de uma troca de
+// apartamento, ela ficava dizendo um número que não vale mais.
+//
+// A saída é carimbar POR FORA: uma faixa no PDF, acima da imagem intocada, com a
+// linha do tempo do apartamento. A prova não muda; ganha contexto.
+//
+// LEI DO PROJETO (v1.9.7.0): o recorte é pela HOSPEDAGEM (GS), nunca pelo
+// apartamento — é o GS que atravessa a troca.
+function _vstTrocasDeApto(v){
+  try{
+    const gs = (v && (v.hospedagem || v.hospedagem_gs)) || '';
+    if(!gs) return '';
+    const h = (typeof HOSPEDAGENS !== 'undefined' && HOSPEDAGENS[gs]) || null;
+    const evs = (_gsHistoricoDaHospedagem((h && h.apt) || v.apt || '', gs, (h && h.checkin_ts) || null) || [])
+      .filter(function(e){ return e && e.tipo === 'troca_apartamento' && e.extra; })
+      .sort(function(a, b){ return (a.ts || 0) - (b.ts || 0); });
+    if(!evs.length) return '';
+    const dm = function(ts){ const d = new Date(ts); return _p2GS(d.getDate()) + '/' + _p2GS(d.getMonth()+1); };
+    const partes = [];
+    evs.forEach(function(e, i){
+      const p = String(e.extra).split('→');
+      const de   = (p[0] || '').trim();
+      const para = (p[1] || '').trim();
+      // O `de` do 2º evento em diante É o `para` do anterior — só o primeiro entra.
+      if(i === 0) partes.push(de + ((h && h.checkin_ts) ? ' (' + dm(h.checkin_ts) + ')' : ''));
+      partes.push(para + (e.ts ? ' (' + dm(e.ts) + ')' : ''));
+    });
+    // Seta em ASCII: WinAnsi não tem `→` e a linha inteira sairia ilegível (v1.9.6.8).
+    return partes.join(' -> ');
+  }catch(e){ return ''; }
+}
+
 // ── PDF de vistoria ────────────────────────────────────────────────────────
 function gerarPDFVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
@@ -6988,8 +7135,23 @@ function gerarPDFVistoria(id){
       let y=_pdfHeader(doc,'Vistoria de Veículo',
         (v.numero||v.id||'')+' · '+fmtDt(v.ts_criada||v.ts_finalizacao||Date.now())+
         (v.ts_assinada?' · Assinada':' · Pendente assinatura'));
+      // v1.9.9.0: faixa de contexto, ACIMA da imagem — que não é tocada.
+      const _vstTroca=_vstTrocasDeApto(v);
+      if(_vstTroca){
+        doc.setFillColor.apply(doc, PDF_COR.painel);
+        doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
+        doc.roundedRect(10,y,190,9,1.5,1.5,'FD');
+        doc.setFont('helvetica','bold'); doc.setFontSize(6.5);
+        doc.setTextColor.apply(doc, PDF_COR.rotulo);
+        doc.text('TROCA DE APARTAMENTO', 13, y+3.4, {charSpace:0.3});
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        doc.setTextColor.apply(doc, PDF_COR.texto);
+        doc.text(_pdfCortar(doc,_vstTroca,180), 13, y+7.2);
+        y+=12;
+      }
       if(v.documento_final_b64){
-        doc.addImage(v.documento_final_b64,'PNG',10,y,190,240);
+        // a altura cede o que a faixa ocupou, para não invadir o rodapé (285 mm)
+        doc.addImage(v.documento_final_b64,'PNG',10,y,190,Math.min(240, 282-y));
       } else {
         doc.setFontSize(10);
         const linhas=[
@@ -7001,7 +7163,7 @@ function gerarPDFVistoria(id){
           'Funcionario: '+(v.funcionario||v.usuario_criou||'—'),
           (nd>0?(nd+' avaria(s) marcada(s)'):'Sem avarias registradas')
         ];
-        linhas.forEach(function(l){ doc.text(l,12,y); y+=6; });
+        linhas.forEach(function(l){ doc.text(_pdfTxt(l),12,y); y+=6; });   // v1.9.9.0
       }
       _pdfFooter(doc);
       // Páginas seguintes — fotos da hospedagem
@@ -7184,7 +7346,7 @@ function novoCheckin(){
     if(dr && _nciRascunhoMorto(dr)){ _nciRascDescartar(); }
     else if(dr&&dr._type==='nci' && (Date.now()-(dr._ts||0))<24*3600*1000){
       const mc=document.getElementById('mc');
-      const hhmm=new Date(dr._ts||Date.now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      const hhmm=_hLocal(new Date(dr._ts||Date.now()));
       mc.innerHTML=`
         <div class="mt">Continuar check-in?</div>
         <div class="warn-box">Apt <strong>${_vtEsc(dr.apt||'—')}</strong> iniciado às ${hhmm}. Deseja continuar de onde parou?</div>
@@ -7513,8 +7675,8 @@ function _nciSecaoDados(d){
 
 function _nciSecaoVistoria(d){
   const now=new Date();
-  const dStr=now.toLocaleDateString('pt-BR');
-  const hStr=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const dStr=_dLocal(now);
+  const hStr=_hLocal(now);
   return `
     <section class="secao" id="secao-vistoria">
       <header class="secao-header">
@@ -9052,12 +9214,12 @@ function _nciCriarVistoriaV2(d,numero){
     modelo:d.model, cor:d.color, placa:d.plate, hospede:d.guest,
     saida_prevista:d.saida_prevista||'',
     funcionario:_vtFuncNome(d),
-    data_criacao:dataHora.toLocaleDateString('pt-BR'),
+    data_criacao:_dLocal(dataHora),
     dados:{
       apt:d.apt, modelo:d.model, cor:d.color,
       funcionario:_vtFuncNome(d),
-      data:dataHora.toLocaleDateString('pt-BR'),
-      hora:dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+      data:_dLocal(dataHora),
+      hora:_hLocal(dataHora)
     },
     avarias:[...list], danos:[...list],
     com_avaria:list.length>0,
@@ -9260,7 +9422,7 @@ function abrirDetalhesAguardando(gs){
   const anexos=(ANEXOS['h_'+gs]||[]).slice();
   const numVist=(h.vistorias&&h.vistorias[0])||'—';
   const ts=h.checkin_ts?new Date(h.checkin_ts):new Date();
-  const tsFmt=ts.toLocaleDateString('pt-BR')+' '+ts.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const tsFmt=_dtLocal(ts);
   const rows=[
     ['Hospedagem',h.numero||gs],
     ['Apartamento',h.apt||'—'],
@@ -9275,7 +9437,7 @@ function abrirDetalhesAguardando(gs){
   ];
   const anxLista=anexos.length?anexos.map(function(a){
     const ico=a.tipo==='vistoria'?'📋':(a.tipo==='foto'?'📷':'📎');
-    return '<div class="anx-lista-item"><div class="anx-lista-ico">'+ico+'</div><div class="anx-lista-info"><div class="anx-lista-nome">'+_vtEsc(a.name||'sem nome')+'</div><div class="anx-lista-data">'+(a.timestamp?new Date(a.timestamp).toLocaleString('pt-BR'):'')+'</div></div></div>';
+    return '<div class="anx-lista-item"><div class="anx-lista-ico">'+ico+'</div><div class="anx-lista-info"><div class="anx-lista-nome">'+_vtEsc(a.name||'sem nome')+'</div><div class="anx-lista-data">'+(a.timestamp?_dtLocalSeg(new Date(a.timestamp)):'')+'</div></div></div>';
   }).join(''):'<div style="color:#aaa;text-align:center;padding:10px;font-size:12px">Nenhum anexo</div>';
   showModalAux({
     titulo:'Detalhes · '+_vtEsc(gs),
@@ -9482,7 +9644,7 @@ function _vtComporPNG(d,opcoes){
         ctx.fillText('Hospedagem '+(d.gs||''),W-padX,padY+32);
         ctx.fillStyle='#888'; ctx.font=Math.round(H*0.007)+'px Arial,sans-serif';
         const now=new Date(d.ts_inicio||Date.now());
-        ctx.fillText(now.toLocaleDateString('pt-BR')+' · '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),W-padX,padY+54);
+        ctx.fillText(_dLocal(now)+' · '+_hLocal(now),W-padX,padY+54);
         // Linha azul
         ctx.fillStyle='#185FA5'; ctx.fillRect(padX,padY+78,W-2*padX,2);
         // Body
@@ -9527,7 +9689,7 @@ function _vtComporPNG(d,opcoes){
         field('Apartamento',d.apt);
         field('Modelo / Cor',[d.model,d.color].filter(Boolean).join(' · '));
         field('Funcionário Responsável',_vtFuncNome(d));
-        field('Data',now.toLocaleDateString('pt-BR')+' '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+        field('Data',_dtLocal(now));
         // Checks
         fy+=8;
         const isCom=list.length>0;
@@ -9628,8 +9790,8 @@ function _nciCriarVistoria(p){
     modelo:p.model, cor:p.color, placa:p.plate, hospede:p.guest,
     saida_prevista:p.saida_prevista||'',
     funcionario:usrNome,
-    data_criacao:dataHora.toLocaleDateString('pt-BR'),
-    dados:{apt:p.apt,modelo:p.model,cor:p.color,funcionario:usrNome,data:dataHora.toLocaleDateString('pt-BR'),hora:dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})},
+    data_criacao:_dLocal(dataHora),
+    dados:{apt:p.apt,modelo:p.model,cor:p.color,funcionario:usrNome,data:_dLocal(dataHora),hora:_hLocal(dataHora)},
     avarias:[...list], danos:[...list],
     com_avaria:list.length>0,
     assinatura:p.assinatura||null, assinatura_b64:p.assinatura||null,
@@ -9883,6 +10045,46 @@ function _gsValidarSnapshot(snap){
 
 // Guarda o último snapshot COMPLETO no IndexedDB → permite restaurar em um toque
 // mesmo sem plugin de arquivo. (Store criado na DB_VERSION 3, não destrutivo.)
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.0 — BASE64 SEM MULTIPLICAR O ARQUIVO NA MEMÓRIA
+// ════════════════════════════════════════════════════════════════════════
+// `btoa(unescape(encodeURIComponent(json)))` é o idioma clássico de UTF-8 →
+// base64, e ele cria TRÊS strings inteiras além do próprio `json`:
+//   json (~10 MB) → encodeURIComponent (~11 MB) → unescape (~10 MB) → btoa (~13 MB)
+// Num backup COMPLETO (o que leva as fotos) são ~44 MB de string viva ao mesmo
+// tempo — só para escrever o arquivo, e antes ainda de montar o corpo multipart
+// do envio para o Drive. No SM-T585 do hotel (2 GB de RAM, Android 8.1, WebView
+// Chrome 101) é aí que o Android mata o processo, e é por isso que o
+// 'O GarageSpot parou' aparecia SEM ninguém mexer no app: quem dispara é o tique
+// automático de backup, não um toque.
+//
+// Aqui o texto vira bytes UMA vez (`TextEncoder` → Uint8Array, que não é string e
+// não disputa o heap de strings) e a base64 sai em pedaços.
+//
+// ⚠️ O PASSO TEM DE SER MÚLTIPLO DE 3. Base64 codifica 3 bytes em 4 caracteres;
+// um pedaço que não fecha em múltiplo de 3 ganha '=' de preenchimento NO MEIO da
+// saída e o arquivo sai corrompido. MEDIDO contra o idioma antigo: com 32766 a
+// saída é BYTE A BYTE IDÊNTICA (testado com acento, emoji e tamanhos exatamente
+// na fronteira do pedaço); com 32768 ela DIVERGE.
+//
+// Fallback para o idioma antigo se `TextEncoder` não existir: o arquivo continua
+// saindo, que é o que não pode faltar.
+const _GS_B64_PASSO = 32766;   // 3 × 10922 — não mudar sem refazer a medição
+function _gsBase64UTF8(txt){
+  const s = String(txt == null ? '' : txt);
+  try{
+    if(typeof TextEncoder === 'function'){
+      const bytes = new TextEncoder().encode(s);
+      const partes = [];
+      for(let i = 0; i < bytes.length; i += _GS_B64_PASSO){
+        partes.push(btoa(String.fromCharCode.apply(null, bytes.subarray(i, i + _GS_B64_PASSO))));
+      }
+      return partes.join('');
+    }
+  }catch(e){ console.warn('[BACKUP] base64 em pedaços falhou, usando o caminho antigo:', e && e.message); }
+  return btoa(unescape(encodeURIComponent(s)));
+}
+
 function _gsGuardarSnapshotIDB(snap){
   return new Promise(function(resolve){
     try {
@@ -9942,7 +10144,7 @@ async function fazerBackupLocal(motivo, opts){
     let gravouArquivo = false;
     if(window.Capacitor?.Plugins?.Filesystem){
       const {Filesystem}=window.Capacitor.Plugins;
-      const b64=btoa(unescape(encodeURIComponent(json)));
+      const b64=_gsBase64UTF8(json);   // v1.9.9.0
       await Filesystem.writeFile({path:'GarageSpot/Dados/'+nome,data:b64,directory:'DOCUMENTS',recursive:true});
       gravouArquivo = true;
     }
@@ -10733,7 +10935,7 @@ async function exportarBackupCompleto(){
     if(window.Capacitor?.Plugins?.Filesystem&&window.Capacitor?.Plugins?.Share){
       try{
         const {Filesystem,Share}=window.Capacitor.Plugins;
-        const b64=btoa(unescape(encodeURIComponent(json)));
+        const b64=_gsBase64UTF8(json);   // v1.9.9.0
         await Filesystem.writeFile({path:'GarageSpot/'+nome,data:b64,directory:'DOCUMENTS',recursive:true});
         const {uri}=await Filesystem.getUri({path:'GarageSpot/'+nome,directory:'DOCUMENTS'});
         await Share.share({title:'Backup GarageSpot',url:uri,dialogTitle:'Salvar/enviar backup'});
@@ -11487,7 +11689,7 @@ function _gsConfirmarImportacao(obj, nomeArq){
   const qtdAnx  = _gsContar(n.anexos || {});
   const avisoIDB = n.temIndexedDB ? '' :
     `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos/anexos</strong> (backup de formato antigo). Os demais dados serão importados normalmente.</div>`;
-  const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):new Date(n.ts).toLocaleString('pt-BR')) : '—';
+  const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):_dtLocalSeg(new Date(n.ts))) : '—';
   showM(`<div class="mt">📥 Importar dados</div>
     <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nomeArq||'backup.json'))}</div>
     <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
@@ -12339,7 +12541,10 @@ async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
     addLogSistema('Backup na nuvem falhou (' + (motivo || 'automático') + '): ' + m +
       (det.transitorio ? ' [rede — vai retentar]' : (det.reason ? ' [' + det.reason + ']' : '')) +
       (det.via ? ' via ' + det.via : ''));
-    return {ok:false, erro:m, detalhe:det};
+    // v1.9.9.0: quem chamou precisa saber que a saída é RECONECTAR, e não outra
+    // falha qualquer — é por este campo que o toque do rodapé decide escalar para
+    // o login interativo em vez de só reclamar.
+    return {ok:false, erro:m, detalhe:det, reconectar: !!(e && e.gdReconectar)};
   }finally{
     _gdEnviando = false;
   }
@@ -12679,27 +12884,36 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
 
 // Retentativa dos PDFs pendentes: relê o arquivo do dispositivo e sobe. Uma por
 // tique, para não disputar banda com o backup nem martelar a API.
-async function _gdTentarPDFsPendentes(){
+// v1.9.9.0 — `opts.todos` esvazia a fila (até um teto), em vez de um por tique.
+// SÓ o caminho do USUÁRIO usa isso: ele acabou de reconectar e está com o aparelho
+// na mão, então a fila tem de sair AGORA e não em N tiques de 10 min. O tique
+// automático continua mandando UM por vez, exatamente como antes — a razão daquele
+// limite (não disputar banda com o backup) não mudou.
+const GD_PDF_LOTE_USUARIO = 10;
+async function _gdTentarPDFsPendentes(opts){
+  opts = opts || {};
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
-    if(Date.now() < _gdProxTentativaTs) return;
+    if(!opts.todos && Date.now() < _gdProxTentativaTs) return;
     const fila = _gdPdfsPendentes();
     if(!fila.length) return;
     const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
     if(!F) return;                                  // sem Filesystem não há como reler
-    const item = fila[0];
-    let b64 = '';
-    try{
-      const r = await F.readFile({ path: 'GarageSpot/' + item.nome, directory: 'DOCUMENTS' });
-      b64 = (r && r.data) || '';
-    }catch(e){ return; }                            // arquivo sumiu do aparelho: NÃO apagamos o registro
-    if(!b64) return;
-    try{
-      const rr = await _gdEnviarPDFFechamento(item.nome, b64, item.apt, item.checkin);
-      _gdTirarPDFPendente(item.nome);
-      try{ _gsMarcarPDFNaNuvem(item.nome, rr && rr.id); }catch(eM){}   // v1.9.6.6
-      addLogSistema('PDF de fechamento pendente enviado: ' + item.nome);
-    }catch(e){ _gdAgendarRetentativa(); }
+    const lote = opts.todos ? fila.slice(0, GD_PDF_LOTE_USUARIO) : fila.slice(0, 1);
+    for(const item of lote){
+      let b64 = '';
+      try{
+        const r = await F.readFile({ path: 'GarageSpot/' + item.nome, directory: 'DOCUMENTS' });
+        b64 = (r && r.data) || '';
+      }catch(e){ continue; }                        // arquivo sumiu do aparelho: NÃO apagamos o registro
+      if(!b64) continue;
+      try{
+        const rr = await _gdEnviarPDFFechamento(item.nome, b64, item.apt, item.checkin);
+        _gdTirarPDFPendente(item.nome);
+        try{ _gsMarcarPDFNaNuvem(item.nome, rr && rr.id); }catch(eM){}   // v1.9.6.6
+        addLogSistema('PDF de fechamento pendente enviado: ' + item.nome);
+      }catch(e){ _gdAgendarRetentativa(); break; }  // rede ruim: para o lote aqui
+    }
   }catch(e){ console.warn('[DRIVE] pendentes de PDF não rodaram:', e && e.message); }
 }
 
@@ -13494,10 +13708,10 @@ function _gdAudCampo(v){
 }
 function _gdAudLinha(e){
   if(e && e.aud){
-    return [_gdAudId(e), new Date(e.ts || 0).toLocaleString('pt-BR'), _gdAudCampo(e.acao),
+    return [_gdAudId(e), _dtLocalSeg(new Date(e.ts || 0)), _gdAudCampo(e.acao),
             _gdAudCampo(e.quem), _gdAudCampo(e.alvo), _gdAudCampo(e.origem), _gdAudCampo(e.msg)].join(';');
   }
-  return [_gdAudId(e), new Date((e && e.ts) || 0).toLocaleString('pt-BR'), _gdAudCampo(e && e.msg)].join(';');
+  return [_gdAudId(e), _dtLocalSeg(new Date((e && e.ts) || 0)), _gdAudCampo(e && e.msg)].join(';');
 }
 // Mês LOCAL do registro — `_localISO`, nunca `toISOString()`: das 21h à meia-noite o
 // UTC já virou o dia (e, no dia 31, o mês) seguinte. Mesmo motivo da v1.9.4.14.
@@ -13704,13 +13918,13 @@ async function _gdTentarPendente(){
 async function fazerBackupNuvemAgora(){
   if(!_gdDisponivel()){
     showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000);
-    return;
+    return {ok:false, erro:'nuvem indisponível neste aparelho'};
   }
-  if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return; }
+  if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return {ok:false, erro:'Google Drive não conectado'}; }
   showToast('Enviando backup para o Google Drive…', 3000);
   const snap = _gsMontarSnapshot(true);
   const val = _gsValidarSnapshot(snap);
-  if(!val.ok){ showToast('⚠️ Envio abortado: ' + val.motivo, 5000); return; }
+  if(!val.ok){ showToast('⚠️ Envio abortado: ' + val.motivo, 5000); return {ok:false, erro:val.motivo}; }
   const nome = _gdNomeBackup();
   // v1.9.5.1: ação explícita do usuário zera a espera do backoff — quem apertou o
   // botão quer tentar AGORA, não daqui a 40 minutos.
@@ -13726,6 +13940,9 @@ async function fazerBackupNuvemAgora(){
       ' · O backup local está intacto.', 7000);
   }
   _gdReabrirConexoes();
+  // v1.9.9.0: o resultado sobe para quem chamou. O atalho do rodapé precisa
+  // distinguir "falhou por falta de autorização" de qualquer outra falha.
+  return r;
 }
 
 // ── Parte 5 — restaurar da nuvem ───────────────────────────────────────────
@@ -13821,7 +14038,7 @@ function _gdRestaurarArquivo(id, nome){
 // tornou a recuperação de desastre impossível até aqui.
 function _gdEscolherModoRestauracao(obj, nome){
   const n = _gsNormalizarBackup(obj);
-  const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):new Date(n.ts).toLocaleString('pt-BR')) : '—';
+  const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):_dtLocalSeg(new Date(n.ts))) : '—';
   const qtdHosp = _gsContar(n.hospedagens || (n.ls && n.ls['garagespot_hospedagens'] ? JSON.parse(n.ls['garagespot_hospedagens']) : {}) || {});
   const qtdVst  = _gsContar(n.vistorias || {});
   const qtdAnx  = _gsContarItens(n.anexos || {});
@@ -13996,7 +14213,7 @@ async function _gsChecarIntegridade(){
 
     const snapIDB = await _gsLerSnapshotIDB();
     const lista = quedas.map(function(q){ return '<div>• <strong>'+q.rotulo+'</strong>: '+q.antes+' → 0</div>'; }).join('');
-    const dataBk = meta.ts ? (typeof fmtDt==='function'?fmtDt(meta.ts):new Date(meta.ts).toLocaleString('pt-BR')) : '—';
+    const dataBk = meta.ts ? (typeof fmtDt==='function'?fmtDt(meta.ts):_dtLocalSeg(new Date(meta.ts))) : '—';
     const podeUmToque = !!snapIDB;
     showM(`<div class="mt">⚠️ Dados podem ter sido apagados</div>
       <div class="ms" style="margin-bottom:8px">Comparando com o último backup completo (${_vtEsc(dataBk)}), estes itens sumiram:</div>
@@ -14123,7 +14340,7 @@ function _rcComprovantePNG(e){
     ctx.fillStyle='#1A2238'; ctx.font='bold 30px sans-serif';
     ctx.fillText('Comprovante de Recarga', 36, 70);
     ctx.fillStyle='#185FA5'; ctx.fillRect(36,90,528,3);
-    const fmt=function(ts){ return ts? new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'; };
+    const fmt=function(ts){ return ts? _dtLocalCurta(new Date(ts)) : '—'; };
     const dur=(typeof _fmtDurRecarga==='function')?_fmtDurRecarga(e.mins):(e.mins+'min');
     const valTxt=e.cortesia?'Cortesia (R$ 0,00)':('R$ '+(Number(e.valor)||0).toFixed(2).replace('.',','));
     const linhas=[
@@ -14646,7 +14863,7 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   if(typeof ref==='function') ref(vagaId);
   // Parte 5 v1.9.4.4: registrar como movimentação (aparece no painel e nos detalhes "i")
   if(apt && typeof addHistorico==='function'){
-    const fimHr=new Date(fim).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const fimHr=_hLocal(new Date(fim));
     addHistorico(apt,'recarga_iniciada',vagaId,'Recarga iniciada · término previsto '+fimHr,usuarioStr,hospedagem);
   }
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
@@ -16231,7 +16448,7 @@ function _gdRodapeEstado(){
   }catch(e){ return null; }
 }
 function fmtHrCurta(ts){
-  try{ return new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+  try{ return _hLocal(new Date(ts)); }
   catch(e){ return '—'; }
 }
 function _gdRodapeHTML(){
@@ -16246,11 +16463,33 @@ function _gdRodapeHTML(){
 // Antes ficava permanente, inclusive logo depois de um envio bem-sucedido, e virava
 // ruído: um aviso que está sempre aceso não avisa nada. Usa a MESMA noção de atraso
 // do indicador (`_gdRodapeEstado`), para os dois nunca discordarem.
-function _gdDicaTocarHTML(){
+// v1.9.9.0 — O AVISO PASSA A DIZER O QUE O TOQUE RESOLVE.
+// 'toque para enviar' era verdade só metade das vezes: quando o que faltava era
+// AUTORIZAÇÃO, tocar não enviava nada — e o manobrista não tinha como saber que o
+// caminho era reconectar. Agora o texto nomeia a ação, e a ação existe.
+// Um texto só, usado no HTML e na restauração da dica depois do toque, para os
+// dois nunca discordarem.
+function _gdDicaTocarTexto(){
   try{
     const st = _gdRodapeEstado();
     if(!st || st.classe === 'ok') return '';
-    return '<div id="rodape-backup-dica" style="font-size:9px;color:#9a9284;margin-top:3px;font-weight:600">toque para enviar ↑</div>';
+    if(DRIVE_STATUS.nuvem_reconectar) return 'toque para reconectar ↑';
+    const p = (typeof _gdContarPendentes === 'function') ? _gdContarPendentes() : null;
+    if(p && (p.pdfs + p.hospedagens) > 0){
+      const n = p.pdfs + p.hospedagens;
+      return 'toque para enviar ' + n + ' pendente' + (n > 1 ? 's' : '') + ' ↑';
+    }
+    return 'toque para enviar ↑';
+  }catch(e){ return 'toque para enviar ↑'; }
+}
+function _gdDicaTocarHTML(){
+  try{
+    const txt = _gdDicaTocarTexto();
+    if(!txt) return '';
+    const urgente = !!DRIVE_STATUS.nuvem_reconectar;
+    return '<div id="rodape-backup-dica" style="font-size:9px;color:' +
+      (urgente ? '#A32D2D' : '#9a9284') + ';margin-top:3px;font-weight:' +
+      (urgente ? '700' : '600') + '">' + _vtEsc(txt) + '</div>';
   }catch(e){ return ''; }
 }
 
@@ -16263,29 +16502,174 @@ function _gdDicaTocarHTML(){
 // preventiva, não configuração. Quem opera o mapa precisa poder fazer isso na
 // hora. Conectar/desconectar a CONTA continua atrás de `_gsPinValido` em Gestão —
 // aquilo sim muda a configuração do aparelho.
+// ══════════════════════════════════════════════════════════════════════════
+// v1.9.9.0 — RECONEXÃO SELF-SERVICE (o item mais crítico desta versão)
+// ══════════════════════════════════════════════════════════════════════════
+// O QUE ACONTECEU NO HOTEL EM 04/09: o token do Drive venceu, o app marcou
+// `nuvem_reconectar`, e a partir dali NADA subiu — nem o backup, nem o PDF de
+// fechamento, nem o documento de hospedagem do GS146. A saída existia (Gestão →
+// Backup e Conexões → Desconectar → Conectar), mas ela pede o PIN do gestor: o
+// manobrista não tinha como resolver, e a operação ficou parada até o gestor
+// chegar. Documento de hospedagem que não sobe é PERDA DE DOCUMENTAÇÃO — que é
+// exatamente a coisa que este projeto existe para não deixar acontecer.
+//
+// A REGRA QUE JÁ VALIA E CONTINUA VALENDO (v1.9.5.1): **caminho automático nunca
+// abre login; caminho do usuário pode.** O defeito era de CLASSIFICAÇÃO: o toque
+// no rodapé é um gesto explícito de um humano, e mesmo assim era tratado como
+// automático (`_gdEnviarBackup(..., interativo=false)`). Um toque deliberado não
+// pode 'roubar o foco de quem está operando' — ele É quem está operando.
+//
+// O QUE **NÃO** MUDA, e por quê:
+//  • DESVINCULAR a conta continua só em Gestão, com PIN (`_gdDesvincularConta`
+//    intacta, com a trava de origem). Reconectar devolve acesso à MESMA conta;
+//    desvincular muda a configuração do aparelho. São coisas diferentes.
+//  • VINCULAR uma conta pela primeira vez continua só em Gestão, com PIN. Por
+//    isso o caminho abaixo exige `_gdConectado()`: ele reconecta o que já existe.
+//  • Reconectar numa conta DIFERENTE da vinculada é RECUSADO aqui (ver a guarda
+//    em `_gdReautenticarPeloUsuario`) — trocar de conta é configuração, e sem
+//    essa guarda o rodapé viraria uma porta lateral para trocar de conta sem PIN.
+//  • O caminho AUTOMÁTICO continua proibido de abrir login: nada aqui é
+//    alcançável sem um toque, e `_gdObterToken(false)` segue como estava.
+
+// Reautenticação interativa a pedido do usuário. SEM PIN, de propósito.
+async function _gdReautenticarPeloUsuario(origem){
+  const antes = DRIVE_STATUS.nuvem_email || '';
+  const r = await _gdLoginInterativo();
+  const email = (r && r.email) || '';
+  // ⚠️ GUARDA DA CONTA. Sem ela, qualquer pessoa com o aparelho na mão poderia
+  // apontar os backups do hotel para a própria conta Google pelo rodapé, sem PIN.
+  // Aqui a reconexão é RECUSADA e o estado fica em 'reconectar' — o gestor resolve
+  // em Gestão, com PIN, que é onde troca de conta pertence.
+  if(antes && email && email !== antes){
+    DRIVE_STATUS.nuvem_reconectar = true;
+    saveDriveStatus();
+    addLogSistema('Reconexão pelo rodapé RECUSADA: conta escolhida (' + email +
+      ') não é a vinculada (' + antes + ')',
+      {aud:true, acao:'drive_reconexao_conta_diferente', quem:'usuário (sem PIN)',
+       alvo:antes + ' × ' + email, origem:'usuario'});
+    const e = new Error('a conta escolhida (' + email + ') não é a vinculada (' + antes +
+      ') — peça ao gestor em Gestão → Backup e Conexões');
+    e.gdContaDiferente = true;
+    throw e;
+  }
+  DRIVE_STATUS.nuvem_conectada = true;
+  if(email) DRIVE_STATUS.nuvem_email = email;
+  DRIVE_STATUS.nuvem_reconectar = false;
+  saveDriveStatus();
+  _gdLimparFalha();
+  _gdFalhasSeguidas = 0;
+  _gdProxTentativaTs = 0;          // gesto do usuário zera a espera do backoff
+  addLogSistema('Google Drive reconectado pelo usuário (' + (origem || 'rodapé') + ')' +
+    (email ? ' — ' + email : ''),
+    {aud:true, acao:'drive_reconectado_usuario', quem:'usuário (sem PIN)',
+     alvo:(email || antes || '—'), origem:'usuario'});
+  return r;
+}
+
+// Quantos documentos/backups estão esperando a nuvem, por fila. É a MESMA contagem
+// que o rodapé mostra e que o log registra depois do reenvio — uma só verdade,
+// para os dois nunca discordarem.
+function _gdContarPendentes(){
+  const c = { backup:0, pdfs:0, hospedagens:0 };
+  try{ c.pdfs = _gdPdfsPendentes().length; }catch(e){}
+  try{ c.hospedagens = Object.keys((_hhjEstado().pendentes) || {}).length; }catch(e){}
+  try{
+    c.backup = (DRIVE_STATUS.nuvem_falha || DRIVE_STATUS.nuvem_falha_transitoria ||
+                DRIVE_STATUS.nuvem_pendente) ? 1 : 0;
+  }catch(e){}
+  // A varredura do histórico NÃO é contada aqui — ver a caixa em
+  // `_gdReenviarPendentes`. Ela é trabalho de fundo de meses; anunciá-la no rodapé
+  // seria mostrar um número que o toque não drena.
+  c.total = c.backup + c.pdfs + c.hospedagens;
+  return c;
+}
+
+// Empurra TODAS as filas de uma vez. Só o caminho do usuário chama isto: depois de
+// reconectar, ele não pode ter de caçar cada documento — e esperar N tiques de
+// 10 min seria o mesmo que não ter resolvido nada.
+// Fail-safe por fila: uma que falhe não impede as outras de tentarem.
+async function _gdReenviarPendentes(motivo){
+  const antes = _gdContarPendentes();
+  if(!antes.total) return { antes:antes, depois:antes, reenviados:0 };
+  _gdProxTentativaTs = 0;
+  try{ await _gdTentarPendente(); }catch(e){ console.warn('[DRIVE] reenvio do backup:', e && e.message); }
+  try{ await _gdTentarPDFsPendentes({todos:true}); }catch(e){ console.warn('[DRIVE] reenvio de PDFs:', e && e.message); }
+  try{ await _hhjProcessar(); }catch(e){ console.warn('[DRIVE] reenvio de Hospedados Hoje:', e && e.message); }
+  // ⚠️ A VARREDURA DO HISTÓRICO (`_gdHistProcessar`) NÃO ENTRA AQUI, e não é
+  // esquecimento. MEDIDO: com ela no mesmo gesto, dois dos três PDFs pendentes
+  // subiram DUAS VEZES — a idempotência dela confere o destino pelo NOME, mas a
+  // fila dela vem do que está no APARELHO, e os pendentes estão no aparelho; a
+  // conferência acabava correndo contra uploads do próprio gesto. Duplicata na
+  // nuvem do hotel é pior que atraso.
+  // E ela também não pertence conceitualmente a este caminho: é a cópia de MESES
+  // de histórico, propositalmente lenta e em segundo plano (3 por tique, 'terminar
+  // sem que ninguém note'). Não é pendência que o manobrista causou nem percebe.
+  // Ela continua rodando sozinha no tique de 10 min, como sempre.
+  const depois = _gdContarPendentes();
+  const n = Math.max(0, antes.total - depois.total);
+  addLogSistema('Reenvio de pendentes (' + (motivo || 'toque do usuário') + '): ' +
+    n + ' de ' + antes.total + ' enviado(s)' +
+    (depois.total ? ' · ' + depois.total + ' ainda na fila' : ' · fila vazia'));
+  return { antes:antes, depois:depois, reenviados:n };
+}
+
+// v1.9.5.3 — ATALHO DO RODAPÉ: força o envio para a nuvem.
+// v1.9.9.0 — e RECONECTA, quando é disso que a nuvem precisa, e esvazia as filas.
 function _gdForcarPeloRodape(){
   try{
     if(!_gdDisponivel()){
       showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
-      return;
+      return Promise.resolve();
     }
     if(!_gdConectado()){
-      // NÃO abre login: conectar é ação de gestor, com PIN, em Gestão.
+      // NÃO abre login: VINCULAR uma conta é ação de gestor, com PIN, em Gestão.
       showToast('☁️ Google Drive não conectado. Peça ao gestor: Gestão → Backup e Conexões.', 5500);
-      return;
+      return Promise.resolve();
     }
-    if(_gdEnviando){ showToast('☁️ Já estou enviando — aguarde.', 3000); return; }
-    const dica = document.getElementById('rodape-backup-dica');
-    if(dica) dica.textContent = 'enviando…';
-    Promise.resolve(fazerBackupNuvemAgora()).catch(function(e){
-      console.warn('[DRIVE] atalho do rodapé falhou:', e && e.message);
-    }).then(function(){
-      // re-renderiza o Painel para o rodapé refletir o novo estado, se ele estiver na tela
+    if(_gdEnviando){ showToast('☁️ Já estou enviando — aguarde.', 3000); return Promise.resolve(); }
+    const _dica = function(txt){
+      try{ const d = document.getElementById('rodape-backup-dica'); if(d) d.textContent = txt; }catch(_){}
+    };
+    _dica('enviando…');
+    return (async function(){
+      try{
+        // 1) Autorização vencida: reconecta ANTES de tentar subir megabytes que o
+        //    Google recusaria de qualquer jeito.
+        if(DRIVE_STATUS.nuvem_reconectar){
+          _dica('reconectando…');
+          showToast('🔑 Reconectando o Google Drive…', 3000);
+          await _gdReautenticarPeloUsuario('rodapé');
+          showToast('✅ Google Drive reconectado.', 3000);
+        }
+        // 2) Envia. Se a autorização cair só agora, escala UMA vez — o toque do
+        //    usuário é o que autoriza a tela de login, e só ele.
+        _dica('enviando…');
+        let r = await fazerBackupNuvemAgora();
+        const precisaAuth = !!(r && !r.ok && (r.reconectar ||
+          (r.detalhe && (r.detalhe.status === 401 || r.detalhe.status === 403))));
+        if(precisaAuth){
+          _dica('reconectando…');
+          await _gdReautenticarPeloUsuario('rodapé (após recusa do Google)');
+          _dica('enviando…');
+          await fazerBackupNuvemAgora();
+        }
+        // 3) Esvazia as filas que ficaram para trás enquanto não havia autorização.
+        _dica('reenviando pendentes…');
+        const p = await _gdReenviarPendentes('toque no rodapé');
+        if(p.reenviados > 0){
+          showToast('☁️ ' + p.reenviados + ' documento(s) pendente(s) enviado(s).' +
+            (p.depois && p.depois.total ? ' Ainda na fila: ' + p.depois.total + '.' : ''), 5000);
+        }
+      }catch(e){
+        console.warn('[DRIVE] atalho do rodapé falhou:', e && e.message);
+        if(e && e.gdContaDiferente) showToast('⚠️ ' + e.message, 8000);
+        else showToast('⚠️ Não deu para resolver agora: ' + ((e && e.message) || 'erro') +
+          ' · O backup local está intacto.', 6500);
+      }
       try{ if(document.getElementById('rodape-backup-atalho') && typeof renderPainelDia === 'function') renderPainelDia(); }catch(_){}
-      const d2 = document.getElementById('rodape-backup-dica');
-      if(d2) d2.textContent = 'toque para enviar ↑';
-    });
-  }catch(e){ console.warn('[DRIVE] atalho do rodapé:', e && e.message); }
+      _dica(_gdDicaTocarTexto());
+    })();
+  }catch(e){ console.warn('[DRIVE] atalho do rodapé:', e && e.message); return Promise.resolve(); }
 }
 
 // v1.9.5.2 — pendências de PDF de fechamento no card. Contagem simples, sem modal:
@@ -16493,7 +16877,7 @@ function buildRelMovimentacoesHTML(evts, deVal, ateVal){
       ${ev.extra?`<div style="font-size:10px;opacity:.75;margin-top:1px">${ev.extra}</div>`:''}</div>
       <div style="font-size:10px;opacity:.88;white-space:nowrap;text-align:right;flex-shrink:0">${fmtDt(ev.ts)}</div>
     </div>`).join('');
-  const body=_relHdrHTML('Relatório de Movimentações','Período: '+periodo+' · Gerado em '+new Date().toLocaleDateString('pt-BR'))+
+  const body=_relHdrHTML('Relatório de Movimentações','Período: '+periodo+' · Gerado em '+_dLocal(new Date()))+
     `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#EEF9F2;color:#0F6E56">CI: ${ci}</span>
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#FCEBEB;color:#A32D2D">CO: ${co}</span>
@@ -16510,7 +16894,7 @@ function buildRelOcupacaoHTML(dadosOcup, hospsP, deVal, ateVal){
   const ativas=hospsP.filter(h=>!h.checkout_ts).length;
   const finalizadas=hospsP.filter(h=>!!h.checkout_ts).length;
   const periodo=deVal+(ateVal&&ateVal!==deVal?' a '+ateVal:'');
-  const body=_relHdrHTML('Relatório de Ocupação','Período: '+periodo+' · Gerado em '+new Date().toLocaleDateString('pt-BR'))+
+  const body=_relHdrHTML('Relatório de Ocupação','Período: '+periodo+' · Gerado em '+_dLocal(new Date()))+
     `<div style="margin:10px 0 20px">
       <div style="background:#EEF6FF;border-radius:8px;height:20px;overflow:hidden;margin-bottom:8px">
         <div style="background:#185FA5;height:100%;width:${pct}%;border-radius:8px"></div>
@@ -16544,7 +16928,7 @@ function buildRelPorAptoHTML(hosps, aptVal, deVal, ateVal){
       <div style="font-size:11px;color:#888">${[h.guest,h.model,h.color,h.plate].filter(Boolean).join(' · ')||'Sem dados'}</div>
       <div style="font-size:10px;color:#aaa;margin-top:3px">Entrada: ${fmtDt(h.checkin_ts)}${h.checkout_ts?' · Saída: '+fmtDt(h.checkout_ts):''}</div>
     </div>`).join('');
-  const body=_relHdrHTML('Relatório por Apartamento','Filtros: '+periodo+' · Gerado em '+new Date().toLocaleDateString('pt-BR'))+
+  const body=_relHdrHTML('Relatório por Apartamento','Filtros: '+periodo+' · Gerado em '+_dLocal(new Date()))+
     `<div style="margin-bottom:12px"><span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#EEF6FF;color:#185FA5">Total: ${hosps.length} hospedagem(s)</span></div>`+cardsHTML;
   return _relWrap('Relatório por Apartamento', body);
 }
@@ -17130,7 +17514,7 @@ const HISTORICO = {};
 function fmtDt(ts){
   if(!ts) return 'Não informado';
   const d=new Date(ts);
-  return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  return _dtLocal(d);
 }
 function fmtElapsed(ts){
   if(!ts) return '';
@@ -17322,7 +17706,7 @@ function buildRegistroHTML(apt,dv,hist,anexos){
     ? `${hospedagemNum} · Apt. ${apt}${guestNome?' · '+guestNome:''}`
     : `GarageSpot · Apt. ${apt}${guestNome?' · '+guestNome:''}`;
 
-  const _dtHdr=ts=>{if(!ts)return'';const d=new Date(ts);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'});};
+  const _dtHdr=ts=>{if(!ts)return'';const d=new Date(ts);return _dLocalCurta(d);};
   const _tsCI=(hist||[]).find(e=>e.tipo==='checkin')?.ts;
   const _tsCO=(hist||[]).slice().reverse().find(e=>e.tipo==='checkout')?.ts;
   const _periodoHdr=(_dtHdr(_tsCI)&&_dtHdr(_tsCO))?_dtHdr(_tsCI)+' a '+_dtHdr(_tsCO):(_dtHdr(_tsCI)||'');
@@ -17781,8 +18165,91 @@ function _pdfBarraMarca(doc, tipoPagina, contexto){
 }
 
 // Corta com reticências para nunca invadir a área da marca.
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.0 — TEXTO LIVRE NUNCA CHEGA CRU AO jsPDF
+// ════════════════════════════════════════════════════════════════════════
+// A v1.9.6.8 MEDIU o estrago: com a seta `→` dentro de uma célula, o jsPDF troca
+// a codificação da string e a LINHA INTEIRA deixa de sair legível — não é o
+// caractere que some, é o registro que some. E a partir da v1.9.9.0 o documento
+// passa a carregar OBSERVAÇÕES digitadas pelo hóspede/manobrista, onde emoji,
+// aspas curvas do teclado do celular e travessão são o normal, não a exceção.
+//
+// A fonte padrão do jsPDF (helvetica) usa WinAnsi/Latin-1: 0x20–0x7E e 0xA0–0xFF.
+// Todo o português acentuado cabe ali (á à â ã ç é ê í ó ô õ ú ü ñ e as maiúsculas).
+// O que NÃO cabe é convertido, e o que não tem conversão vira um marcador visível.
+//
+// O QUE ESTA FUNÇÃO TROCA (a lista é o contrato; está no RELATORIO):
+//   ' ' ‚ ‛ ′  →  '        aspas simples curvas e prima
+//   " " „ ‟ ″  →  "        aspas duplas curvas
+//   – — ―      →  -        travessão e meia-risca
+//   ‐ ‑        →  -        hífens tipográficos
+//   …          →  ...      reticências
+//   → ⇒ ➡      →  ->       seta para a direita (a que derrubou a linha na 6.8)
+//   ← ⇐        →  <-       seta para a esquerda
+//   • ▪ ● ‣    →  -        marcadores de lista (`·` NÃO: é WinAnsi e separa campos)
+//   ⁄          →  /        barra de fração
+//   NBSP       →  espaço comum
+//   invisíveis →  removidos (ZWSP, ZWNJ, ZWJ, BOM)
+//   resto fora do WinAnsi (emoji, CJK, símbolos) → '?'
+//
+// ⚠️ NÃO substituir isto por 'embutir uma fonte Unicode': seriam ~300 KB a mais no
+// HTML e um PDF mais pesado no tablet — o oposto do que a v1.9.4.12 conquistou.
+const _PDF_TROCAS = [
+  [/[\u2018\u2019\u201A\u201B\u2032]/g, "'"],
+  [/[\u201C\u201D\u201E\u201F\u2033]/g, '"'],
+  [/[\u2013\u2014\u2015]/g, '-'],
+  [/[\u2010\u2011]/g, '-'],
+  [/\u2026/g, '...'],
+  [/[\u2192\u21D2\u27A1\u2794\u279C]/g, '->'],
+  [/[\u2190\u21D0]/g, '<-'],
+  [/[\u2022\u25AA\u25CF\u2023]/g, '-'],   // NÃO incluir `\u00B7`: é WinAnsi (0xB7) e é o separador do app
+  [/\u2044/g, '/'],
+  [/\u00A0/g, ' '],
+  [/[\u200B-\u200D\uFEFF]/g, ''],
+];
+function _pdfTxt(v){
+  try{
+    let s = String(v == null ? '' : v);
+    for(let i = 0; i < _PDF_TROCAS.length; i++) s = s.replace(_PDF_TROCAS[i][0], _PDF_TROCAS[i][1]);
+    // fora do WinAnsi (e fora dos controles que o autoTable entende) → marcador
+    s = s.replace(/[^\u0020-\u007E\u00A0-\u00FF\n\r\t]/g, '?');
+    return s;
+  }catch(e){ return ''; }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.0 — ORDEM FIXA DA TABELA DE MOVIMENTAÇÕES
+// ════════════════════════════════════════════════════════════════════════
+// O check-in é sempre a PRIMEIRA linha e o check-out, quando existe, a ÚLTIMA.
+// Nada aparece antes do check-in. Entre os dois, ordem cronológica.
+//
+// Por que não bastava ordenar por `ts`: eventos gravados no mesmo milissegundo
+// (o check-in do NCI cria hospedagem, vistoria e designação em sequência) podiam
+// sair em qualquer ordem, e um evento com `ts` ausente ia para o topo — antes do
+// check-in, o que num documento com pretensão probatória não pode acontecer.
+// 'Hospedados Hoje' simplesmente não tem check-out: a regra vale igual.
+function _pdfOrdenarMov(hist){
+  try{
+    const arr = (hist || []).slice();
+    const peso = function(e){
+      const t = e && e.tipo;
+      if(t === 'checkin')  return 0;
+      if(t === 'checkout') return 2;
+      return 1;
+    };
+    return arr.map(function(e, i){ return {e:e, i:i}; }).sort(function(a, b){
+      const pa = peso(a.e), pb = peso(b.e);
+      if(pa !== pb) return pa - pb;
+      const ta = (a.e && a.e.ts) || 0, tb = (b.e && b.e.ts) || 0;
+      if(ta !== tb) return ta - tb;
+      return a.i - b.i;                 // empate: preserva a ordem de gravação
+    }).map(function(x){ return x.e; });
+  }catch(e){ return (hist || []).slice(); }
+}
+
 function _pdfCortar(doc, txt, maxMm){
   try{
+    txt=_pdfTxt(txt);              // v1.9.9.0: nada cru passa por aqui
     if(doc.getTextWidth(txt)<=maxMm) return txt;
     let s=txt;
     while(s.length>4 && doc.getTextWidth(s+'…')>maxMm) s=s.slice(0,-1);
@@ -17810,7 +18277,7 @@ function _pdfCabecalhoDoc(doc, y, o){
   }
   doc.setFont('helvetica','bold'); doc.setFontSize(16);
   doc.setTextColor.apply(doc, PDF_COR.texto);
-  doc.text(String(o.titulo||''), PDF_L, yT);
+  doc.text(_pdfTxt(o.titulo||''), PDF_L, yT);   // v1.9.9.0
 
   // Bloco de referência à direita
   const refs=(o.refs||[]).filter(Boolean);
@@ -17822,7 +18289,7 @@ function _pdfCabecalhoDoc(doc, y, o){
       doc.text(String(par[0]).toUpperCase(), PDF_L+PDF_W, yR, {align:'right', charSpace:0.3});
       doc.setFont('helvetica','bold'); doc.setFontSize(9);
       doc.setTextColor.apply(doc, PDF_COR.texto);
-      doc.text(String(par[1]||'—'), PDF_L+PDF_W, yR+4.6, {align:'right'});
+      doc.text(_pdfTxt(par[1]||'—'), PDF_L+PDF_W, yR+4.6, {align:'right'});   // v1.9.9.0
       yR+=10;
     });
   }
@@ -17878,7 +18345,10 @@ function _pdfFooter(doc){
 const MOV_LABEL = {
   checkin:'Check-in', checkout:'Check-out',
   saida_passeio:'Saída a passeio', retorno_passeio:'Retorno do passeio',
-  edicao:'Edição de dados', movimentacao_vaga:'Designação/mudança de vaga',
+  // v1.9.9.0: 'Informação alterada' diz o que a linha É. O detalhe
+  // (`<campo>: antigo → novo`) agora é RENDERIZADO ao lado — antes ficava só no
+  // `extra`, que a tabela não mostrava, e a alteração era invisível no documento.
+  edicao:'Informação alterada', movimentacao_vaga:'Designação/mudança de vaga',
   troca_apartamento:'Troca de apartamento',   // v1.9.6.8
   tornar_grande:'Vaga ampliada (carro grande)', tornar_pequeno:'Vaga reduzida (carro pequeno)',
   merge_lateral:'Mesclagem lateral', desfaz_merge_lateral:'Mesclagem desfeita',
@@ -17887,6 +18357,15 @@ const MOV_LABEL = {
   vistoria_deletada:'Vistoria excluída', vistoria_adicional_criada:'Vistoria adicional',
   recarga_iniciada:'Recarga iniciada', recarga_encerrada:'Recarga encerrada',
   recarga_editada:'Período de recarga editado',
+  // v1.9.9.0: existia como evento (`recarga_prolongada`, desde a v1.9.6.x) e caía
+  // no fallback genérico — agora tem rótulo próprio, como os outros.
+  recarga_prolongada:'Recarga prolongada',
+  // v1.9.9.0 — OBSERVAÇÕES. Cada edição é uma LINHA PRÓPRIA, com responsável e
+  // horário; nunca sobrescreve a anterior. O documento tem de mostrar o que foi
+  // escrito e quando, não só o texto que sobrou no fim.
+  observacao_adicionada:'Observação adicionada',
+  observacao_alterada:'Observação alterada',
+  observacao_removida:'Observação removida',
   exclusao_anexo:'Exclusão de anexo',
 };
 const MOV_COR = {
@@ -17898,7 +18377,10 @@ const MOV_COR = {
   saida_passeio:PDF_COR.ambar, retorno_passeio:PDF_COR.teal,
   exclusao_anexo:PDF_COR.vermelho,
   recarga_iniciada:PDF_COR.ambar, recarga_encerrada:PDF_COR.teal,
+  recarga_prolongada:PDF_COR.ambar,
   recarga_editada:PDF_COR.roxo, edicao:PDF_COR.roxo,
+  observacao_adicionada:PDF_COR.teal, observacao_alterada:PDF_COR.teal,
+  observacao_removida:PDF_COR.vermelho,
   troca_apartamento:PDF_COR.acento,   // v1.9.6.8: cor propria — nao se confunde com uma edicao qualquer
 };
 // Último recurso: tipo desconhecido vira texto legível em vez de `snake_case`.
@@ -17940,8 +18422,13 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const L=10,W=190;
   const hospNum=dv.hospedagem||((hist||[]).find(e=>e.tipo==='checkin')?.hospedagem)||'';
-  const tsCI=(hist||[]).find(e=>e.tipo==='checkin')?.ts;
-  const tsCO=(hist||[]).slice().reverse().find(e=>e.tipo==='checkout')?.ts;
+  // v1.9.9.0 — ORDEM FIXA, aplicada UMA vez e usada por tudo o que vem abaixo
+  // (resumo, tabela e o hook de desenho). Duas ordens no mesmo documento seria
+  // exatamente o tipo de divergência que um dia aparece como bug: o marcador
+  // colorido de uma linha pintado na cor do evento de outra.
+  const movs=_pdfOrdenarMov(hist);
+  const tsCI=movs.find(e=>e.tipo==='checkin')?.ts;
+  const tsCO=movs.slice().reverse().find(e=>e.tipo==='checkout')?.ts;
   const periodo=tsCI?fmtDt(tsCI)+(tsCO?' a '+fmtDt(tsCO):''):'';
   const subtitulo=(hospNum?hospNum+' · ':'')+'Apt. '+apt+(dv.guest?' · '+dv.guest:'')+( periodo?' · '+periodo:'');
   let y=_pdfBarraMarca(doc,_tit,subtitulo);
@@ -17955,7 +18442,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
   if(tsCO && !opts.semSelo){ _pdfSelo(doc, L+W, y-6, 'Check-out concluído', PDF_COR.verde); y+=4; }
 
   // ── Card de resumo ──────────────────────────────────────────────────────
-  const vagaFinal=(hist||[]).slice().reverse().find(function(e){return e&&e.vaga;});
+  const vagaFinal=movs.slice().reverse().find(function(e){return e&&e.vaga;});
   const resumo=[
     ['Veículo',[dv.model,dv.color,dv.plate].filter(Boolean).join(' · ')||'Não informado'],
     ['Hóspede',dv.guest||'Não informado'],
@@ -17990,50 +18477,80 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
   // `didDrawCell` pintava um badge e RE-DESENHAVA o texto que o autoTable já
   // havia desenhado — daí "Check-inCheck-in". Agora o hook só pinta o marcador
   // colorido à esquerda; o texto vem do corpo da tabela, com recuo para o ponto.
+  // ══════════════════════════════════════════════════════════════════════
+  // v1.9.9.0 — A COLUNA 'Hosp.' E O DETALHE DE TODA LINHA
+  // ══════════════════════════════════════════════════════════════════════
+  // COLUNA Hosp.: o documento inteiro é de UMA hospedagem, mas cada linha passa a
+  // dizer de qual. Parece redundante e não é: numa TROCA DE APARTAMENTO o mesmo GS
+  // atravessa dois aptos, e uma folha solta arrancada do PDF não tem cabeçalho.
+  // Com o GS em cada linha, qualquer página isolada continua provando a que
+  // hospedagem pertence — que é o ponto de um documento com valor probatório.
+  // Vale nos DOIS documentos porque os dois saem daqui (fechamento e
+  // 'Hospedados Hoje' compartilham este gerador desde a v1.9.6.6).
+  //
+  // DETALHE (`extra`) EM TODA LINHA: até a v1.9.8.0 só a troca de apartamento
+  // mostrava o seu detalhe; o resto era gravado e NÃO renderizado. Uma edição de
+  // placa, uma observação, um prolongamento de recarga apareciam como linhas mudas
+  // — o registro existia e o documento não contava. Agora todo `extra` é
+  // renderizado, sempre pelo sanitizador.
+  const _movGS=function(ev){ return (ev && ev.hospedagem) || hospNum || '—'; };
   doc.autoTable({
     startY:y,
-    head:[['Data / Hora','Movimentação','Vaga','Responsável']],
-    body:(hist||[]).map(function(ev){
+    head:[['Hosp.','Data / Hora','Movimentação','Vaga','Responsável']],
+    body:movs.map(function(ev){
       const resp=[ev.usuario||'—',ev.cargo||''].filter(Boolean).join(' · ');
       const via=(ev.tipo==='exclusao_anexo')?' (via PIN)':'';
-      // v1.9.6.8: a TROCA DE APARTAMENTO leva o detalhe (origem → destino) junto do
-      // rótulo. Sem isto ela apareceria como uma linha muda — a tabela não tem
-      // coluna para o `extra`, e criar uma só para este caso mexeria no desenho do
-      // documento de fechamento, que não se mexe. A célula existente comporta, e o
-      // autoTable quebra a linha sozinho se precisar.
-      // ⚠️ A SETA `→` NÃO EXISTE NO WinAnsi que o jsPDF usa por padrão. MEDIDO: com
-      // ela na célula, a linha inteira deixa de sair como texto legível no PDF (o
-      // jsPDF troca a codificação da string), enquanto "Check-in" na linha de cima
-      // saía normal. Ou seja, a troca seria registrada e continuaria invisível no
-      // documento — exatamente o defeito que esta versão veio corrigir. No
-      // histórico e na trilha a seta continua (lá é UTF-8 e fica mais legível).
-      const det=(ev.tipo==='troca_apartamento'&&ev.extra)
-        ?(' · '+String(ev.extra).replace(/\s*→\s*/g,' para ')):'';
-      return [fmtDt(ev.ts),'   '+_movLabel(ev.tipo)+det,ev.vaga||'—',resp+via];
+      // A TROCA DE APARTAMENTO mantém a redação ' para ' no lugar da seta: além de
+      // ler melhor em português, é o contrato que a spec da v1.9.6.8 trancou.
+      // ⚠️ A SETA `→` NÃO EXISTE NO WinAnsi que o jsPDF usa por padrão. MEDIDO na
+      // v1.9.6.8: com ela na célula, a LINHA INTEIRA deixa de sair legível — o
+      // registro some do documento, não só o caractere. Daqui em diante quem
+      // garante isso para TODO texto é `_pdfTxt` (v1.9.9.0), não um replace local.
+      const bruto=(ev.tipo==='troca_apartamento'&&ev.extra)
+        ? String(ev.extra).replace(/\s*→\s*/g,' para ')
+        : (ev.extra||'');
+      const det=bruto?(' · '+_pdfTxt(bruto)):'';
+      return [_pdfTxt(_movGS(ev)),fmtDt(ev.ts),'   '+_pdfTxt(_movLabel(ev.tipo))+det,
+              _pdfTxt(ev.vaga||'—'),_pdfTxt(resp+via)];
     }),
     theme:'plain',
     headStyles:{fillColor:PDF_COR.marinho,textColor:255,fontSize:7.5,fontStyle:'bold',cellPadding:{top:2.6,bottom:2.6,left:2.5,right:2.5}},
     styles:{fontSize:8,cellPadding:{top:2.4,bottom:2.4,left:2.5,right:2.5},textColor:PDF_COR.texto,lineColor:PDF_COR.linha,lineWidth:{bottom:0.1}},
     alternateRowStyles:{fillColor:[250,251,253]},
+    // 18+32+58+14+68 = 190 = PDF_W. Mexer aqui exige refazer a soma.
+    // ⚠️ A LARGURA DE 'Movimentação' (58) NÃO PODE ENCOLHER. Ela decide ONDE o
+    // autoTable quebra a linha, e o detalhe da célula (`origem para destino`, o
+    // texto de uma observação) tem de sair CONTÍGUO — foi assim que a v1.9.6.8
+    // trancou a troca de apartamento no documento. A coluna nova saiu da folga de
+    // 'Data / Hora' e 'Responsável'.
     columnStyles:{
-      0:{cellWidth:36,font:'courier',fontSize:7.5},   // horário alinhado (tabular)
-      1:{cellWidth:58},
-      2:{cellWidth:16,halign:'center',fontStyle:'bold'},
-      3:{cellWidth:80,fontSize:7.5},
+      0:{cellWidth:18,halign:'center',fontStyle:'bold',fontSize:7},
+      1:{cellWidth:32,font:'courier',fontSize:7.5},   // horário alinhado (tabular)
+      2:{cellWidth:58},                               // ⚠️ NÃO ESTREITAR: ver a caixa acima
+      3:{cellWidth:14,halign:'center',fontStyle:'bold'},
+      4:{cellWidth:68,fontSize:7.5},
     },
     margin:{left:L,right:L},
     didDrawCell:function(data){
       try{
         if(data.section!=='body') return;
+        // chip discreto do GS
+        if(data.column.index===0 && data.cell.raw && data.cell.raw!=='—'){
+          // SÓ A BORDA: `didDrawCell` roda DEPOIS de o autoTable desenhar o texto,
+          // então um preenchimento aqui cobriria o próprio GS. Mesma solução da
+          // etiqueta de vaga (v1.9.4.16).
+          doc.setDrawColor(150,175,205); doc.setLineWidth(0.25);
+          doc.roundedRect(data.cell.x+1.4, data.cell.y+1.4, data.cell.width-2.8, data.cell.height-2.8, 1.4, 1.4, 'S');
+        }
         // marcador colorido do tipo
-        if(data.column.index===1){
-          const ev=(hist||[])[data.row.index];
+        if(data.column.index===2){
+          const ev=movs[data.row.index];
           const rgb=_movCor(ev&&ev.tipo);
           doc.setFillColor(rgb[0],rgb[1],rgb[2]);
           doc.circle(data.cell.x+4, data.cell.y+data.cell.height/2, 1.15, 'F');
         }
         // "etiqueta" da vaga
-        if(data.column.index===2 && data.cell.raw && data.cell.raw!=='—'){
+        if(data.column.index===3 && data.cell.raw && data.cell.raw!=='—'){
           doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
           doc.roundedRect(data.cell.x+1.6, data.cell.y+1.4, data.cell.width-3.2, data.cell.height-2.8, 1, 1, 'S');
         }
@@ -19830,31 +20347,60 @@ checkLicense().then(async (ativo)=>{
       setTimeout(function(){
         try { _gsChecarIntegridade(); } catch(e){ console.warn('[INTEGRIDADE] falhou:', e); }
       }, 1200);
+      // ════════════════════════════════════════════════════════════════════
+      // v1.9.9.0 — OS OITO TIQUES DEIXAM DE COINCIDIR
+      // ════════════════════════════════════════════════════════════════════
+      // Os oito `setInterval` abaixo eram armados no MESMO instante com o MESMO
+      // período de 10 min. As primeiras execuções já eram escalonadas (os
+      // `setTimeout` de 25/40/55/70 s logo abaixo), mas a FASE do intervalo não:
+      // do primeiro tique em diante os oito disparavam juntos, para sempre.
+      //
+      // No mesmo instante podiam concorrer: backup COMPLETO (serializa o JSON com
+      // as fotos e monta o corpo multipart), retentativa da nuvem (serializa o
+      // snapshot do IndexedDB de novo), reenvio de PDF (relê megabytes em base64),
+      // varredura do histórico (3 PDFs por lote) e 'Hospedados Hoje' (gera um PDF
+      // com fotos pelo jsPDF e o converte em data URI). Num SM-T585 de 2 GB isso é
+      // o pico que o Android resolve matando o processo — e é a explicação de o
+      // 'O GarageSpot parou' aparecer SEM ninguém tocar no app.
+      //
+      // O escalonamento não é a correção de fundo (essa é reduzir o pico de CADA
+      // tarefa — ver RELATORIO-v1.9.9.0.md); é a mitigação barata que impede os
+      // picos de se SOMAREM. 75 s entre vizinhos, dentro da janela de 600 s.
+      // O atraso inicial só desloca a FASE: não executa nada a mais, e as primeiras
+      // execuções continuam sendo as dos `setTimeout` logo abaixo.
+      const GS_TIQUE_MS = 10 * 60 * 1000;
+      function _gsTique(fn, faseSegundos){
+        try{
+          setTimeout(function(){
+            try{ setInterval(fn, GS_TIQUE_MS); }catch(e){}
+          }, (faseSegundos || 0) * 1000);
+        }catch(e){}
+      }
       // v1.9.4.11 (Parte 4): backup periódico (leve; completo no máximo 1×/hora)
-      try { setInterval(function(){ _gsBackupAuto('periódico'); }, 10 * 60 * 1000); } catch(e){}
-      // v1.9.5.1: retentativa da NUVEM no mesmo tique. Só age se houver falha
-      // pendente e o intervalo de espera já tiver passado — ver `_gdTentarPendente`.
-      try { setInterval(function(){ _gdTentarPendente(); }, 10 * 60 * 1000); } catch(e){}
+      _gsTique(function(){ _gsBackupAuto('periódico'); }, 0);
+      // v1.9.5.1: retentativa da NUVEM. Só age se houver falha pendente e o
+      // intervalo de espera já tiver passado — ver `_gdTentarPendente`.
+      _gsTique(function(){ _gdTentarPendente(); }, 75);
       // v1.9.6.2: o estado atual que não subiu (rede fora, app minimizado no meio)
-      // é retomado no mesmo tique. Sem alarme: é só reenviar o que já está pendente.
-      try { setInterval(function(){ _gdFlushRolante(); }, 10 * 60 * 1000); } catch(e){}
+      // é retomado. Sem alarme: é só reenviar o que já está pendente.
+      _gsTique(function(){ _gdFlushRolante(); }, 150);
       // v1.9.5.2: PDFs de fechamento que não subiram (sem Drive ou com falha) são
       // reenviados relendo o arquivo do dispositivo — um por tique.
-      try { setInterval(function(){ _gdTentarPDFsPendentes(); }, 10 * 60 * 1000); } catch(e){}
+      _gsTique(function(){ _gdTentarPDFsPendentes(); }, 225);
       // v1.9.6.4: envio do HISTÓRICO já existente no aparelho — um lote por tique,
       // incremental e retomável. A primeira varredura roda 25 s após o init, longe
       // do arranque e depois da migração de pastas.
-      try { setInterval(function(){ _gdHistProcessar(); }, 10 * 60 * 1000); } catch(e){}
+      _gsTique(function(){ _gdHistProcessar(); }, 300);
       // ── v1.9.6.6 ──────────────────────────────────────────────────────────
       // Arquivamento da TRILHA na nuvem. É o que autoriza o teto de 1000 a
       // descartar alguma coisa; enquanto não roda, a trilha só cresce.
-      try { setInterval(function(){ _gdArquivarAuditoria(); }, 10 * 60 * 1000); } catch(e){}
+      _gsTique(function(){ _gdArquivarAuditoria(); }, 375);
       // Hospedados Hoje: retentativa do que ficou pendente e conferência da pasta
       // (ninguém que já saiu pode continuar lá). O caminho normal é o debounce de
       // 20 s disparado pela própria ação; isto é a rede de segurança.
-      try { setInterval(function(){ _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){}); }, 10 * 60 * 1000); } catch(e){}
+      _gsTique(function(){ _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){}); }, 450);
       // Esvaziamento do balde `_Sem data de check-in`. Para sozinho quando termina.
-      try { setInterval(function(){ _gdReorganizarSemData(); }, 10 * 60 * 1000); } catch(e){}
+      _gsTique(function(){ _gdReorganizarSemData(); }, 525);
       try { setTimeout(function(){ _gdHistProcessar(); }, 25000); } catch(e){}
       // v1.9.6.6: as três tarefas novas entram escalonadas DEPOIS da varredura do
       // histórico, para não disputarem rede nem CPU com o arranque nem entre si.
