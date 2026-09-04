@@ -1350,9 +1350,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.7.1';
-const GS_VERSION_CODE = 28;
-const GS_BUILD_TS = '2026-08-26';
+const GS_VERSION = 'v1.9.8.0';
+const GS_VERSION_CODE = 29;
+const GS_BUILD_TS = '2026-09-04';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -1567,6 +1567,21 @@ function _gsResolverHosp(ctx){
     }
   }catch(e){ console.warn('[GS] _gsResolverHosp falhou:', e && e.message); }
   return out;
+}
+
+// v1.9.8.0 — RÓTULO DA HOSPEDAGEM PARA A TELA. Todo lugar onde o operador
+// CONFIRMA uma ação destrutiva precisa dizer QUAL hospedagem, não só onde ela
+// está: com dois carros no mesmo apartamento, "Apt. 101" identifica os dois.
+// Devolve "GS011 · Apt. 101"; sem GS resolvido cai para "Apt. 101" (nunca
+// inventa um número), e no caso ambíguo diz que é ambíguo em vez de escolher.
+function _gsRotuloHosp(res, apt){
+  const a = 'Apt. ' + _vtEsc(String(apt || '—'));
+  try{
+    if(!res) return a;
+    if(res.ambiguo) return a + ' · ⚠️ hospedagem ambígua';
+    if(res.gs) return _vtEsc(String(res.gs)) + ' · ' + a;
+  }catch(e){}
+  return a;
 }
 
 // INVARIANTE v1.9.7.0: nenhuma célula `occupied` de uma hospedagem ativa pode
@@ -3268,8 +3283,12 @@ function doChk(id){
   const _gsChkModal=_gsResolverHosp({vaga:id});
   const _vstChk=(_gsChkModal.gs && !_gsChkModal.ambiguo)?getVistoriaByHosp(_gsChkModal.gs):null;
   const _temVstPend=_vstChk&&!_vstChk.ts_assinada;
+  // v1.9.8.0: o título identifica a HOSPEDAGEM, não só o apartamento. Com dois
+  // carros no mesmo apto, "Check-out — Apt. 101" é ambíguo e perigoso: quem
+  // confirma não tem como saber qual dos dois vai sair. O GS resolvido já estava
+  // à mão (`_gsChkModal`, calculado logo acima) — só não aparecia na tela.
   mc.innerHTML=`
-    <div class="mt">🚪 Check-out — Apt. ${aptKey}</div>
+    <div class="mt">🚪 Check-out — ${_gsRotuloHosp(_gsChkModal, aptKey)}</div>
     <div class="ms">${[d.model,d.color,d.plate].filter(Boolean).join(' · ')||'Sem detalhes'}</div>
     ${_temVstPend?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstChk.numero} — pendente de assinatura</small></div>`:`<div class="warn-box" style="font-size:12px">Confirma o check-out deste veículo?</div>`}
     <div class="ag">
@@ -3754,7 +3773,7 @@ function showPasseioCheckout(apt){
   const _resP=_gsResolverHosp({vaga:apt, apt:apt, fromPasseio:true});
   const _vstP=(_resP.gs && !_resP.ambiguo)?getVistoriaByHosp(_resP.gs):null;
   const _temVstPendP=_vstP&&!_vstP.ts_assinada;
-  showM(`<div class="mt">Check-out — Apt. ${apt}</div>
+  showM(`<div class="mt">Check-out — ${_gsRotuloHosp(_resP, apt)}</div>
     <div class="ms">${info||'Sem detalhes'} · 🛣️ A passeio</div>
     ${_temVstPendP?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstP.numero} — pendente de assinatura</small></div>`:''}
     <div class="warn-box" style="font-size:11px">O hóspede fez check-out.<br>O carro será removido do sistema.</div>
@@ -5458,7 +5477,10 @@ window._modalCheckoutAtrasado = function(gs){
   if(!hosp){ showToast('Hospedagem não encontrada',2500); return; }
   showModalAux({
     titulo:'Check-out atrasado',
-    texto:'Apt '+(hosp.apt||'—')+' · '+(hosp.model||'')+' '+(hosp.color||'')+'. Saída prevista '+_fmtDataExibicao(hosp.saida_prevista)+'.',
+    // v1.9.8.0: o GS na frente, pela mesma razão do modal de check-out — este
+    // atalho leva direto ao check-out, e o apartamento sozinho não identifica
+    // qual hospedagem vai sair quando há dois carros nele.
+    texto:gs+' · Apt '+(hosp.apt||'—')+' · '+(hosp.model||'')+' '+(hosp.color||'')+'. Saída prevista '+_fmtDataExibicao(hosp.saida_prevista)+'.',
     botoes:[
       {label:'Dar check-out agora',cls:'primary',action:function(){
         fecharExpansao();
@@ -7157,7 +7179,10 @@ function novoCheckin(){
   if(_nciFechandoGuard){ console.log('[BUG T] novoCheckin bloqueado pelo escudo'); return; }
   try{
     const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
-    if(dr&&dr._type==='nci' && (Date.now()-(dr._ts||0))<24*3600*1000){
+    // v1.9.8.0: um rascunho cuja HOSPEDAGEM já existe não é um check-in
+    // interrompido — é lixo de um check-in concluído. Some sem perguntar.
+    if(dr && _nciRascunhoMorto(dr)){ _nciRascDescartar(); }
+    else if(dr&&dr._type==='nci' && (Date.now()-(dr._ts||0))<24*3600*1000){
       const mc=document.getElementById('mc');
       const hhmm=new Date(dr._ts||Date.now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       mc.innerHTML=`
@@ -7294,12 +7319,44 @@ function _nciAbrirModalSair(){
 // ════════════════════════════════════════════════════════════════════════
 // Rascunho silencioso (debounce 500ms)
 // ════════════════════════════════════════════════════════════════════════
+//
+// v1.9.8.0 — REGRA DO DOUGLAS, INEGOCIÁVEL: o check-in está CONCLUÍDO no
+// instante em que a HOSPEDAGEM passa a existir (o GS é gerado em
+// `_nciCommitCheckin`). Designar a vaga — na hora ou depois — NÃO altera isso.
+// O rascunho tem de morrer quando o GS nasce, e não pode ressuscitar.
+//
+// O QUE QUEBRAVA: `_nciFinalizar` JÁ chamava `_nciRascDescartar()` logo após o
+// commit — e o rascunho voltava assim mesmo, porque `_nciD` continua vivo
+// durante a etapa de FOTOS e o STEP5 (designar vaga). Dois caminhos o
+// regravavam depois de morto:
+//   1. o handler de `visibilitychange` (linha ~19180) chama `_nciSalvarRascunho()`
+//      sempre que o app é escondido — e ABRIR A CÂMERA na etapa de fotos esconde
+//      o app. Era esse o caso do relato: check-in concluído, foto tirada, e o
+//      "Continuar check-in?" aparecendo no próximo check-in do mesmo apartamento;
+//   2. o debounce de 500ms pendente, que `_nciRascDescartar` não cancelava — um
+//      toque num campo pouco antes de confirmar e o timer disparava depois.
+//
+// A guarda é `_nciRascunhoMorto()`, e ela pergunta pela HOSPEDAGEM, não por uma
+// flag de fluxo: enquanto o GS existir em HOSPEDAGENS, não há rascunho a salvar.
+// Vale para qualquer caminho novo que venha a chamar o save — inclusive os que
+// ainda não existem.
+function _nciRascunhoMorto(d){
+  try{
+    const st = d || _nciD;
+    if(!st) return true;
+    if(st._commitFeito) return true;
+    if(st.gs && typeof HOSPEDAGENS!=='undefined' && HOSPEDAGENS && HOSPEDAGENS[st.gs]) return true;
+  }catch(e){}
+  return false;
+}
 function _nciRascAgendar(){
   if(_nciRascDeb) clearTimeout(_nciRascDeb);
+  if(_nciRascunhoMorto()) return;
   _nciRascDeb=setTimeout(_nciRascSalvar,500);
 }
 function _nciRascSalvar(){
   if(!_nciD) return;
+  if(_nciRascunhoMorto()) return;   // a hospedagem já existe: o check-in acabou
   try{
     const payload={_type:'nci',_ts:Date.now(),..._nciD};
     localStorage.setItem(VISTORIA_RASCUNHO_LS,JSON.stringify(payload));
@@ -7317,7 +7374,28 @@ function _nciRascContinuar(){
   }catch(e){}
 }
 function _nciRascDescartar(){
+  // v1.9.8.0: cancela o debounce ANTES de apagar. Sem isto, um timer de 500ms
+  // agendado por um toque num campo pouco antes de confirmar disparava depois
+  // do `removeItem` e regravava o rascunho recém-morto.
+  if(_nciRascDeb){ clearTimeout(_nciRascDeb); _nciRascDeb=null; }
   try{ localStorage.removeItem(VISTORIA_RASCUNHO_LS); }catch(e){}
+}
+
+// v1.9.8.0 — RASCUNHO ÓRFÃO: o de uma hospedagem que JÁ EXISTE. Os aparelhos em
+// campo já têm um gravado (foi o que produziu o relato), e a guarda acima só
+// impede rascunhos NOVOS. Roda na abertura do app, em silêncio: não pergunta, não
+// avisa, não deixa vestígio na tela — o check-in daquele GS terminou faz tempo.
+// NÃO toca no rascunho de um check-in realmente interrompido (sem GS em
+// HOSPEDAGENS): esse é o recurso funcionando, e ele continua vivo.
+function _nciLimparRascunhoOrfao(){
+  try{
+    const dr=JSON.parse(localStorage.getItem(VISTORIA_RASCUNHO_LS)||'null');
+    if(!dr || dr._type!=='nci') return false;
+    if(!_nciRascunhoMorto(dr)) return false;
+    localStorage.removeItem(VISTORIA_RASCUNHO_LS);
+    console.log('[NCI v1.9.8.0] rascunho órfão descartado — a hospedagem', dr.gs, 'já existe');
+    return true;
+  }catch(e){ return false; }
 }
 function _nciSalvarRascunho(){ _nciRascAgendar(); } // alias back-compat
 
@@ -11166,6 +11244,217 @@ async function _gsAplicarBackup(obj, origem){
   return res;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.8.0 — MODO SUBSTITUIR (RECUPERAÇÃO DE DESASTRE)
+// ════════════════════════════════════════════════════════════════════════════
+// POR QUE ELE EXISTE. `_gsAplicarBackup` MESCLA, e mesclar é a regra certa para
+// importar um arquivo extra: o que está no aparelho sempre vence, nada se perde,
+// e importar duas vezes não duplica. Mas é a regra ERRADA para recuperação: quem
+// restaura um desastre quer o aparelho IDÊNTICO ao backup, e a mescla deixa
+// sobreviver exatamente o lixo que ele está tentando descartar — o estado parcial,
+// o registro corrompido, a hospedagem fantasma.
+//
+// Os dois modos passam a ser explícitos, e SOMAR continua sendo o padrão.
+//
+// O QUE ESTE CAMINHO NUNCA FAZ:
+//   • não encosta na NUVEM. A nuvem é append-only; o modo substituir age SÓ no
+//     dispositivo. Nenhuma chamada de exclusão/lixeira sai daqui.
+//   • não apaga PDF de fechamento salvo no aparelho. Eles são ARQUIVOS no
+//     Filesystem, e este código só mexe em localStorage e IndexedDB — a garantia
+//     é estrutural, não uma condição que alguém possa esquecer de escrever.
+//   • não deixa dado pela metade. Ver o fail-safe abaixo.
+
+// Chaves que descrevem ESTE APARELHO, não os dados da operação. Elas atravessam a
+// substituição intactas — trocá-las pelas do arquivo seria pior que inútil:
+//   • drive_status  — a sessão do Drive DESTE aparelho. Zerar deslogaria o gestor
+//                     no meio da recuperação, e a do arquivo aponta para a conta
+//                     que aquele outro aparelho usava;
+//   • license_cache — a checagem de licença deste aparelho; zerar pode bloquear
+//                     o app offline, bem na hora em que ele é mais necessário;
+//   • backups_local — o registro dos ARQUIVOS que estão fisicamente no disco
+//                     daqui. Zerar deixaria os arquivos órfãos e cegaria a poda.
+const GS_SUBST_PRESERVAR = [
+  'garagespot_drive_status',
+  'garagespot_license_cache',
+  'garagespot_backups_local',
+];
+
+// Esvazia um objeto NO LUGAR. As coleções centrais do app (`S`, `PASSEIO`,
+// `HOSPEDAGENS`, `HISTORICO`, `ANEXOS`) são declaradas com `const` — reatribuí-las
+// lança TypeError. Todo o caminho de substituição mutila no lugar por causa disso.
+function _gsSubstEsvaziar(o){
+  try{ Object.keys(o).forEach(function(k){ delete o[k]; }); }catch(e){}
+  return o;
+}
+
+// Toda chave do app no localStorage. Prefixo `garagespot_` + o mapa (`garagem_spot_v1`),
+// que é o único fora do padrão de nome.
+function _gsChavesDoApp(){
+  const out = [];
+  try{
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k.indexOf('garagespot_') === 0 || k === STORAGE_KEY) out.push(k);
+    }
+  }catch(e){ console.warn('[SUBSTITUIR] varredura do localStorage falhou:', e); }
+  return out;
+}
+
+// Escreve um snapshot VERBATIM por cima do estado local. Não mescla, não decide,
+// não preserva nada além de `GS_SUBST_PRESERVAR`: o que está no snapshot é o que
+// fica. Usado tanto para aplicar o backup quanto para DESFAZER (o rollback do
+// fail-safe é a mesma operação, com o snapshot do próprio aparelho).
+async function _gsEscreverVerbatim(n){
+  // 1) zera as chaves do app (menos as deste aparelho). `removeItem` direto, e não
+  //    os `save*`: as guardas anti-vazio existem para barrar ZERADA ACIDENTAL, e
+  //    passar por elas aqui exigiria `permitirVazio` em toda parte — ruído que
+  //    enfraqueceria a guarda no resto do app.
+  _gsChavesDoApp().forEach(function(k){
+    if(GS_SUBST_PRESERVAR.indexOf(k) >= 0) return;
+    try{ localStorage.removeItem(k); }catch(e){}
+  });
+  // 2) grava o localStorage do snapshot, tal e qual
+  if(n.ls){
+    Object.keys(n.ls).forEach(function(k){
+      if(GS_SUBST_PRESERVAR.indexOf(k) >= 0) return;
+      const v = n.ls[k];
+      if(v === undefined || v === null) return;
+      try{ localStorage.setItem(k, String(v)); }catch(e){ console.warn('[SUBSTITUIR] não gravou', k, e); }
+    });
+  }
+  // 3) IndexedDB: anexos e vistorias vão direto ao store, sem passar pelas guardas
+  //    (mesma razão do passo 1). Um snapshot LEVE não traz `indexeddb` — nesse caso
+  //    ANEXOS e VISTORIAS ficam vazios, que é a verdade daquele arquivo.
+  // ⚠️ `ANEXOS` é `const` (assim como S, PASSEIO, HOSPEDAGENS e HISTORICO): tem de
+  //    ser esvaziado NO LUGAR. Reatribuir lançaria TypeError e derrubaria a
+  //    restauração inteira no meio — exatamente o que o fail-safe existe para
+  //    evitar, mas sem motivo nenhum para provocá-lo.
+  _gsSubstEsvaziar(ANEXOS);
+  if(n.anexos && typeof n.anexos === 'object') Object.assign(ANEXOS, n.anexos);
+  VISTORIAS = (n.vistorias && typeof n.vistorias === 'object') ? n.vistorias : {};
+  try{ await saveAnexosIDB(); }catch(e){ console.warn('[SUBSTITUIR] anexos no IDB:', e); }
+  try{ await saveVistoriasIDB(); }catch(e){ console.warn('[SUBSTITUIR] vistorias no IDB:', e); }
+}
+
+// Relê para a memória tudo o que acabou de ser escrito e redesenha a tela, para o
+// app valer o novo estado sem precisar ser reaberto.
+function _gsRecarregarTudoDoDisco(){
+  // Esvaziar ANTES de recarregar não é zelo: vários `load*` fazem `Object.assign`
+  // SEM limpar (`loadHistorico`) ou só escrevem quando acham algo (`loadHospedagens`
+  // tem `if(dados)`). Sem a limpeza explícita, o que o backup NÃO tem sobreviveria —
+  // e "substituir" viraria uma mescla disfarçada, que é justamente o defeito.
+  _gsSubstEsvaziar(HOSPEDAGENS); _gsSubstEsvaziar(HISTORICO); _gsSubstEsvaziar(PASSEIO);
+  USUARIOS = []; CHECKINS_PENDENTES = {};
+  RECARGAS = {}; HISTORICO_RECARGAS = []; PLANTAO_MANUAL = []; VISTORIAS_LIXEIRA = {};
+  try{ loadHistorico(); }catch(e){}
+  try{ loadUsuarios(); }catch(e){}
+  try{ loadHospedagens(); }catch(e){}
+  try{ loadTurnos(); }catch(e){}
+  try{ loadEscala(); }catch(e){}
+  try{ loadPlantaoManual(); }catch(e){}
+  try{ loadPlantaoOverride(); }catch(e){}
+  try{ loadRecargas(); }catch(e){}   // lê RECARGAS, config, pontos E HISTORICO_RECARGAS
+  try{ loadCheckinsPendentes(); }catch(e){}
+  try{ loadModulos(); }catch(e){}
+  try{ loadTema(); }catch(e){}
+  try{ const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS); VISTORIAS_LIXEIRA = d?(JSON.parse(d)||{}):{}; }catch(e){ VISTORIAS_LIXEIRA={}; }
+  // O MAPA. `applySnapshot` só escreve nas vagas que o snapshot MENCIONA — as
+  // demais ficariam como estavam, e um carro do estado antigo sobreviveria à
+  // "substituição". Por isso o mapa inteiro vai a LIVRE primeiro; depois o
+  // snapshot desenha por cima. Sem mapa no arquivo, o resultado correto é o mapa
+  // vazio, e é o que fica.
+  try{
+    Object.keys(S).forEach(function(id){
+      S[id].status='free'; S[id].apt=''; S[id].model=''; S[id].color='';
+      S[id].plate=''; S[id].guest=''; S[id].obs=''; S[id].size='small';
+      S[id].mergedMaster=false; S[id].mergedSlave=false; S[id].hmergeWith=null;
+      S[id].hospedagem='';
+    });
+    const bruto = localStorage.getItem(STORAGE_KEY);
+    const mapa = bruto ? JSON.parse(bruto) : null;
+    if(mapa && mapa.vagas && typeof applySnapshot === 'function') applySnapshot(mapa);
+    // Redesenho: `upd()` sozinho não reconstrói o rowSpan dos merges verticais
+    // nem o colSpan dos laterais.
+    Object.keys(S).forEach(function(id){
+      ref(id);
+      if(id.slice(-1) === 'B'){ const td = getTd(id); if(td) td.rowSpan = S[id].mergedMaster ? 2 : 1; }
+    });
+  }catch(e){ console.warn('[SUBSTITUIR] mapa:', e); }
+  // Os contadores das guardas precisam refletir a NOVA realidade. Sem isto, a
+  // guarda de itens compararia o próximo save com o aparelho de antes e o barraria.
+  try{ _atualizarContadores(); }catch(e){}
+  try{ _recarregarConfigRestaurada(); }catch(e){}
+  try{ if(typeof initExibicao==='function') initExibicao(); }catch(e){}
+  try{ if(typeof upd==='function') upd(); }catch(e){}
+  try{ if(typeof atualizarPlantao==='function') atualizarPlantao(); }catch(e){}
+  try{ if(typeof renderPainelDia==='function') renderPainelDia(); }catch(e){}
+}
+
+// O modo substituir propriamente dito.
+//
+// FAIL-SAFE — a parte que importa. Dado pela metade é PIOR que dado nenhum: um
+// aparelho meio restaurado parece íntegro e mente para o gestor. Então, ANTES de
+// apagar qualquer coisa, tiramos um snapshot COMPLETO do próprio aparelho (o mesmo
+// `_gsMontarSnapshot(true)` do backup, com fotos). Se qualquer etapa falhar, esse
+// snapshot é reaplicado pelo MESMO caminho verbatim e o aparelho volta ao estado
+// anterior. Concluiu ou voltou — e nos dois casos o gestor é avisado, na tela e na
+// trilha. Nunca fica no meio, e nunca fica calado.
+async function _gsSubstituirPorBackup(obj, origem){
+  const n = _gsNormalizarBackup(obj);
+  const res = { modo:'substituir', ok:false, revertido:false, erro:'',
+                hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0,
+                historico:0, mapaVagas:0 };
+
+  let salvaVidas = null;
+  try{ salvaVidas = _gsNormalizarBackup(_gsMontarSnapshot(true)); }
+  catch(e){
+    // Sem rede de segurança não se derruba nada. Abortar aqui é o comportamento
+    // seguro: o aparelho continua exatamente como está.
+    res.erro = 'não foi possível preparar a cópia de segurança do aparelho: ' + ((e && e.message) || e);
+    console.error('[SUBSTITUIR] ABORTADO —', res.erro);
+    try{ addLogSistema('Restauração (substituir) ABORTADA antes de tocar nos dados: ' + res.erro,
+      {aud:true, acao:'restauracao_substituir_abortada', alvo:String(origem||'arquivo')}); }catch(e2){}
+    return res;
+  }
+
+  try{
+    await _gsEscreverVerbatim(n);
+    _gsRecarregarTudoDoDisco();
+    res.ok = true;
+  }catch(e){
+    res.erro = (e && e.message) || String(e);
+    console.error('[SUBSTITUIR] falhou no meio — revertendo:', res.erro);
+    try{
+      await _gsEscreverVerbatim(salvaVidas);
+      _gsRecarregarTudoDoDisco();
+      res.revertido = true;
+    }catch(e2){
+      // O pior caso concebível: falhou ao aplicar E ao reverter. Não dá para
+      // consertar daqui, mas dá para NÃO MENTIR — grita na tela e na trilha.
+      console.error('[SUBSTITUIR] o rollback também falhou:', e2);
+      res.erro += ' | rollback também falhou: ' + ((e2 && e2.message) || e2);
+    }
+    try{ addLogSistema('Restauração (substituir) FALHOU' + (res.revertido ? ' — aparelho revertido ao estado anterior' : ' E O ROLLBACK TAMBÉM FALHOU') + ': ' + res.erro,
+      {aud:true, acao:'restauracao_substituir_falhou', alvo:String(origem||'arquivo')}); }catch(e3){}
+    return res;
+  }
+
+  res.hospedagens  = _gsContar(HOSPEDAGENS);
+  res.usuarios     = _gsContar(USUARIOS);
+  res.vistorias    = _gsContar(VISTORIAS);
+  res.anexosChaves = _gsContar(ANEXOS);
+  res.anexosItens  = _gsContarItens(ANEXOS);
+  res.historico    = _gsContarItens(HISTORICO);
+  try{ res.mapaVagas = Object.keys(S).filter(function(k){ return S[k] && S[k].status==='occupied'; }).length; }catch(e){}
+
+  try{ addLogSistema('Restauração SUBSTITUIR (' + (origem||'arquivo') + '): o aparelho passou a ser idêntico ao backup — '
+    + res.hospedagens + ' hosp., ' + res.usuarios + ' func., ' + res.vistorias + ' vist., '
+    + res.anexosItens + ' anexos, ' + res.mapaVagas + ' vaga(s) ocupada(s)',
+    {aud:true, acao:'dados_substituidos', alvo:String(origem||'arquivo')}); }catch(e){}
+  return res;
+}
+
 // UI: escolher arquivo → conferir → PIN → aplicar
 function abrirImportarDados(){
   const inp = document.createElement('input');
@@ -13518,25 +13807,133 @@ function _gdRestaurarArquivo(id, nome){
         showToast('⚠️ Não foi possível baixar: ' + m, 6000);
         return;
       }
-      showToast('Restaurando (mesclando)…', 3000);
-      const res = await _gsAplicarBackup(obj, 'nuvem:' + (nome || id));
-      try{ if(typeof upd==='function') upd(); }catch(e){}
-      try{ if(typeof renderPainelDia==='function') renderPainelDia(); }catch(e){}
-      addLogSistema('Restauração da nuvem: ' + (nome || id),
-        {aud:true, acao:'drive_restaurado', alvo:String(nome||id)});
-      showM(`<div class="mt">✅ Restauração concluída</div>
-        <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome||id))}</div>
-        <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
-          <div>+ ${res.hospedagens} hospedagens</div>
-          <div>+ ${res.usuarios} funcionários</div>
-          <div>+ ${res.vistorias} vistorias</div>
-          <div>+ ${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
-          <div>+ ${res.historico} eventos de histórico</div>
-          <div style="color:#888;margin-top:6px">${res.ignorados} registro(s) já existiam e foram preservados.</div>
-        </div>
-        <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
+      // v1.9.8.0: o arquivo já está em mãos — agora o gestor ESCOLHE o modo, vendo
+      // a data e o conteúdo do que vai aplicar. Somar continua sendo o padrão.
+      _gdEscolherModoRestauracao(obj, nome || id);
     })();
   });
+}
+
+// ── v1.9.8.0 — ESCOLHA DO MODO ────────────────────────────────────────────
+// Dois modos EXPLÍCITOS, com o texto dizendo o que cada um faz. A mescla resolve
+// "quero trazer dados que faltam"; a substituição resolve "meu aparelho está
+// errado e eu quero ele igual a este arquivo". Confundir os dois foi o que
+// tornou a recuperação de desastre impossível até aqui.
+function _gdEscolherModoRestauracao(obj, nome){
+  const n = _gsNormalizarBackup(obj);
+  const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):new Date(n.ts).toLocaleString('pt-BR')) : '—';
+  const qtdHosp = _gsContar(n.hospedagens || (n.ls && n.ls['garagespot_hospedagens'] ? JSON.parse(n.ls['garagespot_hospedagens']) : {}) || {});
+  const qtdVst  = _gsContar(n.vistorias || {});
+  const qtdAnx  = _gsContarItens(n.anexos || {});
+  const avisoIDB = n.temIndexedDB ? '' :
+    `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos</strong> (backup leve / formato antigo). Em <strong>Substituir</strong>, o aparelho ficaria sem elas.</div>`;
+  showM(`<div class="mt">☁️ Restaurar da nuvem</div>
+    <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
+    <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
+      <div><strong>Gerado em:</strong> ${_vtEsc(String(dataArq))}</div>
+      <div><strong>Versão:</strong> ${_vtEsc(String(n.appVersion))} · ${_vtEsc(String(n.tipo))}</div>
+      <div>• ${qtdHosp} hospedagens · ${qtdVst} vistorias · ${qtdAnx} anexos</div>
+    </div>
+    ${avisoIDB}
+    <div class="ag" style="margin-top:10px">
+      <button class="bsv" id="rst-somar">➕ Somar (mesclar)</button>
+      <div style="font-size:11px;color:#888;margin:2px 0 8px">Acrescenta só o que falta. Nada do que está no aparelho é apagado. <strong>Padrão.</strong></div>
+      <button class="ab ao" id="rst-subst" style="margin-top:0">♻️ Substituir (recuperação)</button>
+      <div style="font-size:11px;color:#888;margin:2px 0 0">Deixa o aparelho <strong>idêntico a este backup</strong>. Os dados atuais do aparelho são descartados.</div>
+      <button class="bcx" onclick="closeOv()" style="margin-top:10px">Cancelar</button>
+    </div>`);
+  // Handlers ligados NA HORA, sem `setTimeout`. `showM` é síncrono (`innerHTML` +
+  // classe), então o botão já existe aqui — e o atraso de 50ms do padrão legado
+  // criava uma janela real em que o botão está na tela e IGNORA o toque. Num
+  // tablet lento essa janela é maior, e o operador toca de novo achando que falhou.
+  const bS = document.getElementById('rst-somar');
+  const bR = document.getElementById('rst-subst');
+  if(bS) bS.onclick = function(){ _gdAplicarRestauracao(obj, nome, 'somar'); };
+  if(bR) bR.onclick = function(){ _gdConfirmarSubstituir(obj, nome, n, dataArq, qtdHosp, qtdVst, qtdAnx); };
+}
+
+// Segunda confirmação, e ela é DELIBERADAMENTE desconfortável: diz a data do
+// backup, o que ele contém, o que o aparelho tem HOJE e que isso será descartado.
+// O botão de seguir não é o primário — quem chega aqui tem de querer chegar.
+function _gdConfirmarSubstituir(obj, nome, n, dataArq, qtdHosp, qtdVst, qtdAnx){
+  let atual = { h:0, v:0, a:0 };
+  try{ atual = { h:_gsContar(HOSPEDAGENS), v:_gsContar(VISTORIAS), a:_gsContarItens(ANEXOS) }; }catch(e){}
+  showM(`<div class="mt">♻️ Substituir tudo pelo backup?</div>
+    <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
+    <div class="vst-warn-box" style="font-size:12px">
+      O aparelho vai ficar <strong>idêntico a este backup</strong>.<br>
+      Tudo o que está no aparelho hoje e <strong>não</strong> está no backup <strong>será descartado</strong>.
+    </div>
+    <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7;margin-top:8px">
+      <div><strong>Backup de ${_vtEsc(String(dataArq))}</strong></div>
+      <div>• ${qtdHosp} hospedagens · ${qtdVst} vistorias · ${qtdAnx} anexos</div>
+      <div style="margin-top:6px;color:#A32D2D"><strong>Aparelho hoje (será descartado)</strong></div>
+      <div>• ${atual.h} hospedagens · ${atual.v} vistorias · ${atual.a} anexos</div>
+    </div>
+    <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:9px 12px;font-size:12px;color:#0F6E56;margin-top:8px">
+      ✅ Nada é apagado <strong>na nuvem</strong> — ela é só leitura aqui.<br>
+      ✅ Os <strong>PDFs de fechamento</strong> já salvos no aparelho <strong>não</strong> são apagados.
+    </div>
+    <div class="ag" style="margin-top:10px">
+      <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <button class="ab ac" id="rst-subst-ok" style="margin-top:6px">♻️ Sim, substituir tudo</button>
+    </div>`);
+  const b = document.getElementById('rst-subst-ok');   // idem: sem janela morta
+  if(b) b.onclick = function(){ _gdAplicarRestauracao(obj, nome, 'substituir'); };
+}
+
+async function _gdAplicarRestauracao(obj, nome, modo){
+  const alvo = 'nuvem:' + nome;
+  if(modo === 'substituir'){
+    showToast('Substituindo pelo backup…', 3000);
+    const res = await _gsSubstituirPorBackup(obj, alvo);
+    if(!res.ok){
+      showM(`<div class="mt">⚠️ Restauração NÃO concluída</div>
+        <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
+        <div class="vst-warn-box" style="font-size:12px">
+          ${res.revertido
+            ? 'A substituição falhou e o aparelho foi <strong>revertido ao estado anterior</strong>. Nada foi perdido.'
+            : (res.erro && res.erro.indexOf('cópia de segurança')>=0
+              ? 'Nada foi tocado: não deu para preparar a cópia de segurança do aparelho, e sem ela a substituição não começa.'
+              : '<strong>ATENÇÃO:</strong> a substituição falhou e a reversão também. Não use o app antes de conferir os dados.')}
+          <br><small>${_vtEsc(String(res.erro||''))}</small>
+        </div>
+        <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
+      return;
+    }
+    addLogSistema('Restauração da nuvem (substituir): ' + nome,
+      {aud:true, acao:'drive_restaurado', alvo:String(nome)});
+    showM(`<div class="mt">✅ Aparelho substituído pelo backup</div>
+      <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
+      <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
+        <div>${res.hospedagens} hospedagens</div>
+        <div>${res.usuarios} funcionários</div>
+        <div>${res.vistorias} vistorias</div>
+        <div>${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
+        <div>${res.historico} eventos de histórico</div>
+        <div>🗺 ${res.mapaVagas} vaga(s) ocupada(s)</div>
+        <div style="color:#888;margin-top:6px">O aparelho agora é idêntico a este backup.</div>
+      </div>
+      <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
+    return;
+  }
+  showToast('Restaurando (mesclando)…', 3000);
+  const res = await _gsAplicarBackup(obj, alvo);
+  try{ if(typeof upd==='function') upd(); }catch(e){}
+  try{ if(typeof renderPainelDia==='function') renderPainelDia(); }catch(e){}
+  addLogSistema('Restauração da nuvem: ' + nome,
+    {aud:true, acao:'drive_restaurado', alvo:String(nome)});
+  showM(`<div class="mt">✅ Restauração concluída</div>
+    <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
+    <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
+      <div>+ ${res.hospedagens} hospedagens</div>
+      <div>+ ${res.usuarios} funcionários</div>
+      <div>+ ${res.vistorias} vistorias</div>
+      <div>+ ${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
+      <div>+ ${res.historico} eventos de histórico</div>
+      <div style="color:#888;margin-top:6px">${res.ignorados} registro(s) já existiam e foram preservados.</div>
+    </div>
+    <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
 }
 
 // Re-renderiza "Backup e Conexões" se ele estiver aberto (status muda ali).
@@ -18075,6 +18472,23 @@ function getAnexoKey(id, fromPasseio, opts){
 // ════════════════════════════════════════════════════════════════════════
 const MIGR_VINC_LS = 'garagespot_migr_vinc_v1970';
 
+// v1.9.8.0 — SEGUNDA PASSAGEM, DE PROPÓSITO E UMA SÓ VEZ.
+//
+// O problema relatado: no aparelho do Douglas NÃO HÁ entrada `migracao_vinculo_v1970`
+// na trilha, e não dava para saber se a migração rodou e não achou nada, ou se não
+// rodou. A resposta (Seção 3 do patch) é a primeira: ela RODOU no init da v1.9.7.0,
+// não encontrou nada para religar, e o `if` que envolvia o `addLogSistema` a fazia
+// registrar SÓ quando havia trabalho. A marca `garagespot_migr_vinc_v1970` ficou
+// gravada — então corrigir só o `if` não produziria entrada nenhuma num aparelho
+// que já passou por lá.
+//
+// Esta chave própria libera EXATAMENTE UMA passagem nova, sob a v1.9.8.0, para que
+// a trilha ganhe o registro que faltava. Rodar de novo é seguro: a migração é
+// idempotente e não destrutiva por construção (concatena, deduplica e nunca apaga
+// sem antes religar) — e isso está travado por spec desde a v1.9.7.0. Se algum
+// anexo tiver ficado órfão no meio do caminho, esta passagem ainda o religa.
+const MIGR_VINC_REG_LS = 'garagespot_migr_vinc_reg_v1980';
+
 // Assinatura barata e estável de um anexo, para deduplicar sem comparar
 // megabytes de base64 item a item.
 function _gsAssinaturaAnexo(a){
@@ -18144,7 +18558,11 @@ function _gsMigrarVinculoAnexos(opts){
                 baldesPreservados:0, semDestino:[] };
   try{
     if(!opts.forcar){
-      try{ if(localStorage.getItem(MIGR_VINC_LS)) return res; }catch(e){}
+      // v1.9.8.0: as DUAS marcas precisam estar presentes para pular. Um aparelho
+      // que só tem a da v1.9.7.0 ainda deve uma passagem — a que registra na trilha.
+      try{
+        if(localStorage.getItem(MIGR_VINC_LS) && localStorage.getItem(MIGR_VINC_REG_LS)) return res;
+      }catch(e){}
     }
     if(typeof ANEXOS==='undefined' || !ANEXOS) return res;
     res.rodou = true;
@@ -18199,6 +18617,7 @@ function _gsMigrarVinculoAnexos(opts){
       try{ saveAnexos(); }catch(e){ console.error('[MIGR v1970] saveAnexos falhou:', e); }
     }
     try{ localStorage.setItem(MIGR_VINC_LS, String(Date.now())); }catch(e){}
+    try{ localStorage.setItem(MIGR_VINC_REG_LS, String(Date.now())); }catch(e){}
 
     const resumo = 'Migração de vínculo v1.9.7.0: '+res.religados+' anexo(s) religados ao GS correto ('
       + res.movidosEntreHosp + ' movidos entre hospedagens), '
@@ -18206,9 +18625,12 @@ function _gsMigrarVinculoAnexos(opts){
       + res.baldesPreservados + ' preservado(s) sem destino'
       + (res.semDestino.length ? ' ['+res.semDestino.join(', ')+']' : '');
     console.log('[MIGR v1970]', resumo);
-    if(res.religados || res.baldesLegados || res.baldesPreservados){
-      try{ addLogSistema(resumo, {aud:true, acao:'migracao_vinculo_v1970', origem:'automatico'}); }catch(e){}
-    }
+    // v1.9.8.0: registra SEMPRE, inclusive com zero religados. Antes só entrava na
+    // trilha quando havia algo a religar — e o efeito prático foi este: no aparelho
+    // do Douglas a migração RODOU e não achou nada, mas a ausência de entrada era
+    // indistinguível de "não rodou". O gestor precisa poder PROVAR pela trilha que
+    // ela passou; um "0 religados" registrado vale exatamente por isso.
+    try{ addLogSistema(resumo, {aud:true, acao:'migracao_vinculo_v1970', origem:'automatico'}); }catch(e){}
   }catch(e){
     console.error('[MIGR v1970] falhou (dados intactos):', e && e.message);
   }
@@ -19393,6 +19815,10 @@ checkLicense().then(async (ativo)=>{
       // v1.9.7.0: reancora anexos mal-vinculados ao GS correto ANTES que
       // qualquer check-out apague. Roda uma vez só; não destrutiva; idempotente.
       try { _gsMigrarVinculoAnexos(); } catch(e){ console.warn('[MIGR v1970] pós-init:', e); }
+      // v1.9.8.0: rascunho de check-in já concluído sai em silêncio (regra do
+      // Douglas: o rascunho morre quando o GS nasce). Depende de HOSPEDAGENS já
+      // estar carregado — por isso aqui, e não antes.
+      try { _nciLimparRascunhoOrfao(); } catch(e){ console.warn('[NCI] rascunho órfão:', e); }
       try { _atualizarContadores(); } catch(e){ console.warn('[BUG A] contadores pós-init:', e); }
       console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
       // v1.9.4.16: o hotel opera 24h — o rótulo "check-out" passa a virar sozinho
