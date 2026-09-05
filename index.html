@@ -1350,9 +1350,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.9.0';
+const GS_VERSION = 'v1.9.9.1';
 const GS_VERSION_CODE = 29;
-const GS_BUILD_TS = '2026-09-04';
+const GS_BUILD_TS = '2026-09-05';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -10069,6 +10069,13 @@ function _gsValidarSnapshot(snap){
 //
 // Fallback para o idioma antigo se `TextEncoder` não existir: o arquivo continua
 // saindo, que é o que não pode faltar.
+//
+// ⚠️ v1.9.9.1 — ESTA FUNÇÃO SAIU DO CAMINHO DO BACKUP e não é chamada por
+// ninguém hoje. Ela fica por dois motivos: a medição do passe múltiplo de 3 é
+// cara de refazer, e converter texto em base64 sem multiplicar a string continua
+// sendo um problema que volta (PDF, anexo, qualquer coisa que vá para a ponte do
+// Capacitor como binário). **NÃO reintroduzi-la no backup**: lá o caminho é Blob
+// + `encoding:'utf8'`, e voltar ao base64 traz de volta o crash do hotel.
 const _GS_B64_PASSO = 32766;   // 3 × 10922 — não mudar sem refazer a medição
 function _gsBase64UTF8(txt){
   const s = String(txt == null ? '' : txt);
@@ -10083,6 +10090,331 @@ function _gsBase64UTF8(txt){
     }
   }catch(e){ console.warn('[BACKUP] base64 em pedaços falhou, usando o caminho antigo:', e && e.message); }
   return btoa(unescape(encodeURIComponent(s)));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.1 — O ARQUIVO DE BACKUP DEIXA DE SER MULTIPLICADO NA MEMÓRIA
+// ════════════════════════════════════════════════════════════════════════
+// SITUAÇÃO QUE ORIGINOU ISTO (05/09/2026, tablet do Hotel Gumz — SM-T585,
+// Android 8.1, WebView Chrome 101, 2 GB de RAM): o app fechava sozinho em
+// TODOS os caminhos de backup — "Fazer backup agora", toque no rodapé e
+// **também "Exportar backup completo"**. O Exportar não toca na rede: é ele
+// que prova que a falha NÃO era de upload, e sim de MONTAR o arquivo.
+//
+// A cadeia da v1.9.9.0 mantinha VIVAS ao mesmo tempo, para um arquivo de ~10 MB:
+//   snap → JSON.stringify (~10 MB) → TextEncoder (~10 MB) → pedaços b64 (~13 MB)
+//        → join (~13 MB) → mensagem da ponte do Capacitor (~13 MB, e do outro
+//          lado uma String Java UTF-16 de ~26 MB) → corpo multipart (~10 MB)
+// Some-se a isso o `json` original, que o espelhamento na nuvem segurava até o
+// fim do upload. Num aparelho de 2 GB com o WebView já carregado, é aí que o
+// Android mata o processo.
+//
+// A CORREÇÃO: o arquivo nunca mais existe inteiro como string JS.
+//   1. `_gsEmitirJSON` serializa o snapshot EM PEDAÇOS, descendo na árvore até
+//      o grão da FOTO — cada foto é serializada, entregue e solta.
+//   2. Os pedaços são despejados num `Blob` a cada ~2 MB. Bytes de Blob vivem
+//      no processo do navegador, NÃO no heap de strings do JS.
+//   3. O disco recebe o arquivo em ANEXOS (`appendFile`), pedaço a pedaço.
+//   4. A nuvem recebe o `Blob` direto no corpo do `fetch` — sem multipart em
+//      string, sem base64.
+// Pico resultante: ~2 MB de string viva, independente do tamanho do backup.
+//
+// ⚠️ O FORMATO DO ARQUIVO NÃO MUDA. `_gsEmitirJSON` reproduz `JSON.stringify`
+// byte a byte (mesma ordem de chaves, mesmo escape, mesma omissão de
+// `undefined`/função/símbolo, mesmo `null` para buraco de array). Há spec que
+// compara as duas saídas caractere a caractere; se ela cair, o errado é este
+// emissor, nunca a spec.
+//
+// ⚠️ POR QUE NÃO `Blob` DIRETO NO `Filesystem.writeFile`: MEDIDO na fonte de
+// `node_modules/@capacitor/filesystem@8.1.2` — `dist/esm/definitions.d.ts`
+// declara `data: string | Blob` com a nota "Blob data is only supported on
+// Web", e `dist/esm/index.js` registra o plugin sem nenhum adaptador para o
+// nativo: no Android o Blob atravessaria a ponte como `{}`. O que o Android
+// aceita é `encoding: 'utf8'` (grava o texto como UTF-8, exatamente os mesmos
+// bytes que o base64 produzia) e `appendFile`, que na fonte Kotlin
+// (`FilesystemPlugin.kt`) é a MESMA implementação de `writeFile` com
+// `append: true`. É esse o caminho usado aqui.
+
+// Tamanho do lote antes de virar Blob. 2 MB é o compromisso: grande o bastante
+// para não criar centenas de Blobs (cada um custa uma ida ao processo do
+// navegador), pequeno o bastante para o pico caber com folga num aparelho
+// apertado. NÃO aumentar sem medir de novo no aparelho do hotel.
+const GS_LOTE_BLOB_BYTES = 2 * 1024 * 1024;
+
+// Devolve o event loop por um tique. Entre etapas pesadas isso é o que permite
+// ao coletor de lixo recolher o que acabou de ser solto — e o que impede a tela
+// de congelar enquanto o backup é montado.
+function _gsCeder(){
+  return new Promise(function(r){ setTimeout(r, 0); });
+}
+
+// Serializa `v` em pedaços, chamando `emit(str)` para cada um. Desce na árvore
+// enquanto `prof > 0`; a partir daí delega ao `JSON.stringify` nativo.
+//
+// A saída concatenada é IDÊNTICA à de `JSON.stringify(v)`. As regras que isso
+// obriga a reproduzir, e que NÃO podem ser simplificadas:
+//   • em objeto, chave com valor `undefined`/função/símbolo é OMITIDA;
+//   • em array, o mesmo valor vira `null` (a posição não pode sumir);
+//   • objeto com `toJSON` (Date, por exemplo) é delegado ao nativo;
+//   • `NaN`/`Infinity` viram `null` — o `JSON.stringify` do caso base já faz.
+// ⚠️ É `async`, E ISSO NÃO É DETALHE. `emit` pode devolver uma promessa quando
+// acaba de fechar um lote; esperá-la é o que devolve o event loop ao app no
+// meio de um backup grande — e, mais importante, é o que dá ao coletor de lixo a
+// brecha para recolher o lote que acabou de ser solto. Sem isso o serializador
+// roda numa tarefa só e o heap sobe monotonicamente até o fim.
+async function _gsEmitirJSON(v, prof, emit){
+  const soltar = function(s){ const p = emit(s); return p && typeof p.then === 'function' ? p : null; };
+  if(prof <= 0 || v === null || typeof v !== 'object' || typeof v.toJSON === 'function'){
+    const p = soltar(JSON.stringify(v));
+    if(p) await p;
+    return;
+  }
+  const descartavel = function(x){
+    const t = typeof x;
+    return x === undefined || t === 'function' || t === 'symbol';
+  };
+  if(Array.isArray(v)){
+    emit('[');
+    for(let i = 0; i < v.length; i++){
+      if(i) emit(',');
+      if(descartavel(v[i])) emit('null');
+      else await _gsEmitirJSON(v[i], prof - 1, emit);
+    }
+    emit(']');
+    return;
+  }
+  emit('{');
+  const ks = Object.keys(v);
+  let primeiro = true;
+  for(let i = 0; i < ks.length; i++){
+    const val = v[ks[i]];
+    if(descartavel(val)) continue;
+    if(!primeiro) emit(',');
+    primeiro = false;
+    emit(JSON.stringify(ks[i]) + ':');
+    await _gsEmitirJSON(val, prof - 1, emit);
+  }
+  emit('}');
+}
+
+// PROFUNDIDADE 4. Medida contra a forma real do snapshot:
+//   raiz(0) → `indexeddb`(1) → `anexos`(2) → `h_GS900`[](3) → { …data:foto }(4)
+// É exatamente o grão da FOTO — cada anexo é serializado sozinho e solto em
+// seguida. Menos que 4 e um array de 12 fotos (~5 MB) voltaria a ser uma string
+// só; muito mais que 4 só multiplica chamadas sem reduzir o pico.
+const GS_PROF_FRAGMENTO = 4;
+
+// Monta o snapshot como Blob e, opcionalmente, ENTREGA CADA LOTE a `aoLote`
+// enquanto monta — que é como o disco recebe o arquivo sem que ele exista
+// inteiro em lugar nenhum.
+//
+// Devolve { blob, partes, bytes }: `blob` vai direto no corpo do `fetch` da
+// nuvem; `bytes` é o tamanho, para o log dizer o que estava em jogo.
+//
+// ⚠️⚠️ AQUI MORA A CORREÇÃO INTEIRA, E DUAS TENTATIVAS ERRARAM ANTES DE ACERTAR.
+// As duas foram achadas MEDINDO, não lendo — vale registrar as duas:
+//
+// 1ª — juntar todos os fragmentos num array e só depois consumi-los, no
+//      raciocínio de que um fragmento seria um "ponteiro" para a foto que já vive
+//      em `ANEXOS`. **Não é.** `JSON.stringify(anexo)` produz uma STRING NOVA com
+//      a foto escapada — uma cópia. O array acumulava o arquivo inteiro.
+//      MEDIDO com 21,4 MB de fotos: pico de **56 MB** (contra 76,6 MB da
+//      v1.9.9.0) — 1,4×, longe do que a versão promete.
+// 2ª — montar o Blob primeiro e depois relê-lo pedaço a pedaço (`Blob.text()`)
+//      para gravar. MEDIDO: a ida-e-volta custava **11,7 MB** só na gravação,
+//      mais que o próprio empacotamento. O texto do lote já estava na mão; relê-lo
+//      do Blob era pagar duas vezes pela mesma string.
+//
+// O que funciona é UM PASSE SÓ: cada fragmento entra no lote; o lote cheio vira
+// (a) texto entregue a quem grava e (b) Blob, cujos bytes vivem no processo do
+// navegador e não no heap de strings do JS. Depois disso o pico deixa de
+// depender do tamanho do backup.
+//
+// ⚠️ FECHAR ANTES DE ESTOURAR, não depois. Fechando depois, o lote chegava a
+// `teto - 1 + um fragmento inteiro` — e um fragmento é UMA FOTO (medido: lotes de
+// 2,3 MB com fotos de 400 KB). Assim o lote só passa do teto quando passar é
+// inevitável: um único fragmento maior que ele sozinho — e aí nada aqui reduz o
+// pico, que é a própria foto, já residente na memória.
+async function _gsSnapshotParaBlob(snap, aoLote){
+  const partes = [];
+  let lote = [];
+  let loteChars = 0;
+  let bytes = 0;
+  const despejar = async function(){
+    if(!lote.length) return;
+    const texto = lote.join('');
+    lote = [];                               // solta os fragmentos AGORA
+    loteChars = 0;
+    const b = new Blob([texto], {type:'application/json'});
+    bytes += b.size;
+    partes.push(b);
+    if(aoLote) await aoLote(texto);          // o disco recebe o MESMO texto
+    await _gsCeder();                        // dá espaço ao coletor de lixo
+  };
+  await _gsEmitirJSON(snap, GS_PROF_FRAGMENTO, function(s){
+    // `despejar` roda até o primeiro `await` de forma síncrona, então o lote já
+    // está zerado quando o `push` abaixo acontece. A promessa devolvida é
+    // esperada pelo emissor antes do próximo fragmento.
+    let p = null;
+    if(loteChars && (loteChars + s.length) > GS_LOTE_BLOB_BYTES) p = despejar();
+    lote.push(s);
+    loteChars += s.length;
+    return p;
+  });
+  await despejar();                          // a cauda
+  return { blob: new Blob(partes, {type:'application/json'}), partes: partes, bytes: bytes };
+}
+
+// Gravador em anexos para `_gsSnapshotParaBlob`.
+//
+// ⚠️ ESCRITA EM DOIS TEMPOS. O arquivo nasce com sufixo `.parcial` e só recebe o
+// nome definitivo em `finalizar()`, por `rename`. Sem isso, um app morto no meio
+// da gravação deixaria em `Documentos/GarageSpot/Dados/` um arquivo com nome de
+// backup bom e conteúdo pela metade — e a restauração o trataria como íntegro.
+// Se o plugin não tiver `rename`, grava direto no nome final: um arquivo parcial
+// é ruim, não ter arquivo nenhum é pior.
+//
+// `encoding:'utf8'` grava os MESMOS BYTES que o base64 decodificado gravava — o
+// arquivo em disco é idêntico ao das versões anteriores.
+function _gsGravadorEmAnexos(Filesystem, caminho){
+  const temRename = typeof Filesystem.rename === 'function';
+  const alvo = temRename ? caminho + '.parcial' : caminho;
+  let n = 0;
+  return {
+    alvo: alvo,
+    aoLote: async function(texto){
+      if(n === 0) await Filesystem.writeFile({path:alvo, data:texto, directory:'DOCUMENTS', encoding:'utf8', recursive:true});
+      else        await Filesystem.appendFile({path:alvo, data:texto, directory:'DOCUMENTS', encoding:'utf8'});
+      n++;
+    },
+    finalizar: async function(){
+      if(n === 0) await Filesystem.writeFile({path:alvo, data:'', directory:'DOCUMENTS', encoding:'utf8', recursive:true});
+      if(temRename) await Filesystem.rename({from:alvo, to:caminho, directory:'DOCUMENTS', toDirectory:'DOCUMENTS'});
+      return true;
+    },
+  };
+}
+
+// Grava um texto pequeno (cadência LEVE, poucos KB) sem base64. Mesma regra de
+// bytes do gravador acima; muda só o caminho, nunca o conteúdo.
+async function _gsGravarTextoUTF8(Filesystem, caminho, txt){
+  await Filesystem.writeFile({path:caminho, data:txt, directory:'DOCUMENTS', encoding:'utf8', recursive:true});
+  return true;
+}
+
+// Diz, em unidade legível, o tamanho envolvido — o Log do sistema precisa
+// registrar isso para que a próxima falha seja diagnosticada por medida, e não
+// por palpite.
+function _gsMB(bytes){
+  const n = Number(bytes || 0);
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+  return (n/(1024*1024)).toFixed(1).replace('.', ',') + ' MB';
+}
+
+// Uma falha de MEMÓRIA é diferente de uma falha de disco ou de rede: ela não se
+// resolve tentando de novo, e a saída existe — é a exportação sem fotos. Por
+// isso ela precisa ser reconhecida, e não confundida com "deu erro".
+//
+// ⚠️ O estouro que MATA o processo não chega aqui (o Android mata o WebView
+// inteiro, não lança exceção). O que chega são os primos catcháveis, que é
+// justamente onde ainda dá para oferecer alternativa: `RangeError: Invalid
+// string length` (a string passou do teto do motor), falha de alocação de
+// buffer e o `Out of memory` do próprio V8. Na dúvida NÃO se classifica como
+// memória: dizer "faltou memória" para uma falha de disco manda o diagnóstico
+// para o lado errado.
+function _gsFalhaDeMemoria(e){
+  try{
+    const m = String((e && e.message) || e || '');
+    const nome = String((e && e.name) || '');
+    return /Invalid string length|Array buffer allocation failed|out of memory|allocation size overflow|Maximum call stack/i.test(m)
+        || (nome === 'RangeError' && /length|size|memory|alloc/i.test(m));
+  }catch(_){ return false; }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.1 — EXPORTAÇÃO SEM FOTOS (REDE DE SEGURANÇA DE EMERGÊNCIA)
+// ════════════════════════════════════════════════════════════════════════
+// PARA QUE SERVE: tirar os REGISTROS do aparelho HOJE, mesmo que o backup
+// completo ainda não caiba na memória. As fotos são ~93% do peso do arquivo
+// (medido na v1.9.6.6); sem elas o export cai de megabytes para dezenas de KB e
+// passa em qualquer aparelho.
+//
+// ⚠️ ISTO É ADICIONAL, NUNCA SUBSTITUTO. O backup completo continua levando
+// tudo, com as fotos, e continua sendo o backup de verdade. Nada é apagado do
+// aparelho por este caminho — ele só LÊ.
+//
+// ⚠️ IMPORTÁVEL PELO FLUXO EXISTENTE, sem migração: mesmo `schemaVersion`, mesmo
+// formato, mesmo `indexeddb:{anexos,vistorias}` que `_gsNormalizarBackup` já lê.
+
+// Um pedaço de imagem em base64 nunca é curto, e sempre é ou um `data:` URI ou
+// uma string enorme. 20 000 caracteres é o corte: uma observação escrita à mão
+// jamais chega perto disso, e a menor foto do app passa longe por cima. A regra
+// é de FORMA, não de nome de campo — assim vale para `documento_final_b64`,
+// `assinatura`, `data` de anexo, rascunho do NCI e para o que vier depois, sem
+// depender de uma lista de campos que envelheceria em silêncio.
+const GS_SEM_FOTO_LIMITE = 20000;
+const GS_SEM_FOTO_DATA_URI = 512;
+
+// Cópia profunda do valor SEM as strings de imagem. Devolve `{valor|remover, conta}`.
+function _gsSemImagens(v, conta){
+  conta = conta || {tirados:0, bytes:0};
+  if(typeof v === 'string'){
+    const ehImagem = (v.length > GS_SEM_FOTO_LIMITE) ||
+                     (v.length > GS_SEM_FOTO_DATA_URI && v.slice(0, 5) === 'data:');
+    if(ehImagem){ conta.tirados++; conta.bytes += v.length; return {remover:true, conta:conta}; }
+    return {valor:v, conta:conta};
+  }
+  if(v === null || typeof v !== 'object') return {valor:v, conta:conta};
+  if(Array.isArray(v)){
+    const out = [];
+    for(let i = 0; i < v.length; i++){
+      const r = _gsSemImagens(v[i], conta);
+      // numa LISTA a posição é significado (a ordem das fotos no PDF, por
+      // exemplo). O item vira um marcador, nunca um buraco.
+      out.push(r.remover ? {sem_imagem:true} : r.valor);
+    }
+    return {valor:out, conta:conta};
+  }
+  const out = {};
+  const ks = Object.keys(v);
+  for(let i = 0; i < ks.length; i++){
+    const r = _gsSemImagens(v[ks[i]], conta);
+    if(r.remover){ out.sem_imagem = true; continue; }   // o campo sai; o registro fica
+    out[ks[i]] = r.valor;
+  }
+  return {valor:out, conta:conta};
+}
+
+// Monta o snapshot de emergência.
+//
+// DUAS DECISÕES QUE PARECEM DETALHE E NÃO SÃO:
+//
+// 1. `tipo:'sem_fotos'` — e NÃO 'completo'. A tela de restauração imprime o
+//    `tipo` do arquivo; chamá-lo de completo faria o gestor escolher, numa hora
+//    ruim, um arquivo que não tem as fotos achando que tem. `_gsValidarSnapshot`
+//    continua valendo aqui SEM NENHUMA FLEXIBILIZAÇÃO: `contagens` descreve o
+//    APARELHO (é o que `_gsContagensAtuais()` sempre descreveu, não o conteúdo do
+//    arquivo), então a guarda anti-vazio e anti-parcial roda igual à do completo.
+//
+// 2. `anexos:{}` — os anexos saem INTEIROS, não como carcaça sem imagem. Um
+//    anexo É a foto; sem os bytes ele não guarda nada que a vistoria e o
+//    histórico já não digam. E deixar carcaça teria custo real: a dedupe de
+//    anexos (`_gsAssinaturaAnexo`) usa o conteúdo, então a carcaça e a foto de
+//    verdade teriam assinaturas diferentes e conviveriam como DUAS entradas
+//    depois de uma restauração completa. Vistoria é o oposto — ela é um
+//    REGISTRO com imagem anexa, e o registro sozinho ainda vale muito.
+function _gsMontarSnapshotSemFotos(){
+  const base = _gsMontarSnapshot(true);
+  const r = _gsSemImagens(base);
+  const snap = r.valor;
+  snap.indexeddb = { anexos: {}, vistorias: (snap.indexeddb && snap.indexeddb.vistorias) || {} };
+  snap.tipo = 'sem_fotos';
+  snap.sem_fotos = true;
+  snap.aviso_sem_fotos = 'Exportação de emergência: registros completos, SEM as imagens ' +
+    '(fotos, documentos de vistoria e assinaturas). O backup completo continua sendo o que leva tudo.';
+  snap.imagens_omitidas = r.conta.tirados;
+  return { snap: snap, tirados: r.conta.tirados, bytesOmitidos: r.conta.bytes };
 }
 
 function _gsGuardarSnapshotIDB(snap){
@@ -10127,7 +10459,14 @@ async function fazerBackupLocal(motivo, opts){
       if(typeof addLogSistema === 'function') addLogSistema('Backup abortado: ' + val.motivo + ' (proteção de dados)');
       return {ok:false,erro:val.motivo};
     }
-    const json=JSON.stringify(snap);
+    // v1.9.9.1 — O ARQUIVO NÃO É MAIS MATERIALIZADO COMO STRING.
+    // O COMPLETO (o que leva as fotos, e o único que já estourou a memória do
+    // tablet) passa por `_gsSnapshotParaBlob`: pedaços de ~2 MB despejados num
+    // Blob. O LEVE tem poucos KB e continua sendo uma string — cerimônia de
+    // fragmentação ali seria custo sem ganho, e o rolante da nuvem precisa do
+    // texto de qualquer forma.
+    let json = null;
+    if(!comFotos) json = JSON.stringify(snap);
     // v1.9.5.4: nome no MESMO formato da nuvem (`AAAA-MM-DD_HHhMM`, dia local), para
     // os dois lados baterem. Os arquivos antigos NÃO são renomeados, e a contagem
     // não depende do nome — ela vem do registro `garagespot_backups_local`.
@@ -10141,11 +10480,19 @@ async function fazerBackupLocal(motivo, opts){
     // segundos porque o freio abaixo garante minutos de distância entre eles.
     if(!comFotos) ds += 'm'+p2(hoje.getSeconds());
     const nome='backup_'+(comFotos?'completo':'leve')+'_'+ds+'.json';
+    // v1.9.9.1 — UM PASSE SÓ: o COMPLETO é montado e gravado ao mesmo tempo, lote
+    // a lote. O arquivo nunca existe inteiro como string, nem aqui nem no disco
+    // antes da hora. Sem plugin de arquivo (navegador), o pacote é montado do
+    // mesmo jeito — o Blob ainda é o que sobe para a nuvem.
+    let pacote = null;
     let gravouArquivo = false;
-    if(window.Capacitor?.Plugins?.Filesystem){
-      const {Filesystem}=window.Capacitor.Plugins;
-      const b64=_gsBase64UTF8(json);   // v1.9.9.0
-      await Filesystem.writeFile({path:'GarageSpot/Dados/'+nome,data:b64,directory:'DOCUMENTS',recursive:true});
+    const _fs = window.Capacitor?.Plugins?.Filesystem || null;
+    if(comFotos){
+      const gravador = _fs ? _gsGravadorEmAnexos(_fs, 'GarageSpot/Dados/'+nome) : null;
+      pacote = await _gsSnapshotParaBlob(snap, gravador ? gravador.aoLote : null);
+      if(gravador){ await gravador.finalizar(); gravouArquivo = true; }
+    } else if(_fs){
+      await _gsGravarTextoUTF8(_fs, 'GarageSpot/Dados/'+nome, json);
       gravouArquivo = true;
     }
     // Cópia de restauração em um toque (e rede de segurança no navegador)
@@ -10169,12 +10516,17 @@ async function fazerBackupLocal(motivo, opts){
     DRIVE_STATUS.falha_backup=false;
     saveDriveStatus();
     // Bug latente v1.9.4.1.8: era logSistema (não definido) — causava ReferenceError em cada backup/designação
-    if(typeof addLogSistema === 'function') addLogSistema('Backup ('+snap.tipo+'): '+(motivo||'manual')+' — '+nome);
+    // v1.9.9.1: o TAMANHO entra no log. Sem ele, a próxima falha de memória volta
+    // a ser discutida por impressão em vez de medida.
+    if(typeof addLogSistema === 'function') addLogSistema('Backup ('+snap.tipo+'): '+(motivo||'manual')+' — '+nome+
+      (pacote ? ' · '+_gsMB(pacote.bytes) : ''));
     // v1.9.5.0 — NUVEM: espelha no Drive só a cadência COMPLETA (a leve roda a cada
     // mudança; subir tudo isso viraria centenas de arquivos por dia na conta do
     // hotel). Fire-and-forget: o backup local ACIMA já está gravado, então nenhuma
     // falha de rede daqui para baixo pode afetá-lo.
-    if(comFotos) _gdEspelharNoDrive(nome, json, motivo);
+    // v1.9.9.1: o que vai para a nuvem é o MESMO Blob já montado — não se serializa
+    // o snapshot uma segunda vez, e nenhum corpo multipart vira string.
+    if(comFotos) _gdEspelharNoDrive(nome, pacote.blob, motivo);
     // v1.9.6.2: a cadência LEVE passa a espelhar também — mas em ARQUIVO ROLANTE,
     // sobrescrito, sem fotos. É o que fecha o furo de recarga/designação/PIN/cadastro/
     // passeio/assinatura ficarem fora da nuvem até o tique horário. Continua valendo
@@ -10184,8 +10536,12 @@ async function fazerBackupLocal(motivo, opts){
   }catch(e){
     DRIVE_STATUS.falha_backup=true;
     saveDriveStatus();
-    if(typeof addLogSistema === 'function') addLogSistema('Erro backup: '+e.message);
-    return {ok:false,erro:e.message};
+    // v1.9.9.1 — O QUE FALHOU E COM QUANTO. `memoria:true` é o que autoriza quem
+    // chamou a oferecer a exportação sem fotos em vez de só reclamar.
+    const memoria = _gsFalhaDeMemoria(e);
+    if(typeof addLogSistema === 'function') addLogSistema('Erro backup: '+(e && e.message)+
+      (memoria ? ' [memória — o aparelho não deu conta de montar o arquivo]' : ''));
+    return {ok:false, erro:(e && e.message) || String(e), memoria:memoria};
   }
 }
 
@@ -10346,7 +10702,10 @@ async function fazerBackupAgora(){
       if(t&&t.textContent.includes('Conexões')) showConexoes();
     }
   } else {
-    showToast('⚠️ Backup não gravado: '+(r.erro||'erro'),5000);
+    showToast('⚠️ Backup não gravado: '+(r.erro||'erro')+' · Nada foi apagado.',6000);
+    // v1.9.9.1: falhar não pode ser o fim da linha. Se o completo não coube, o
+    // app oferece na hora o caminho que cabe — tirar os registros sem as fotos.
+    _gsOferecerSemFotos('o backup completo');
   }
 }
 
@@ -10921,41 +11280,138 @@ async function _gdLerCota(){
 // ── Exportação COMPLETA sem depender de plugin ─────────────────────────────
 // Blob + <a download> funciona em qualquer aparelho/navegador; se o Share do
 // Capacitor existir, oferece compartilhar também. Serve de rede manual.
+//
+// v1.9.9.1 — ERA ESTE O CAMINHO QUE PROVOU O DIAGNÓSTICO. No tablet do hotel o
+// "Exportar backup completo" crashava igual ao envio, e ele NÃO TOCA NA REDE:
+// logo a falha nunca foi de upload, e sim de montar o arquivo. Ele usava a mesma
+// cadeia `JSON.stringify` → base64 → ponte do Capacitor. Agora usa o pacote
+// fragmentado, como todo o resto.
 async function exportarBackupCompleto(){
+  return await _gsExportar({semFotos:false});
+}
+
+// v1.9.9.1 — EXPORTAÇÃO SEM FOTOS (emergência). Mesma mecânica, snapshot enxuto.
+async function exportarBackupSemFotos(){
+  return await _gsExportar({semFotos:true});
+}
+
+// Corpo comum das duas exportações. Uma função só porque a diferença entre elas
+// é UMA linha (qual snapshot montar) — duplicar o caminho de gravação e
+// compartilhamento seria criar dois lugares para o mesmo defeito aparecer.
+async function _gsExportar(opts){
+  opts = opts || {};
+  const semFotos = !!opts.semFotos;
+  let etapa = 'montar o snapshot';
   try{
-    showToast('Gerando exportação completa...',3000);
-    const snap=_gsMontarSnapshot(true);
-    const val=_gsValidarSnapshot(snap);
-    if(!val.ok){ showToast('⚠️ Exportação abortada: '+val.motivo,5000); return; }
-    const json=JSON.stringify(snap);
-    const hoje=new Date();
-    const ds=hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getDate()).padStart(2,'0')+'_'+String(hoje.getHours()).padStart(2,'0')+'h'+String(hoje.getMinutes()).padStart(2,'0');
-    const nome='GarageSpot_backup_completo_'+ds+'.json';
-    let compartilhou=false;
-    if(window.Capacitor?.Plugins?.Filesystem&&window.Capacitor?.Plugins?.Share){
+    showToast(semFotos ? 'Gerando exportação SEM FOTOS…' : 'Gerando exportação completa...', 3000);
+    let snap, omitidas = 0;
+    if(semFotos){
+      const m = _gsMontarSnapshotSemFotos();
+      snap = m.snap; omitidas = m.tirados;
+    } else {
+      snap = _gsMontarSnapshot(true);
+    }
+    const val = _gsValidarSnapshot(snap);
+    if(!val.ok){ showToast('⚠️ Exportação abortada: '+val.motivo, 5000); return {ok:false, erro:val.motivo}; }
+
+    const hoje = new Date();
+    const p2 = function(n){ return String(n).padStart(2,'0'); };
+    const ds = hoje.getFullYear()+'-'+p2(hoje.getMonth()+1)+'-'+p2(hoje.getDate())+'_'+p2(hoje.getHours())+'h'+p2(hoje.getMinutes());
+    const nome = semFotos
+      ? 'GarageSpot_backup_SEM-FOTOS_'+ds+'.json'
+      : 'GarageSpot_backup_completo_'+ds+'.json';
+
+    // v1.9.9.1 — quando existe caminho nativo, montar e gravar são a MESMA
+    // passagem: o lote sai do serializador direto para o disco. No navegador não
+    // há o que gravar, e o pacote é montado só para o download.
+    // ⚠️ O NOME TEM DE SER CALCULADO ANTES DAQUI: o gravador o recebe.
+    etapa = 'montar o arquivo';
+    const _fs = window.Capacitor?.Plugins?.Filesystem || null;
+    const _share = window.Capacitor?.Plugins?.Share || null;
+    const gravador = (_fs && _share) ? _gsGravadorEmAnexos(_fs, 'GarageSpot/'+nome) : null;
+    if(gravador) etapa = 'gravar no aparelho';
+    const pac = await _gsSnapshotParaBlob(snap, gravador ? gravador.aoLote : null);
+
+    // ⚠️ v1.9.9.1 — NO APARELHO, O DOWNLOAD NÃO É REDE DE SEGURANÇA.
+    //
+    // Achado ao escrever a spec de falha: se a gravação em disco falhava, o código
+    // caía para `<a download>` e ANUNCIAVA SUCESSO. No navegador isso está certo —
+    // é o único caminho que existe lá. **No WebView do Android o `<a download>` é
+    // inerte**: nenhum arquivo aparece, e o app dizia "✅ Exportado". Numa
+    // emergência em que o Douglas precisa tirar os dados do tablet, uma falha
+    // disfarçada de sucesso é o pior desfecho possível — pior que o crash, que ao
+    // menos não mente.
+    //
+    // Regra: o download só vale como caminho quando NÃO existe caminho nativo. Com
+    // Filesystem+Share presentes, a falha SOBE e vira aviso + a oferta da
+    // exportação sem fotos.
+    let compartilhou = false;
+    if(gravador){
+      etapa = 'gravar no aparelho';
+      await gravador.finalizar();
+      etapa = 'compartilhar';
+      const {uri} = await _fs.getUri({path:'GarageSpot/'+nome, directory:'DOCUMENTS'});
+      // Só o COMPARTILHAR pode ser dispensado sem alarme: o arquivo já está
+      // gravado no aparelho, que é o que não pode faltar. Cancelar a folha de
+      // compartilhamento é uma escolha do usuário, não uma falha.
       try{
-        const {Filesystem,Share}=window.Capacitor.Plugins;
-        const b64=_gsBase64UTF8(json);   // v1.9.9.0
-        await Filesystem.writeFile({path:'GarageSpot/'+nome,data:b64,directory:'DOCUMENTS',recursive:true});
-        const {uri}=await Filesystem.getUri({path:'GarageSpot/'+nome,directory:'DOCUMENTS'});
-        await Share.share({title:'Backup GarageSpot',url:uri,dialogTitle:'Salvar/enviar backup'});
-        compartilhou=true;
-      }catch(eShare){ console.warn('[EXPORT] share indisponível, caindo para download:',eShare&&eShare.message); }
+        await _share.share({title:'Backup GarageSpot', url:uri, dialogTitle:'Salvar/enviar backup'});
+      }catch(eShare){
+        console.warn('[EXPORT] compartilhamento não concluído (o arquivo JÁ está salvo):', eShare && eShare.message);
+        if(typeof addLogSistema === 'function') addLogSistema('Exportação: arquivo salvo, compartilhamento não concluído — '+nome);
+      }
+      compartilhou = true;
     }
     if(!compartilhou){
-      const blob=new Blob([json],{type:'application/json'});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url;a.download=nome;document.body.appendChild(a);a.click();document.body.removeChild(a);
-      setTimeout(function(){URL.revokeObjectURL(url);},10000);
+      etapa = 'baixar';
+      const url = URL.createObjectURL(pac.blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = nome; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
     }
-    const c=snap.contagens||{};
-    showToast('✅ Exportado: '+(c.hospedagens||0)+' hosp., '+(c.anexos||0)+' anexos, '+(c.vistorias||0)+' vist., '+(c.usuarios||0)+' func.',5000);
-    if(typeof addLogSistema==='function') addLogSistema('Exportação completa: '+nome);
+    const c = snap.contagens || {};
+    showToast((semFotos ? '✅ Exportado SEM FOTOS ('+_gsMB(pac.bytes)+'): ' : '✅ Exportado ('+_gsMB(pac.bytes)+'): ')+
+      (c.hospedagens||0)+' hosp., '+(c.vistorias||0)+' vist., '+(c.usuarios||0)+' func.'+
+      (semFotos ? ' · '+omitidas+' imagem(ns) fora' : ' · '+(c.anexos||0)+' anexos'), 6000);
+    if(typeof addLogSistema === 'function'){
+      addLogSistema((semFotos ? 'Exportação SEM FOTOS' : 'Exportação completa')+': '+nome+' · '+_gsMB(pac.bytes)+
+        (semFotos ? ' · '+omitidas+' imagem(ns) omitida(s)' : ''));
+    }
+    return {ok:true, nome:nome, bytes:pac.bytes};
   }catch(e){
-    console.error('[EXPORT] falhou:',e);
-    showToast('⚠️ Erro ao exportar: '+(e.message||e),5000);
+    // v1.9.9.1 — A EXPORTAÇÃO NÃO PODE MAIS DERRUBAR O APP NEM MORRER CALADA.
+    // A etapa e o tamanho vão para o Log; a alternativa é oferecida na tela.
+    // `warn`, não `error`: a partir da v1.9.9.1 isto NÃO é mais uma falha fatal —
+    // é tratada, contada ao usuário e seguida de uma alternativa. O detalhe
+    // completo vai para o Log do sistema logo abaixo, que é onde ele é útil.
+    console.warn('[EXPORT] falhou em "'+etapa+'":', e);
+    const mem = _gsFalhaDeMemoria(e);
+    if(typeof addLogSistema === 'function'){
+      addLogSistema('Exportação '+(semFotos?'SEM FOTOS':'completa')+' falhou em "'+etapa+'": '+
+        ((e && e.message) || e) + (mem ? ' [memória]' : ''));
+    }
+    showToast('⚠️ Erro ao exportar ('+etapa+'): '+((e && e.message)||e), 6000);
+    if(!semFotos) _gsOferecerSemFotos('a exportação completa');
+    return {ok:false, erro:((e && e.message) || String(e)), etapa:etapa, memoria:mem};
   }
+}
+
+// Quando o caminho completo não passa, o app OFERECE a saída em vez de só
+// reclamar — a regra desta versão é que uma falha de backup nunca fique sem
+// próxima ação visível para quem está com o aparelho na mão.
+function _gsOferecerSemFotos(oQueFalhou){
+  try{
+    if(typeof showM !== 'function') return;
+    showM('<div class="mt">⚠️ '+_vtEsc(String(oQueFalhou))+' não passou</div>'+
+      '<div class="ms" style="margin-bottom:10px">O aparelho não deu conta de montar o arquivo com as fotos. '+
+      '<strong>Nada foi apagado</strong> — os dados continuam aqui.</div>'+
+      '<div style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:9px 11px;font-size:12px;color:#633806;line-height:1.5;margin-bottom:12px">'+
+      'Dá para tirar os <strong>registros</strong> daqui agora mesmo, sem as imagens: hospedagens, vistorias, '+
+      'histórico, funcionários e configurações. É um arquivo muito menor, e ele <strong>é importável</strong> '+
+      'como qualquer outro backup.<br><strong>Não inclui fotos.</strong></div>'+
+      '<button class="bsv" id="btn-emergencia-sem-fotos" onclick="closeOv();exportarBackupSemFotos()" style="width:100%">📄 Exportar sem fotos (emergência)</button>'+
+      '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:6px">Agora não</button>');
+  }catch(e){ console.warn('[EXPORT] não consegui oferecer a alternativa:', e && e.message); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -11163,15 +11619,36 @@ async function _gsAplicarBackup(obj, origem){
   } catch(e){ console.warn('[IMPORT] usuarios:', e); }
 
   // 3) Vistorias — só as que faltam
+  //
+  // v1.9.9.1 — UMA ÚNICA EXCEÇÃO À REGRA "O DO APARELHO VENCE", e ela existe
+  // por causa da exportação sem fotos criada nesta versão. Cenário real: o
+  // aparelho morre, o Douglas restaura primeiro o arquivo de emergência (que
+  // traz a vistoria SEM o documento em imagem) e só depois consegue o backup
+  // completo. Com a regra crua, a vistoria já existiria e o documento de
+  // verdade seria descartado PARA SEMPRE — a assinatura do hóspede, que é o
+  // ponto inteiro da vistoria, perdida por ordem de importação.
+  //
+  // A exceção é a mais estreita possível: só quando o que está no aparelho está
+  // marcado `sem_imagem` E o que vem no arquivo NÃO está. Registro com imagem
+  // ganha de registro sem imagem; em qualquer outro caso o aparelho continua
+  // vencendo, como sempre. ⚠️ NÃO ampliar isto para uma sobrescrita geral.
   try {
     if(n.vistorias && typeof n.vistorias === 'object'){
-      let novas = 0;
+      let novas = 0, completadas = 0;
       Object.keys(n.vistorias).forEach(function(id){
-        if(!VISTORIAS[id]){ VISTORIAS[id] = n.vistorias[id]; novas++; }
-        else res.ignorados++;
+        const vindo = n.vistorias[id];
+        if(!VISTORIAS[id]){ VISTORIAS[id] = vindo; novas++; return; }
+        if(VISTORIAS[id] && VISTORIAS[id].sem_imagem && vindo && !vindo.sem_imagem){
+          VISTORIAS[id] = vindo; completadas++; return;
+        }
+        res.ignorados++;
       });
       res.vistorias = novas;
-      if(novas) saveVistorias();
+      res.vistoriasCompletadas = completadas;
+      if(novas || completadas) saveVistorias();
+      if(completadas && typeof addLogSistema === 'function'){
+        addLogSistema('Importação: ' + completadas + ' vistoria(s) sem imagem receberam o documento original.');
+      }
     }
   } catch(e){ console.warn('[IMPORT] vistorias:', e); }
 
@@ -12279,14 +12756,24 @@ async function _gdGarantirPasta(token){
 // v1.9.6.6: `mime` é OPCIONAL e o padrão é o de sempre (`application/json`) — os
 // backups, que são todos os chamadores anteriores, não mudam em nada. O arquivo de
 // auditoria precisa subir como `text/csv` para o Drive abri-lo em planilha.
+// v1.9.9.1 — `texto` pode ser uma STRING ou um BLOB.
+//
+// Quando é Blob, o corpo multipart é montado como Blob: os bytes do arquivo
+// nunca viram string JS, e o `fetch` os transmite direto do armazenamento de
+// blobs do navegador. Era este o último ponto da cadeia que ainda materializava
+// o backup inteiro (~10 MB) numa string só — o `corpo` da requisição.
+// Para string o comportamento é o de sempre; os chamadores pequenos (arquivo
+// rolante, CSV da auditoria) não mudam em nada.
 async function _gdEnviarArquivo(token, pastaId, nome, texto, mime){
   const tipo = mime || 'application/json';
   const lim = 'gsbnd' + Date.now() + Math.random().toString(36).slice(2, 8);
   const meta = JSON.stringify({ name: nome, parents: [pastaId], mimeType: tipo });
-  const corpo =
+  const abre =
     '--' + lim + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n' +
-    '--' + lim + '\r\nContent-Type: ' + tipo + '; charset=UTF-8\r\n\r\n' + texto + '\r\n' +
-    '--' + lim + '--';
+    '--' + lim + '\r\nContent-Type: ' + tipo + '; charset=UTF-8\r\n\r\n';
+  const fecha = '\r\n--' + lim + '--';
+  const ehBlob = (typeof Blob !== 'undefined') && (texto instanceof Blob);
+  const corpo = ehBlob ? new Blob([abre, texto, fecha]) : (abre + texto + fecha);
   const r = await _gdFetch(GD_API_UPLOAD + '/files?uploadType=multipart&fields=id,name,size,createdTime', {
     method: 'POST',
     headers: { 'Content-Type': 'multipart/related; boundary=' + lim },
@@ -12477,6 +12964,8 @@ function desconectarGoogleDrive(){
 // envio representa. Só serve para marcar "confirmado na nuvem" no registro local,
 // que é a peça central da política dos 7 dias: sem essa confirmação, a poda NÃO
 // apaga nada. Parâmetro aditivo — quem não passa nada continua funcionando igual.
+// v1.9.9.1 — `json` pode ser uma STRING ou um BLOB (ver `_gdEnviarArquivo`). O
+// caminho do backup COMPLETO passa Blob; todo o resto continua passando texto.
 async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
   if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste aparelho'};
   if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
@@ -12552,6 +13041,8 @@ async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
 
 // Chamado DEPOIS de o backup local já estar gravado. Não retorna promessa ao
 // chamador de propósito: falha de rede não pode atrasar nem afetar o backup local.
+// v1.9.9.1 — `json` aqui é o BLOB já montado por `_gsSnapshotParaBlob`. Ele NÃO
+// é re-serializado: o mesmo pacote que foi para o disco vai para a nuvem.
 function _gdEspelharNoDrive(nome, json, motivo){
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
@@ -12889,7 +13380,13 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
 // na mão, então a fila tem de sair AGORA e não em N tiques de 10 min. O tique
 // automático continua mandando UM por vez, exatamente como antes — a razão daquele
 // limite (não disputar banda com o backup) não mudou.
-const GD_PDF_LOTE_USUARIO = 10;
+// v1.9.9.1 — DE 10 PARA 3. Cada item deste lote relê um PDF do aparelho em
+// base64 (megabytes) e monta o corpo do upload. Dez deles no mesmo gesto, sem
+// devolver o event loop, é uma rajada de picos de memória em cima de um aparelho
+// que já estava no limite — e é um dos caminhos que fechavam o app no toque do
+// rodapé. Três esvazia a fila típica de um dia e cabe; o resto vai nos tiques,
+// que continuam existindo. Nenhum item é perdido: o que não coube fica na fila.
+const GD_PDF_LOTE_USUARIO = 3;
 async function _gdTentarPDFsPendentes(opts){
   opts = opts || {};
   try{
@@ -12911,8 +13408,13 @@ async function _gdTentarPDFsPendentes(opts){
         const rr = await _gdEnviarPDFFechamento(item.nome, b64, item.apt, item.checkin);
         _gdTirarPDFPendente(item.nome);
         try{ _gsMarcarPDFNaNuvem(item.nome, rr && rr.id); }catch(eM){}   // v1.9.6.6
-        addLogSistema('PDF de fechamento pendente enviado: ' + item.nome);
+        addLogSistema('PDF de fechamento pendente enviado: ' + item.nome + ' · ' + _gsMB(b64.length));
       }catch(e){ _gdAgendarRetentativa(); break; }  // rede ruim: para o lote aqui
+      // v1.9.9.1: um item por vez, DEVOLVENDO O EVENT LOOP entre eles. Sem isto o
+      // lote inteiro corre numa tarefa só e os megabytes de cada PDF se empilham
+      // sem que o coletor de lixo tenha chance de recolher o anterior.
+      b64 = '';
+      await _gsCeder();
     }
   }catch(e){ console.warn('[DRIVE] pendentes de PDF não rodaram:', e && e.message); }
 }
@@ -13909,7 +14411,11 @@ async function _gdTentarPendente(){
     if(Date.now() < _gdProxTentativaTs) return;    // ainda no intervalo de espera
     const snap = await _gsLerSnapshotIDB();
     if(!snap) return;                              // sem snapshot completo, nada a reenviar
-    const r = await _gdEnviarBackup(_gdNomeBackup(snap.ts), JSON.stringify(snap), 'Retentativa automática', false);
+    // v1.9.9.1: a retentativa era o SEGUNDO lugar que serializava o snapshot com
+    // as fotos numa string só — e ela roda sozinha, no tique, sem ninguém por
+    // perto. Passa a montar o mesmo pacote fragmentado do backup.
+    const pac = await _gsSnapshotParaBlob(snap);
+    const r = await _gdEnviarBackup(_gdNomeBackup(snap.ts), pac.blob, 'Retentativa automática', false);
     if(r.ok){ DRIVE_STATUS.nuvem_pendente = false; saveDriveStatus(); }
     else _gdAgendarRetentativa();
   }catch(e){ console.warn('[DRIVE] retentativa não rodou:', e && e.message); }
@@ -13929,7 +14435,20 @@ async function fazerBackupNuvemAgora(){
   // v1.9.5.1: ação explícita do usuário zera a espera do backoff — quem apertou o
   // botão quer tentar AGORA, não daqui a 40 minutos.
   _gdProxTentativaTs = 0;
-  const r = await _gdEnviarBackup(nome, JSON.stringify(snap), 'Manual', false);
+  // v1.9.9.1 — montar o pacote é a etapa que estourava a memória, e ela vem ANTES
+  // da rede. Se cair aqui, o app avisa e oferece a saída em vez de morrer.
+  let pac;
+  try{
+    pac = await _gsSnapshotParaBlob(snap);
+  }catch(eMem){
+    const mem = _gsFalhaDeMemoria(eMem);
+    if(typeof addLogSistema === 'function') addLogSistema('Envio à nuvem abortado ao montar o arquivo: ' +
+      ((eMem && eMem.message) || eMem) + (mem ? ' [memória]' : ''));
+    showToast('⚠️ Não deu para montar o arquivo do backup neste aparelho. O backup local está intacto.', 6500);
+    _gsOferecerSemFotos('o envio para a nuvem');
+    return {ok:false, erro:((eMem && eMem.message) || String(eMem)), memoria:mem};
+  }
+  const r = await _gdEnviarBackup(nome, pac.blob, 'Manual', false);
   if(r.ok){ showToast('✅ Backup enviado para o Drive: ' + r.nome, 5000); }
   else {
     // Quando o Google recusou a autorização, o caminho de saída é RECONECTAR — o
@@ -16588,13 +17107,26 @@ function _gdContarPendentes(){
 // reconectar, ele não pode ter de caçar cada documento — e esperar N tiques de
 // 10 min seria o mesmo que não ter resolvido nada.
 // Fail-safe por fila: uma que falhe não impede as outras de tentarem.
-async function _gdReenviarPendentes(motivo){
+async function _gdReenviarPendentes(motivo, opts_progresso){
   const antes = _gdContarPendentes();
   if(!antes.total) return { antes:antes, depois:antes, reenviados:0 };
   _gdProxTentativaTs = 0;
+  // v1.9.9.1 — AS TRÊS FILAS, UMA DE CADA VEZ, COM O EVENT LOOP DEVOLVIDO ENTRE
+  // ELAS. Já eram sequenciais por `await`, mas nada garantia uma pausa entre uma
+  // fila e a seguinte: o pico do backup (megabytes) ainda estava sendo recolhido
+  // quando a fila de PDFs começava a reler megabytes de disco. `_gsCeder` custa
+  // um tique e dá ao coletor de lixo a única brecha que ele precisa.
+  // `progresso` é opcional — o rodapé passa a sua dica; o tique não passa nada.
+  const passo = typeof opts_progresso === 'function' ? opts_progresso : function(){};
+  passo('enviando o backup…');
   try{ await _gdTentarPendente(); }catch(e){ console.warn('[DRIVE] reenvio do backup:', e && e.message); }
+  await _gsCeder();
+  passo('enviando documentos…');
   try{ await _gdTentarPDFsPendentes({todos:true}); }catch(e){ console.warn('[DRIVE] reenvio de PDFs:', e && e.message); }
+  await _gsCeder();
+  passo('enviando hospedados hoje…');
   try{ await _hhjProcessar(); }catch(e){ console.warn('[DRIVE] reenvio de Hospedados Hoje:', e && e.message); }
+  await _gsCeder();
   // ⚠️ A VARREDURA DO HISTÓRICO (`_gdHistProcessar`) NÃO ENTRA AQUI, e não é
   // esquecimento. MEDIDO: com ela no mesmo gesto, dois dos três PDFs pendentes
   // subiram DUAS VEZES — a idempotência dela confere o destino pelo NOME, mas a
@@ -16655,7 +17187,10 @@ function _gdForcarPeloRodape(){
         }
         // 3) Esvazia as filas que ficaram para trás enquanto não havia autorização.
         _dica('reenviando pendentes…');
-        const p = await _gdReenviarPendentes('toque no rodapé');
+        // v1.9.9.1: o toque no rodapé deixa de fazer tudo numa tacada só. Cada fila
+        // anuncia o que está fazendo, e entre elas o app respira — quem está com o
+        // tablet na mão vê o progresso em vez de uma tela parada por meio minuto.
+        const p = await _gdReenviarPendentes('toque no rodapé', _dica);
         if(p.reenviados > 0){
           showToast('☁️ ' + p.reenviados + ' documento(s) pendente(s) enviado(s).' +
             (p.depois && p.depois.total ? ' Ainda na fila: ' + p.depois.total + '.' : ''), 5000);
@@ -16822,9 +17357,14 @@ function showConexoes(){
     ${_renderBackupStatus()}
     <button class="bsv" id="btn-backup-agora" onclick="fazerBackupAgora()" style="width:100%;margin-top:8px">💾 Fazer backup agora</button>
     <button class="bcx" id="btn-exportar-completo" onclick="exportarBackupCompleto()" style="width:100%;margin-top:6px">📦 Exportar backup completo</button>
+    <button class="bcx" id="btn-exportar-sem-fotos" onclick="exportarBackupSemFotos()" style="width:100%;margin-top:6px">📄 Exportar sem fotos (emergência)</button>
     <button class="bcx" id="btn-importar-dados" onclick="abrirImportarDados()" style="width:100%;margin-top:6px">📥 Importar / Restaurar dados</button>
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:8px 11px;font-size:11px;color:#0F6E56;margin-top:8px;line-height:1.5">
       O backup completo inclui <strong>fotos, vistorias, funcionários</strong> e todo o resto. A importação <strong>soma</strong> — nunca apaga o que está no aparelho.
+    </div>
+    <div id="aviso-sem-fotos" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:8px 11px;font-size:11px;color:#633806;margin-top:6px;line-height:1.5">
+      📄 <strong>Exportar sem fotos</strong> é a saída de emergência para aparelho apertado de memória: leva hospedagens, vistorias, histórico, funcionários e configurações, e é <strong>importável</strong> como qualquer backup.
+      <br><strong>NÃO inclui fotos nem os documentos de vistoria em imagem</strong> — ele não substitui o backup completo.
     </div>
     <div class="gestao-menu-sep" style="margin-top:14px">Google Drive (nuvem)</div>
     ${_renderNuvemStatus()}
