@@ -1350,9 +1350,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.9.1';
+const GS_VERSION = 'v1.9.9.2';
 const GS_VERSION_CODE = 29;
-const GS_BUILD_TS = '2026-09-05';
+const GS_BUILD_TS = '2026-10-06';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -1434,6 +1434,18 @@ function _dtLocal(ts){ return _dLocal(ts) + ' ' + _hLocal(ts); }
 function _dtLocalSeg(ts){ return _dLocal(ts) + ', ' + _hLocalSeg(ts); }
 // DD/MM/AA, HH:MM local
 function _dtLocalCurta(ts){ return _dLocalCurta(ts) + ', ' + _hLocal(ts); }
+// ── v1.9.9.2 (BLOCO D): DD/MM HH:MM local — o formato da RECARGA ───────────
+// A recarga mostrava só `HH:MM` (`_fmtHM`). No caso real do hotel a recarga
+// começou 15:50 de um dia, foi programada até 04:20 de outro e encerrada 08:10
+// de um terceiro — e a tela dizia só as horas, de três dias diferentes, como se
+// fossem do mesmo. Sem o dia, nenhum dos números fazia sentido.
+// Sem ano de propósito: a recarga é um evento de horas, e o dia já desfaz toda
+// a ambiguidade que existia. O PDF (documento financeiro, lido meses depois)
+// continua com o ano, por `_dtLocal`.
+function _fmtDHRc(ts){
+  try{ const d = _dtObj(ts); if(!ts || isNaN(d.getTime())) return '—';
+    return _p2GS(d.getDate()) + '/' + _p2GS(d.getMonth()+1) + ' ' + _hLocal(d); }catch(e){ return '—'; }
+}
 const _GS_DIAS_ABREV  = ['dom.','seg.','ter.','qua.','qui.','sex.','sáb.'];
 const _GS_MESES_ABREV = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
 // 'qui., 4 de set.' — rótulo do Painel
@@ -1676,6 +1688,257 @@ function _gsSincronizarHospPares(id){
       if(S[p] && S[p].status==='occupied') S[p].hospedagem=gs;
     });
   }catch(e){}
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.2 — AMBÍGUO PERGUNTA, NUNCA SEGUE EM FRENTE
+// ════════════════════════════════════════════════════════════════════════════
+// Até a v1.9.9.1 o resolvedor dizia "ambíguo" e quem chamava... continuava. No
+// `doChk` isso virava check-out que gerava PDF, dizia "✅ realizado" e NÃO
+// gravava `checkout_ts`: falha disfarçada de sucesso, e a hospedagem ativa para
+// sempre. A saída não é escolher por conta própria — é PERGUNTAR ao manobrista,
+// que está olhando o carro.
+//
+// `onEscolha(gs)` recebe o GS escolhido. `onCancelar` é opcional.
+function _gsEscolherHosp(res, ctx, onEscolha, onCancelar){
+  ctx = ctx || {};
+  const cands = (res && res.candidatos) ? res.candidatos.slice() : [];
+  const _cancelar=function(){
+    try{ closeOv(); }catch(e){}
+    if(typeof onCancelar==='function') onCancelar();
+  };
+  // SEM NENHUMA candidata: não há o que perguntar. Bloqueia com mensagem clara.
+  if(!cands.length){
+    showM('<div class="mt">⚠️ Hospedagem não identificada</div>' +
+      '<div class="warn-box" style="font-size:12px">Não foi possível identificar a hospedagem ' +
+      'deste carro' + (ctx.apt ? ' (Apt. ' + _vtEsc(String(ctx.apt)) + ')' : '') + '.<br><br>' +
+      'A ação foi <strong>cancelada</strong> para não deixar a hospedagem aberta sem ninguém ' +
+      'saber. Procure o gestor: os dados do carro estão preservados.</div>' +
+      '<button class="bcx" id="geh-fechar" style="width:100%;margin-top:8px">Fechar</button>');
+    setTimeout(function(){
+      const b=document.getElementById('geh-fechar'); if(b) b.onclick=_cancelar;
+    },0);
+    return;
+  }
+  const _linha=function(gs){
+    const h=(typeof HOSPEDAGENS!=='undefined' && HOSPEDAGENS[gs])||{};
+    const p=(typeof PASSEIO!=='undefined' && PASSEIO[gs])||null;
+    let vg='';
+    try{
+      vg=Object.keys(S||{}).filter(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; })[0]||'';
+    }catch(e){}
+    const src=p||(vg?S[vg]:null)||h;
+    const veic=[src.model,src.color,src.plate].filter(Boolean).join(' · ')||'Sem detalhes';
+    const onde=p?'A passeio':(vg?('Vaga '+vg):(h.vaga_inicial?('Vaga '+h.vaga_inicial):'Sem vaga'));
+    const hosp=src.guest||h.guest||h.hospede||'';
+    return '<strong>'+_vtEsc(gs)+'</strong> · Apt. '+_vtEsc(String(h.apt||src.apt||ctx.apt||'—'))+
+           '<br><span style="font-size:11px;opacity:.85">'+_vtEsc(veic)+' · '+_vtEsc(onde)+
+           (hosp?' · '+_vtEsc(hosp):'')+'</span>';
+  };
+  showM('<div class="mt">🚗 Qual carro é este?</div>' +
+    '<div class="ms" style="margin-bottom:8px">' +
+      (ctx.apt?('O Apt. '+_vtEsc(String(ctx.apt))+' tem '):'Há ') + cands.length +
+      ' hospedagens ativas. Escolha a do carro que está ' + _vtEsc(ctx.acao||'saindo') + '.</div>' +
+    cands.map(function(gs,i){
+      return '<button class="ab ao" id="geh-'+i+'" style="margin-bottom:6px;text-align:left">'+_linha(gs)+'</button>';
+    }).join('') +
+    '<button class="bcx" id="geh-cancelar" style="width:100%;margin-top:4px">Cancelar</button>');
+  setTimeout(function(){
+    cands.forEach(function(gs,i){
+      const b=document.getElementById('geh-'+i);
+      if(b) b.onclick=function(){ onEscolha(gs); };
+    });
+    const c=document.getElementById('geh-cancelar'); if(c) c.onclick=_cancelar;
+  },0);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.2 — O PASSEIO PERTENCE À HOSPEDAGEM, NÃO AO APARTAMENTO
+// ════════════════════════════════════════════════════════════════════════════
+// `PASSEIO` era a ÚLTIMA coleção do app indexada por APARTAMENTO, contra a Lei
+// do Vínculo da v1.9.7.0. E a consequência não era teórica: `PASSEIO[apt]=…` é
+// atribuição direta, então dois carros do mesmo apartamento a passeio faziam o
+// SEGUNDO SOBRESCREVER O PRIMEIRO — em silêncio. O primeiro saía do painel, do
+// contador, da busca e do backup, e a hospedagem dele ficava ativa, sem vaga e
+// sem passeio: uma órfã que nenhum check-out mais alcançava.
+//
+// Agora a chave é o GS. O apartamento vira CAMPO INFORMATIVO do registro (`apt`),
+// que é exatamente o que ele sempre foi: um ponteiro para onde o hóspede está.
+// `hospedagem` continua preenchido (= a própria chave) porque dezenas de leitores
+// o consultam — tirá-lo seria uma segunda refatoração sem ganho.
+//
+//   PASSEIO[gs] = { apt, model, color, plate, guest, obs, lastVaga, size,
+//                   hospedagem, saida_ts }
+//
+// REGRA: todo caminho que mexe no passeio usa a CHAVE GS. Nunca mais
+// `PASSEIO[apt]`. Para achar quem de um apartamento está fora, use
+// `_passeioPorApt(apt)` — que devolve uma LISTA, porque podem ser vários.
+const PASSEIO_LEGADO_LS = 'PASSEIO_legado_v1991';
+const PASSEIO_MIG_LS    = 'gs_mig_passeio_gs';
+
+// Uma entrada é "quarentena" quando a migração não conseguiu identificar a
+// hospedagem. Ela NÃO é descartada: fica visível ao gestor para ele escolher.
+function _passeioEhQuarentena(k){ return String(k||'').indexOf('_semgs_') === 0; }
+
+// Entradas do passeio de um apartamento. LISTA, nunca um só: é o apartamento
+// com dois carros que motivou esta versão.
+function _passeioPorApt(apt){
+  const alvo = String(apt||'');
+  if(!alvo) return [];
+  try{
+    return Object.keys(PASSEIO).filter(function(k){
+      return PASSEIO[k] && String(PASSEIO[k].apt||'') === alvo;
+    }).map(function(k){ return {gs:k, d:PASSEIO[k]}; });
+  }catch(e){ return []; }
+}
+
+// A chave do passeio de uma hospedagem (ou '' se ela não está a passeio).
+function _passeioDoGs(gs){
+  if(!gs) return '';
+  return (PASSEIO && PASSEIO[gs]) ? String(gs) : '';
+}
+
+// ── MIGRAÇÃO (B2) ──────────────────────────────────────────────────────────
+// Transforma a estrutura LEGADA (chave = apartamento) na nova (chave = GS).
+// Função PURA: recebe o bruto, devolve o novo em memória. Quem chama valida
+// ANTES de gravar — nada é escrito a partir de uma conta que não fecha.
+//
+// Detector de "já migrado": a chave É o GS gravado no próprio registro, ou tem
+// a cara de um GS, ou é quarentena. Isso torna a migração IDEMPOTENTE sem
+// depender da marca em localStorage (que um backup antigo pode trazer errada).
+function _passeioJaMigrada(k, d){
+  if(_passeioEhQuarentena(k)) return true;
+  if(d && d.hospedagem && String(d.hospedagem) === String(k)) return true;
+  return /^GS/i.test(String(k||''));
+}
+
+function _gsPasseioMigrar(bruto){
+  const res = { novo:{}, migradas:0, jaOk:0, quarentena:0, entradas:0, ok:false, erro:'' };
+  try{
+    if(!bruto || typeof bruto !== 'object') { res.ok = true; return res; }
+    const chaves = Object.keys(bruto);
+    res.entradas = chaves.length;
+    for(let i=0;i<chaves.length;i++){
+      const k = chaves[i];
+      const d = bruto[k];
+      if(!d || typeof d !== 'object') continue;         // lixo: não propaga
+      if(_passeioJaMigrada(k, d)){
+        res.novo[k] = d; res.jaOk++;
+        continue;
+      }
+      // LEGADO: a chave é o apartamento. O apartamento passa a ser campo.
+      const apt = String(d.apt || k || '');
+      const reg = Object.assign({}, d, { apt: apt });
+      // 1) o GS já gravado no registro manda — ele É a hospedagem.
+      let gs = String(d.hospedagem || '');
+      // 2) sem ele, o resolvedor único. NUNCA chuta: ambíguo devolve vazio.
+      if(!gs){
+        try{
+          const r = _gsResolverHosp({ apt: apt });
+          if(r && r.gs && !r.ambiguo) gs = String(r.gs);
+        }catch(e){}
+      }
+      if(gs && !res.novo[gs]){
+        reg.hospedagem = gs;
+        res.novo[gs] = reg;
+        res.migradas++;
+      } else {
+        // VAZIO, AMBÍGUO ou colisão (dois legados apontando o mesmo GS):
+        // NÃO DESCARTAR. Quarentena, visível ao gestor.
+        const qk = '_semgs_' + apt + '_' + (d.saida_ts || Date.now()) + '_' + i;
+        reg.hospedagem = '';
+        reg._quarentena = true;
+        reg._quarentena_apt = apt;
+        res.novo[qk] = reg;
+        res.quarentena++;
+      }
+    }
+    // VALIDAÇÃO EM MEMÓRIA: nenhuma entrada legada pode ter se perdido.
+    const saida = Object.keys(res.novo).length;
+    if(saida !== res.entradas){
+      res.erro = 'contagem não fecha: entraram ' + res.entradas + ', saíram ' + saida;
+      return res;
+    }
+    res.ok = true;
+    return res;
+  }catch(e){
+    res.erro = (e && e.message) || String(e);
+    return res;
+  }
+}
+
+// Aplica a migração sobre o PASSEIO vivo. NÃO DESTRUTIVA (guarda o bruto antes),
+// validada em memória, idempotente e retrocompatível.
+//
+// FAIL-SAFE ESCOLHIDO: na falha, NÃO GRAVA NADA — o `PASSEIO` em memória
+// continua exatamente como estava e o app segue operando com a estrutura
+// legada (que funciona para um carro por apartamento, o caso normal). O motivo
+// de ser esta a escolha, e não "gravar o que deu": uma estrutura METADE migrada
+// é a única situação em que um carro pode desaparecer de verdade — leitores
+// novos não achariam a entrada velha e vice-versa. Não gravar é reversível;
+// gravar pela metade não é. E o silêncio é proibido: falha vira registro no log
+// de sistema COM `aud:true` e aviso visível ao gestor.
+function _gsMigrarPasseioParaGs(opts){
+  opts = opts || {};
+  const out = { rodou:false, migradas:0, quarentena:0, jaOk:0, erro:'' };
+  try{
+    if(typeof PASSEIO === 'undefined' || !PASSEIO) return out;
+    const chaves = Object.keys(PASSEIO);
+    // Nada a fazer: vazio, ou tudo já na forma nova.
+    const pendentes = chaves.filter(function(k){ return !_passeioJaMigrada(k, PASSEIO[k]); });
+    if(!chaves.length || !pendentes.length){
+      try{ localStorage.setItem(PASSEIO_MIG_LS, '1'); }catch(e){}
+      out.jaOk = chaves.length;
+      return out;
+    }
+    // 1) o bruto, ANTES de qualquer escrita. Não é apagado nesta rodada.
+    try{
+      if(!localStorage.getItem(PASSEIO_LEGADO_LS)){
+        _gsSetItemSeguro(PASSEIO_LEGADO_LS, JSON.stringify(PASSEIO), 'passeio legado');
+      }
+    }catch(e){}
+    // 2) migra EM MEMÓRIA e valida.
+    const r = _gsPasseioMigrar(JSON.parse(JSON.stringify(PASSEIO)));
+    if(!r.ok){
+      out.erro = r.erro || 'migração do passeio não validou';
+      _gsPasseioFalhou(out.erro);
+      return out;
+    }
+    // 3) só agora grava. `PASSEIO` é `const`: esvazia NO LUGAR.
+    Object.keys(PASSEIO).forEach(function(k){ delete PASSEIO[k]; });
+    Object.keys(r.novo).forEach(function(k){ PASSEIO[k] = r.novo[k]; });
+    out.rodou = true; out.migradas = r.migradas; out.quarentena = r.quarentena; out.jaOk = r.jaOk;
+    try{ localStorage.setItem(PASSEIO_MIG_LS, '1'); }catch(e){}
+    if(!opts.semGravar){ try{ saveData(); }catch(e){} }
+    try{
+      addLogSistema('Passeio migrado para chave por hospedagem: ' + r.migradas +
+        ' migrada(s), ' + r.quarentena + ' em quarentena, ' + r.jaOk + ' já na forma nova.',
+        {aud:true, acao:'migracao_passeio_gs'});
+    }catch(e){}
+    if(r.quarentena){
+      try{
+        showToast('⚠️ ' + r.quarentena + ' carro(s) a passeio sem hospedagem identificada — ' +
+          'veja "passeio pendente de identificação" no painel', 7000);
+      }catch(e){}
+    }
+    try{ if(typeof renderP==='function') renderP(); }catch(e){}
+    return out;
+  }catch(e){
+    out.erro = (e && e.message) || String(e);
+    _gsPasseioFalhou(out.erro);
+    return out;
+  }
+}
+
+// Falha de migração NUNCA é silenciosa — e NUNCA derruba o app.
+function _gsPasseioFalhou(motivo){
+  console.error('[MIG passeio] NÃO aplicada —', motivo);
+  try{
+    addLogSistema('FALHA na migração do passeio (nada foi gravado; o app segue com a ' +
+      'estrutura anterior): ' + motivo, {aud:true, acao:'migracao_passeio_gs_falhou'});
+  }catch(e){}
+  try{ showToast('⚠️ A reorganização da lista de passeio não pôde ser concluída. ' +
+    'Nada foi perdido — avise o suporte.', 8000); }catch(e){}
 }
 
 // TRAVA DURA DO APAGAMENTO NO CHECK-OUT (v1.9.7.0).
@@ -2196,22 +2459,30 @@ function renderP(){
   }
 
   ol.innerHTML='';
-  items.forEach(([apt,d])=>{
+  items.forEach(([gs,d])=>{
+    // v1.9.9.2: a chave é o GS; o apartamento é CAMPO do registro. O card mostra
+    // o apartamento (é o que o manobrista procura) e, havendo dois carros do
+    // mesmo apto fora, o GS ao lado — sem ele os dois cards ficariam idênticos.
+    const apt=String(d.apt||'');
+    const quar=_passeioEhQuarentena(gs);
+    const mesmoApto=!quar && _passeioPorApt(apt).length>1;
     const info=[d.model,d.color].filter(Boolean).join(' · ');
     const isLarge=d.size==='large';
     const elapsed=d.saida_ts?fmtElapsed(d.saida_ts):'';
-    const vstPend=(()=>{const vst=getVistoriaByApt(apt)||(d.hospedagem?getVistoriaByHosp(d.hospedagem):null);return vst&&!vst.ts_assinada;})();
-    const dv=document.createElement('div');dv.className='oi';dv.dataset.apt=apt;
+    const vstPend=(()=>{const vst=(d.hospedagem?getVistoriaByHosp(d.hospedagem):null)||getVistoriaByApt(apt);return vst&&!vst.ts_assinada;})();
+    const dv=document.createElement('div');dv.className='oi';dv.dataset.apt=apt;dv.dataset.gs=gs;
     dv.innerHTML=`
       <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-        <div class="oa">${apt}${vstPend?'<span style="font-size:9px;color:#A32D2D;font-weight:700;margin-left:3px" title="Vistoria pendente de assinatura">❗</span>':''}</div>
+        <div class="oa">${_vtEsc(apt||'—')}${vstPend?'<span style="font-size:9px;color:#A32D2D;font-weight:700;margin-left:3px" title="Vistoria pendente de assinatura">❗</span>':''}</div>
+        ${quar?'<span style="font-size:9px;background:#FFF3E0;color:#BF360C;border-radius:3px;padding:1px 4px;font-weight:700;line-height:1.4" title="O app não conseguiu identificar a hospedagem deste carro — toque para escolher">⚠️ identificar</span>':''}
+        ${mesmoApto?'<span style="font-size:9px;background:#EEF6FF;color:#185FA5;border-radius:3px;padding:1px 4px;font-weight:700;line-height:1.4">'+_vtEsc(gs)+'</span>':''}
         ${isLarge?'<span style="font-size:9px;background:#E3F2FD;color:#185FA5;border-radius:3px;padding:1px 4px;font-weight:700;line-height:1.4">🚐 Grande</span>':''}
         ${elapsed?`<span style="font-size:9px;background:#F3EFFF;color:#5C35B0;border-radius:3px;padding:1px 4px;font-weight:600;line-height:1.4">⏱ ${elapsed}</span>`:''}
       </div>
       ${info?`<div class="oin">${info}</div>`:''}`;
 
-    // Clique normal → detalhes
-    dv.addEventListener('click',()=>showPasseioDetail(apt));
+    // Clique normal → detalhes (quarentena → tela de identificação)
+    dv.addEventListener('click',()=>{ quar ? _passeioIdentificar(gs) : showPasseioDetail(gs); });
 
     // Long press → opção de checkout
     let _lpT=null;
@@ -2221,7 +2492,7 @@ function renderP(){
       _lpT=setTimeout(()=>{
         _lpT=null;
         dv.style.transform='';dv.style.transition='';
-        showPasseioCheckout(apt);
+        quar ? _passeioIdentificar(gs) : showPasseioCheckout(gs);
       },600);
     };
     const cancelLp=()=>{
@@ -2245,13 +2516,15 @@ function renderP(){
   const visible = items.slice(0, MAX_INLINE);
   const hidden  = items.length - visible.length;
 
-  visible.forEach(([apt,d])=>{
-    const vstP=(()=>{const vst=getVistoriaByApt(apt)||(d.hospedagem?getVistoriaByHosp(d.hospedagem):null);return vst&&!vst.ts_assinada;})();
+  visible.forEach(([gs,d])=>{
+    const apt=String(d.apt||'');
+    const quar=_passeioEhQuarentena(gs);
+    const vstP=(()=>{const vst=(d.hospedagem?getVistoriaByHosp(d.hospedagem):null)||getVistoriaByApt(apt);return vst&&!vst.ts_assinada;})();
     const btn=document.createElement('span');
     btn.className='tb-pi'+(d.size==='large'?' large-badge':'');
-    btn.innerHTML=apt+(vstP?'<span style="color:#A32D2D;font-size:9px;margin-left:2px">❗</span>':'');
-    btn.title=([d.model,d.color,d.plate].filter(Boolean).join(' · '))||'Apt. '+apt;
-    btn.addEventListener('click',()=>showPasseioDetail(apt));
+    btn.innerHTML=_vtEsc(apt||'—')+(quar?'<span style="color:#BF360C;font-size:9px;margin-left:2px">⚠️</span>':'')+(vstP?'<span style="color:#A32D2D;font-size:9px;margin-left:2px">❗</span>':'');
+    btn.title=([d.model,d.color,d.plate].filter(Boolean).join(' · '))||('Apt. '+apt);
+    btn.addEventListener('click',()=>{ quar ? _passeioIdentificar(gs) : showPasseioDetail(gs); });
     piList.appendChild(btn);
   });
 
@@ -2342,12 +2615,29 @@ function dropDrag(x, y){
   // Se não caiu em vaga livre válida, cancela sem mover
   if(!destId || !S[destId] || S[destId].status!=='free' || destId===ms.id) return;
 
+  // v1.9.9.2 — TRAVA DE RECARGA (C2). AQUI, e não dentro de `executarMove`: o
+  // `forceCleanDrag()` acima já devolveu o carro à vaga de origem (o arrasto é
+  // puramente visual até este ponto), então o aviso aparece com o mapa intacto.
+  // E ficando antes de `confirmarUsuario`, cobre os DOIS ramos de
+  // `executarMove` — o com seletor de tamanho e o sem — de uma vez.
+  if(!_rcLiberado(ms.id, 'trocar de vaga', function(){
+    // Retomada: o arrasto não pode ser "refeito", mas a intenção é conhecida.
+    // Reaplica exatamente o movimento que o operador tinha pedido.
+    if(!S[destId] || S[destId].status!=='free'){ showToast('A vaga '+destId+' não está mais livre',3000); return; }
+    confirmarUsuario('movendo vaga', function(usuario){ executarMove(ms, destId, usuario); });
+  })) return;
+
   confirmarUsuario('movendo vaga', function(usuario){
     executarMove(ms, destId, usuario);
   });
 }
 
 function executarMove(ms, destId, usuario){
+  // Guarda dura, igual à do reset: é esta função que move. Um atalho futuro não
+  // pode passar por fora da regra. `_rcLiberado` é idempotente e fail-open.
+  if(!_rcLiberado(ms.id, 'trocar de vaga', function(){
+    confirmarUsuario('movendo vaga', function(u2){ executarMove(ms, destId, u2); });
+  })) return;
   const hospedagem = S[ms.id]?.hospedagem || '';
   const usuarioStr = usuario ? (usuario.nome+' · '+usuario.cargo) : '';
   const src = S[ms.id];
@@ -2696,27 +2986,56 @@ function _clkVPedirApt(id, usuario){
 function _clkVRotear(id, apt, usuario){
   const mc=document.getElementById('mc');
 
-  if(PASSEIO[apt]){
-    const dp=PASSEIO[apt];
+  // v1.9.9.2: o passeio é indexado pelo GS, então um apartamento pode ter MAIS
+  // DE UM carro fora. Lista, nunca "o primeiro".
+  const fora=_passeioPorApt(apt);
+  if(fora.length){
+    const _retornar=function(gs){
+      const dd=PASSEIO[gs];
+      if(!dd){ closeOv(); return; }
+      // v1.9.4.5: carrega o ID da hospedagem de volta na vaga ANTES de apagar o passeio,
+      // para o vínculo dos anexos (h_<gs>) seguir o carro no retorno.
+      if(dd.hospedagem && S[id]) S[id].hospedagem=dd.hospedagem;
+      delete PASSEIO[gs];
+      saveV(id,apt,dd.model,dd.color,dd.plate,dd.guest,dd.obs||'',false,usuario);
+      closeOv();
+    };
+    // DOIS OU MAIS: o app NÃO escolhe. Trazer o carro errado de volta trocaria a
+    // hospedagem de dois hóspedes de uma vez.
+    if(fora.length>1){
+      mc.innerHTML=`
+        <div class="mt">🚗 Qual carro está voltando?</div>
+        <div class="ms" style="margin-bottom:8px">O Apt. ${_vtEsc(apt)} tem ${fora.length} carros na lista de passeio. Escolha qual está entrando na vaga ${_vtEsc(id)}.</div>
+        ${fora.map((f,i)=>{
+          const inf=[f.d.model,f.d.color,f.d.plate].filter(Boolean).join(' · ')||'Sem detalhes';
+          const hr=f.d.saida_ts?(' · saiu '+_dtLocal(new Date(f.d.saida_ts))):'';
+          return '<button class="ab ao" id="cv-ret-'+i+'" style="margin-bottom:6px;text-align:left">'+
+                 '<strong>'+_vtEsc(f.gs)+'</strong><br><span style="font-size:11px;opacity:.85">'+_vtEsc(inf)+_vtEsc(hr)+'</span></button>';
+        }).join('')}
+        <button class="bcx" id="cv-ret-nao" style="width:100%;margin-top:4px">Corrigir apartamento</button>
+        <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:4px">Cancelar</button>`;
+      fora.forEach((f,i)=>{
+        const b=document.getElementById('cv-ret-'+i);
+        if(b) b.onclick=function(){ _retornar(f.gs); };
+      });
+      document.getElementById('cv-ret-nao').onclick=function(){
+        _clkVPedirApt(id,usuario);
+        setTimeout(()=>{const e=document.getElementById('cv-apt');if(e){e.value='';e.focus();}},80);
+      };
+      return;
+    }
+    const dp=fora[0].d, gsUnico=fora[0].gs;
     const info=[dp.model,dp.color,dp.plate].filter(Boolean).join(' · ');
     mc.innerHTML=`
       <div class="mt">🚗 Carro retornando?</div>
-      <div class="warn-box">Apt. ${apt} está na lista de passeio${info?':<br><strong>'+info+'</strong>':'.'}
+      <div class="warn-box">Apt. ${_vtEsc(apt)} está na lista de passeio${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}
       <br><br>Este carro está voltando do passeio?</div>
       <div class="ag">
         <button class="bsv" id="cv-ret-sim">✓ Sim, está voltando</button>
         <button class="bcx" id="cv-ret-nao">Corrigir apartamento</button>
         <button class="bcx" onclick="closeOv()">Cancelar</button>
       </div>`;
-    document.getElementById('cv-ret-sim').onclick=function(){
-      const dd=PASSEIO[apt];
-      // v1.9.4.5: carrega o ID da hospedagem de volta na vaga ANTES de apagar o passeio,
-      // para o vínculo dos anexos (h_<gs>) seguir o carro no retorno.
-      if(dd && dd.hospedagem && S[id]) S[id].hospedagem=dd.hospedagem;
-      delete PASSEIO[apt];
-      saveV(id,apt,dd.model,dd.color,dd.plate,dd.guest,dd.obs||'',false,usuario);
-      closeOv();
-    };
+    document.getElementById('cv-ret-sim').onclick=function(){ _retornar(gsUnico); };
     document.getElementById('cv-ret-nao').onclick=function(){
       _clkVPedirApt(id,usuario);
       setTimeout(()=>{const e=document.getElementById('cv-apt');if(e){e.value='';e.focus();}},80);
@@ -2906,28 +3225,53 @@ function showOcc(id){
       e.addEventListener('input',()=>e.classList.remove('err'),{once:true});
       return;
     }
-    if(PASSEIO[apt]){
-      const dp=PASSEIO[apt];
+    // v1.9.9.2: lista — o apartamento pode ter mais de um carro a passeio.
+    const _fora=_passeioPorApt(apt);
+    if(_fora.length){
+      const _voltar=function(gs){
+        confirmarUsuario('registrando retorno do passeio',function(usuario){
+          const dd=PASSEIO[gs];
+          if(!dd){ closeOv(); return; }
+          // v1.9.4.5: carrega o ID da hospedagem de volta na vaga ANTES de apagar o
+          // passeio, para o vínculo dos anexos (h_<gs>) seguir o carro no retorno.
+          if(dd.hospedagem && S[cur]) S[cur].hospedagem=dd.hospedagem;
+          delete PASSEIO[gs];
+          saveV(cur,apt,dd.model,dd.color,dd.plate,dd.guest,dd.obs||'',false,usuario);
+        });
+      };
+      if(_fora.length>1){
+        mc.innerHTML=`
+          <div class="mt">🚗 Qual carro está voltando?</div>
+          <div class="ms" style="margin-bottom:8px">O Apt. ${_vtEsc(apt)} tem ${_fora.length} carros na lista de passeio.</div>
+          ${_fora.map((f,i)=>{
+            const inf=[f.d.model,f.d.color,f.d.plate].filter(Boolean).join(' · ')||'Sem detalhes';
+            return '<button class="ab ao" id="f-ret-'+i+'" style="margin-bottom:6px;text-align:left">'+
+                   '<strong>'+_vtEsc(f.gs)+'</strong><br><span style="font-size:11px;opacity:.85">'+_vtEsc(inf)+'</span></button>';
+          }).join('')}
+          <button class="bcx" id="f-nao" style="width:100%;margin-top:4px">Não — corrigir apartamento</button>
+          <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:4px">Cancelar</button>`;
+        _fora.forEach((f,i)=>{
+          const b=document.getElementById('f-ret-'+i);
+          if(b) b.onclick=function(){ _voltar(f.gs); };
+        });
+        document.getElementById('f-nao').onclick=function(){
+          showOcc(cur);
+          setTimeout(()=>{const e=document.getElementById('f-apt');if(e){e.value='';e.focus();}},80);
+        };
+        return;
+      }
+      const dp=_fora[0].d, _gsUnico=_fora[0].gs;
       const info=[dp.model,dp.color,dp.plate].filter(Boolean).join(' · ');
       mc.innerHTML=`
         <div class="mt">🚗 Carro retornando?</div>
-        <div class="warn-box">${apt} está na lista de passeio${info?':<br><strong>'+info+'</strong>':'.'}
+        <div class="warn-box">${_vtEsc(apt)} está na lista de passeio${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}
         <br><br>Este carro está voltando do passeio?</div>
         <div class="ag">
           <button class="bsv" id="f-sim">✓ Sim, está voltando</button>
           <button class="bcx" id="f-nao">Não — corrigir apartamento</button>
           <button class="bcx" onclick="closeOv()">Cancelar</button>
         </div>`;
-      document.getElementById('f-sim').onclick=function(){
-        confirmarUsuario('registrando retorno do passeio',function(usuario){
-          const dd=PASSEIO[apt];
-          // v1.9.4.5: carrega o ID da hospedagem de volta na vaga ANTES de apagar o
-          // passeio, para o vínculo dos anexos (h_<gs>) seguir o carro no retorno.
-          if(dd && dd.hospedagem && S[cur]) S[cur].hospedagem=dd.hospedagem;
-          delete PASSEIO[apt];
-          saveV(cur,apt,dd.model,dd.color,dd.plate,dd.guest,dd.obs||'',false,usuario);
-        });
-      };
+      document.getElementById('f-sim').onclick=function(){ _voltar(_gsUnico); };
       document.getElementById('f-nao').onclick=function(){
         showOcc(cur);
         setTimeout(()=>{const e=document.getElementById('f-apt');if(e){e.value='';e.focus();}},80);
@@ -3145,7 +3489,15 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     // v1.9.6.6: hospedagem nova nasce com documento em `Hospedados Hoje`.
     try{ _hhjMarcar(numH, 'check-in'); }catch(e){}
   } else if(isCheckin===false){
-    const hospNum=(PASSEIO[apt]?.hospedagem)||d.hospedagem||'';
+    // v1.9.9.2: quem chama (`_clkVRotear`/`showOcc`) já devolveu o GS à vaga ANTES
+    // de apagar o registro de passeio — logo `d.hospedagem` é a fonte certa aqui.
+    // A varredura por apartamento fica só como rede, e SÓ quando é inequívoca
+    // (um único carro daquele apto fora): com dois, escolher seria chutar.
+    let hospNum=d.hospedagem||'';
+    if(!hospNum){
+      const _f=_passeioPorApt(apt);
+      if(_f.length===1) hospNum=_f[0].d.hospedagem||'';
+    }
     if(hospNum) d.hospedagem=hospNum;
     _gsSincronizarHospPares(id);   // v1.9.7.0: invariante do merge também no retorno
     addHistorico(apt,'retorno_passeio',id,'',usuarioStr,hospNum);
@@ -3316,12 +3668,34 @@ window.trocarParaGrande = function(id){
 function doOut(id){
   const d=S[id];
   const aptKey=d.apt;
+  // v1.9.9.2 — TRAVA DE RECARGA (C2): o ponto de recarga é FIXO. Um carro não
+  // sai da vaga carregando.
+  if(!_rcLiberado(id, 'sair a passeio', function(){ doOut(id); })) return;
   confirmarUsuario('liberando para passeio',function(usuario){
     const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
-    const hospNum=d.hospedagem||'';
-    PASSEIO[aptKey]={model:d.model,color:d.color,plate:d.plate,guest:d.guest,obs:d.obs||'',lastVaga:id,size:d.size||'small',hospedagem:hospNum,saida_ts:Date.now()};
+    // v1.9.9.2: o GS passa pelo RESOLVEDOR, não pelo ponteiro cru da vaga. Sem
+    // ele, o passeio nascia com `hospedagem:''` na vaga grande — e o carro
+    // virava órfão no primeiro check-out.
+    const _resOut=_gsResolverHosp({vaga:id});
+    if(_resOut.ambiguo || !_resOut.gs){
+      _gsEscolherHosp(_resOut, {apt:aptKey, acao:'saindo a passeio'}, function(gs){
+        closeOv(); _doOutExec(id, aptKey, gs, usuarioStr);
+      });
+      return;
+    }
+    _doOutExec(id, aptKey, _resOut.gs, usuarioStr);
+  });
+}
+
+function _doOutExec(id, aptKey, hospNum, usuarioStr){
+  const d=S[id];
+  if(!d) { closeOv(); return; }
+  {
+    // v1.9.9.2: CHAVE = GS. O apartamento é campo informativo — e é isso que
+    // deixa dois carros do mesmo apartamento coexistirem a passeio.
+    PASSEIO[hospNum]={apt:aptKey,model:d.model,color:d.color,plate:d.plate,guest:d.guest,obs:d.obs||'',lastVaga:id,size:d.size||'small',hospedagem:hospNum,saida_ts:Date.now()};
     addHistorico(aptKey,'saida_passeio',id,'',usuarioStr,hospNum);
-    // v1.9.4.5: anexos ficam em h_<gs> (estável). PASSEIO[apt].hospedagem preserva o
+    // v1.9.4.5: anexos ficam em h_<gs> (estável). PASSEIO[gs].hospedagem preserva o
     // vínculo; nada a migrar — os anexos viajam com a hospedagem.
     if(d.hmergeWith) desfazHMerge(id);
     if(id.endsWith('B')&&d.mergedMaster){
@@ -3345,13 +3719,16 @@ function doOut(id){
     // atualizado na nuvem se o aparelho se perder.
     _gsBackupAuto('saída para passeio '+aptKey);
     try{ _hhjMarcar(hospNum, 'saída para passeio'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
-  });
+  }
 }
 
 function doChk(id){
   const d=S[id];
   const aptKey=d.apt;
   const mc=document.getElementById('mc');
+  // v1.9.9.2 — TRAVA DE RECARGA (C2). O caso real do hotel (20/09/2026): o
+  // check-out foi feito com o carro em recarga na 8C, e a recarga ficou presa.
+  if(!_rcLiberado(id, 'fazer o check-out', function(){ doChk(id); })) return;
 
   const dadosVeiculo={
     model:d.model,color:d.color,plate:d.plate,guest:d.guest,
@@ -3385,8 +3762,28 @@ function doChk(id){
       // v1.9.7.0: resolvido ANTES de qualquer apagamento. `d.hospedagem` sozinho
       // ficava vazio na vaga grande (a célula tocada nunca recebia o GS) — e o
       // check-out então NUNCA gravava `checkout_ts`: hospedagem órfã eterna.
-      const _resChk=_gsResolverHosp({vaga:id});
-      const hospNum=_resChk.ambiguo?'':(_resChk.gs||'');
+      //
+      // v1.9.9.2 — E AGORA O AMBÍGUO NÃO PASSA. A 7.0 zerava `hospNum` no caso
+      // ambíguo e o check-out SEGUIA: apagava o passeio, liberava a vaga, gerava
+      // o PDF e dizia "✅ realizado" sem nunca gravar `checkout_ts`. Falha
+      // disfarçada de sucesso — e a hospedagem ficava ativa para sempre. Agora
+      // o manobrista escolhe qual carro está saindo, e o check-out segue pelo GS
+      // escolhido. NENHUM caminho daqui para baixo roda com `hospNum` vazio.
+      const _res0=_gsResolverHosp({vaga:id});
+      if(_res0.ambiguo || !_res0.gs){
+        _gsEscolherHosp(_res0, {apt:aptKey, acao:'saindo (check-out)'}, function(gs){
+          closeOv(); _chkExec(gs, usuarioStr);
+        });
+        return;
+      }
+      _chkExec(_res0.gs, usuarioStr);
+    });
+  };
+
+  // O check-out de fato. Só é chamado com um GS resolvido — por isso aqui não
+  // existe mais nenhum ramo "sem hospedagem".
+  function _chkExec(hospNum, usuarioStr){
+      const _resChk={gs:hospNum, ambiguo:false, candidatos:[], origem:'checkout'};
       addHistorico(aptKey,'checkout',id,'',usuarioStr,hospNum);
       if(hospNum&&HOSPEDAGENS[hospNum]){
         HOSPEDAGENS[hospNum].checkout_ts=Date.now();
@@ -3429,7 +3826,9 @@ function doChk(id){
         console.log('[BUG Q] snapshot:', _snapshotAnexosCheckout.fotos.length, 'fotos +', _snapshotAnexosCheckout.vistorias.length, 'vistorias +', _snapshotAnexosCheckout.recargas.length, 'recargas ANTES de deletar');
       })();
 
-      if(aptKey&&PASSEIO[aptKey])delete PASSEIO[aptKey];
+      // v1.9.9.2: o passeio é indexado pelo GS. Apagar por apartamento levaria
+      // embora o registro do OUTRO carro do mesmo apto.
+      if(hospNum&&PASSEIO[hospNum])delete PASSEIO[hospNum];
       if(d.hmergeWith) desfazHMerge(id);
       if(id.endsWith('B')&&d.mergedMaster){
         const aId=id.slice(0,-1)+'A';
@@ -3574,8 +3973,7 @@ function doChk(id){
           else { await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); }
         };
       })();
-    });
-  };
+  }
 }
 
 // Exibe detalhes com opção de editar secundária
@@ -3590,7 +3988,7 @@ window.doShare = function(id, fp){
   const fromPasseio=fp===1||fp===true;
   const d=fromPasseio?PASSEIO[id]:S[id];
   if(!d) return;
-  const apt=fromPasseio?id:d.apt;
+  const apt=d.apt||"";   // v1.9.9.2: o apto é CAMPO nos dois casos
   const dv={model:d.model||'',color:d.color||'',plate:d.plate||'',
              guest:d.guest||'',obs:d.obs||'',size:d.size||'small',
              vaga:fromPasseio?(d.lastVaga||''):id,hospedagem:d.hospedagem||''};
@@ -3601,7 +3999,7 @@ window.doShare = function(id, fp){
 
 function showDet(id, fromPasseio){
   const d = fromPasseio ? PASSEIO[id] : S[id];
-  const apt = fromPasseio ? id : d.apt;
+  const apt = d.apt || "";   // v1.9.9.2: o apto é CAMPO nos dois casos
   const status = fromPasseio ? '🛣️ A passeio' : 'Na garagem';
   const vagaLbl = fromPasseio ? (d.lastVaga||'—') : id;
   const mc=document.getElementById('mc');
@@ -3677,7 +4075,7 @@ function showDet(id, fromPasseio){
 function showEdit(id, fromPasseio){
   const d = fromPasseio ? PASSEIO[id] : S[id];
   if(!d){ closeOv(); return; }
-  const aptAtual = fromPasseio ? id : (d.apt||'');
+  const aptAtual = d.apt || '';   // v1.9.9.2: o apto e CAMPO nos dois casos
   const hospNum  = d.hospedagem || '';
   const hosp     = hospNum ? HOSPEDAGENS[hospNum] : null;
   const saidaAtual = (hosp && hosp.saida_prevista) || '';
@@ -3748,11 +4146,11 @@ function showEdit(id, fromPasseio){
       if(fromPasseio){
         const obj=PASSEIO[id];
         obj.model=model;obj.color=color;obj.plate=plate;obj.guest=guest;obj.obs=obs;
-        if(aptMudou){
-          PASSEIO[novoApt]=obj; if(novoApt!==id) delete PASSEIO[id];
-          // v1.9.4.5: anexos atados ao ID da hospedagem (h_<gs>) — NÃO re-chavear por apto.
-          // O vínculo segue por PASSEIO[novoApt].hospedagem; o nome do PDF lê o apto atual.
-        }
+        // v1.9.9.2 — A TROCA DE APARTAMENTO NÃO RE-CHAVEIA MAIS NADA. A chave é o
+        // GS, e o GS não muda numa troca de apartamento (Lei do Vínculo). Antes
+        // re-chavear por apto podia SOBRESCREVER o carro que já estava a passeio
+        // no apartamento de destino — perda de dado numa simples edição.
+        obj.apt=novoApt;
       } else {
         const obj=S[id];
         obj.apt=novoApt;obj.model=model;obj.color=color;obj.plate=plate;obj.guest=guest;obj.obs=obs;
@@ -3871,14 +4269,87 @@ window.toggleAnexosDet = function(id, fp){
   renderAnexosArea(id, fromPasseio, 'att-det-area');
 };
 
-function showPasseioDetail(apt){ showDet(apt, true); }
+// v1.9.9.2: o argumento passa a ser o GS (a chave do passeio), não o apartamento.
+function showPasseioDetail(gs){ showDet(gs, true); }
 
-function showPasseioCheckout(apt){
-  const d=PASSEIO[apt];
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.2 — QUARENTENA: "passeio pendente de identificação"
+// ════════════════════════════════════════════════════════════════════════════
+// A migração não descarta o que não consegue identificar. A entrada fica sob
+// chave `_semgs_…` e o gestor escolhe a hospedagem aqui — porque descartar o
+// carro seria perder o dado, e escolher por ele seria trocar o hóspede.
+function _passeioIdentificar(qk){
+  const d=PASSEIO[qk];
+  if(!d){ closeOv(); return; }
+  const apt=String(d.apt||d._quarentena_apt||'');
+  const info=[d.model,d.color,d.plate].filter(Boolean).join(' · ')||'Sem detalhes';
+  // Candidatas: hospedagens ATIVAS (sem check-out). O apartamento do registro
+  // vem primeiro, mas a lista não se limita a ele — o apto pode estar errado.
+  let ativas=[];
+  try{
+    ativas=Object.keys(HOSPEDAGENS||{}).filter(function(g){
+      const h=HOSPEDAGENS[g];
+      return h && (h.checkout_ts==null||h.checkout_ts===undefined) && !PASSEIO[g];
+    }).sort(function(a,b){
+      const ha=HOSPEDAGENS[a]||{}, hb=HOSPEDAGENS[b]||{};
+      const pa=(String(ha.apt||'')===apt)?0:1, pb=(String(hb.apt||'')===apt)?0:1;
+      return pa-pb || String(a).localeCompare(String(b));
+    });
+  }catch(e){}
+  showM('<div class="mt">⚠️ Passeio pendente de identificação</div>' +
+    '<div class="ms" style="margin-bottom:8px">Apt. <strong>'+_vtEsc(apt||'—')+'</strong> · '+_vtEsc(info)+
+    (d.saida_ts?(' · saiu '+_vtEsc(_dtLocal(new Date(d.saida_ts)))):'')+
+    '<br><br>Este carro está a passeio, mas o app não conseguiu identificar a hospedagem dele. ' +
+    'Escolha abaixo a quem ele pertence.</div>' +
+    (ativas.length
+      ? ativas.map(function(g,i){
+          const h=HOSPEDAGENS[g]||{};
+          return '<button class="ab ao" id="pid-'+i+'" style="margin-bottom:6px;text-align:left">'+
+            '<strong>'+_vtEsc(g)+'</strong> · Apt. '+_vtEsc(String(h.apt||'—'))+
+            '<br><span style="font-size:11px;opacity:.85">'+
+            _vtEsc([h.model,h.color,h.plate].filter(Boolean).join(' · ')||'Sem detalhes')+
+            (h.guest?' · '+_vtEsc(h.guest):'')+'</span></button>';
+        }).join('')
+      : '<div class="warn-box" style="font-size:12px">Não há hospedagem ativa sem carro a passeio para vincular. ' +
+        'O registro continua guardado — faça o check-in da hospedagem e volte aqui.</div>') +
+    '<button class="bcx" id="pid-fechar" style="width:100%;margin-top:4px">Fechar</button>');
+  setTimeout(function(){
+    ativas.forEach(function(g,i){
+      const b=document.getElementById('pid-'+i);
+      if(b) b.onclick=function(){
+        confirmarUsuario('identificando o carro a passeio',function(usuario){
+          const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+          const reg=Object.assign({}, PASSEIO[qk]);
+          delete reg._quarentena; delete reg._quarentena_apt;
+          reg.hospedagem=g;
+          reg.apt=String((HOSPEDAGENS[g]&&HOSPEDAGENS[g].apt)||apt||'');
+          delete PASSEIO[qk];
+          PASSEIO[g]=reg;
+          try{ addHistorico(reg.apt,'edicao','','Carro a passeio identificado como '+g,usuarioStr,g); }catch(e){}
+          try{ addLogSistema('Passeio em quarentena identificado: '+qk+' → '+g,
+            {aud:true, quem:(usuario&&usuario.nome)||'', acao:'passeio_identificado', alvo:g}); }catch(e){}
+          upd(); saveData(); closeOv();
+          showToast('✓ Carro vinculado a '+g, 3000);
+        });
+      };
+    });
+    const f=document.getElementById('pid-fechar');
+    if(f) f.onclick=function(){ closeOv(); };
+  },0);
+}
+
+function showPasseioCheckout(gs){
+  const d=PASSEIO[gs];
   if(!d)return;
+  if(_passeioEhQuarentena(gs)){ _passeioIdentificar(gs); return; }
+  const apt=String(d.apt||'');
+  // v1.9.9.2 — TRAVA DE RECARGA (C2), pelo GS: uma recarga pode ter ficado
+  // ativa de antes (estado legado); encerrar primeiro, sempre.
+  if(!_rcLiberado({gs:d.hospedagem||gs}, 'fazer o check-out', function(){ showPasseioCheckout(gs); })) return;
   const info=[d.model,d.color,d.plate].filter(Boolean).join(' · ');
-  // v1.9.7.0: decisão por hospedagem, nunca por apartamento.
-  const _resP=_gsResolverHosp({vaga:apt, apt:apt, fromPasseio:true});
+  // v1.9.9.2: a chave JÁ É a hospedagem — o resolvedor é consultado pelo GS do
+  // contexto (passo 1 dele), que é o caminho mais curto e sem chute possível.
+  const _resP=_gsResolverHosp({gs:d.hospedagem||gs, apt:apt});
   const _vstP=(_resP.gs && !_resP.ambiguo)?getVistoriaByHosp(_resP.gs):null;
   const _temVstPendP=_vstP&&!_vstP.ts_assinada;
   showM(`<div class="mt">Check-out — ${_gsRotuloHosp(_resP, apt)}</div>
@@ -3893,15 +4364,30 @@ function showPasseioCheckout(apt){
   document.getElementById('pco-sim').onclick=function(){
     confirmarUsuario('realizando o check-out',function(usuario){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
-      const hospNum=d.hospedagem||'';
-      addHistorico(apt,'checkout','','Checkout (a passeio)',usuarioStr,hospNum);
-      if(hospNum&&HOSPEDAGENS[hospNum]){
-        HOSPEDAGENS[hospNum].checkout_ts=Date.now();
-        HOSPEDAGENS[hospNum].usuario_checkout=usuarioStr;
-        saveHospedagens();
+      // v1.9.9.2 — B4. O resolvedor era CALCULADO e IGNORADO aqui (`d.hospedagem`
+      // cru), e `delete PASSEIO[apt]` rodava SEMPRE — inclusive quando
+      // `checkout_ts` não era gravado. Agora o GS vem da própria chave e a
+      // entrada só sai DEPOIS de `checkout_ts` gravado com sucesso.
+      const hospNum=(_resP.gs && !_resP.ambiguo)?_resP.gs:(d.hospedagem||'');
+      if(!hospNum || !HOSPEDAGENS[hospNum]){
+        showM('<div class="mt">⚠️ Hospedagem não identificada</div>' +
+          '<div class="warn-box" style="font-size:12px">Não foi possível identificar a hospedagem deste carro' +
+          (apt?(' (Apt. '+_vtEsc(apt)+')'):'')+'.<br><br>O check-out foi <strong>cancelado</strong> e o carro ' +
+          'continua na lista de passeio — nada foi perdido. Procure o gestor.</div>' +
+          '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
+        try{ addLogSistema('Check-out do passeio BLOQUEADO — hospedagem não identificada (apto '+(apt||'?')+', chave '+gs+')',
+          {aud:true, acao:'checkout_passeio_bloqueado', alvo:gs}); }catch(e){}
+        return;
       }
-      delete PASSEIO[apt];
+      addHistorico(apt,'checkout','','Checkout (a passeio)',usuarioStr,hospNum);
+      HOSPEDAGENS[hospNum].checkout_ts=Date.now();
+      HOSPEDAGENS[hospNum].usuario_checkout=usuarioStr;
+      saveHospedagens();
+      // Só agora: `checkout_ts` está gravado.
+      if(HOSPEDAGENS[hospNum].checkout_ts) delete PASSEIO[gs];
       upd(); saveData(); closeOv();
+      try{ if(hospNum) _hhjRetirar(hospNum); }catch(e){}
+      showToast('✅ Check-out realizado — '+hospNum, 3000);
     });
   };
 }
@@ -3915,26 +4401,88 @@ function fmtTs(ts){
   return _dLocal(d)+' às '+_hLocal(d);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.2 — BLOCO E: O "LIMPAR MAPA" DEIXA DE CRIAR ÓRFÃS EM MASSA
+// ════════════════════════════════════════════════════════════════════════════
+// `executarReset` esvaziava `S` e `PASSEIO` e NÃO TOCAVA em `HOSPEDAGENS` —
+// então um toque convertia TODAS as hospedagens ativas em órfãs de uma vez, sem
+// check-out, sem PDF de fechamento e sem registro de saída. O ↺ de desfazer não
+// salvava: `applySnapshot` só restaura vagas e passeio.
+//
+// Duas travas, as duas valendo para DEV e HOTEL:
+//   1. PIN de gestor (a entrada da Gestão não basta: quem está lá dentro pode
+//      estar fazendo outra coisa, e esta é a ação mais destrutiva do app);
+//   2. BLOQUEIO com qualquer hospedagem ativa — inclusive a passeio e a que
+//      está sem vaga (`aguardando_designacao`). O mapa só se limpa quando não
+//      há ninguém hospedado; é o único momento em que limpar não perde nada.
+
+// Hospedagens ATIVAS = sem `checkout_ts`. Inclui de propósito quem está a
+// passeio e quem ainda não recebeu vaga: o hóspede está no hotel nos dois casos.
+function _gsHospedagensAtivas(){
+  try{
+    return Object.keys(HOSPEDAGENS||{}).filter(function(gs){
+      const h=HOSPEDAGENS[gs];
+      return h && (h.checkout_ts==null || h.checkout_ts===undefined);
+    });
+  }catch(e){ return []; }
+}
+
 window.confirmReset = function(){
-  // 1ª confirmação
-  showM(`<div class="mt">Apagar tudo</div>
-    <div class="ms">Todos os carros nas vagas e na lista de passeio serão removidos.<br><br>Tem certeza?</div>
-    <div class="ag">
-      <button class="ab ac" id="r1-sim">Sim, apagar tudo</button>
-      <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
-    </div>`);
-  document.getElementById('r1-sim').onclick=function(){
-    showM(`<div class="mt">Confirmar</div>
-      <div class="ms" style="color:#A32D2D;font-weight:600">Confirme uma segunda vez para apagar.</div>
+  // PIN primeiro: nada é mostrado nem calculado antes dele.
+  showEntrarPIN(function(){
+    const ativas=_gsHospedagensAtivas();
+    if(ativas.length){
+      const amostra=ativas.slice(0,8).map(function(gs){
+        const h=HOSPEDAGENS[gs]||{};
+        const ondeP=PASSEIO[gs]?' · a passeio':'';
+        const semV=(h.status==='aguardando_designacao')?' · sem vaga':'';
+        return '<div style="font-size:11px;color:#633806;padding:2px 0">• <strong>'+_vtEsc(gs)+
+               '</strong> · Apt. '+_vtEsc(String(h.apt||'—'))+ondeP+semV+'</div>';
+      }).join('');
+      showM('<div class="mt">🚫 Não é possível limpar o mapa</div>' +
+        '<div class="warn-box" style="font-size:12px">Há <strong>'+ativas.length+
+        ' hospedagens ativas</strong>. Faça o check-out antes de limpar o mapa.</div>' +
+        '<div style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:8px 10px;margin:8px 0">' +
+        amostra + (ativas.length>8?('<div style="font-size:11px;color:#633806;padding-top:3px">… e mais '+(ativas.length-8)+'</div>'):'') +
+        '</div>' +
+        '<div style="font-size:11px;color:#888;margin-bottom:8px">Limpar o mapa agora deixaria estas hospedagens abertas para sempre, sem documento de fechamento.</div>' +
+        '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
+      try{ addLogSistema('Limpar mapa BLOQUEADO — '+ativas.length+' hospedagem(ns) ativa(s)',
+        {aud:true, acao:'mapa_limpo_bloqueado', alvo:String(ativas.length)}); }catch(e){}
+      return;
+    }
+    // 1ª confirmação
+    showM(`<div class="mt">Apagar tudo</div>
+      <div class="ms">Todos os carros nas vagas e na lista de passeio serão removidos.<br><br>Tem certeza?</div>
       <div class="ag">
-        <button class="ab ac" id="r2-sim">Confirmar — apagar agora</button>
+        <button class="ab ac" id="r1-sim">Sim, apagar tudo</button>
         <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
       </div>`);
-    document.getElementById('r2-sim').onclick=function(){ executarReset(); };
-  };
+    document.getElementById('r1-sim').onclick=function(){
+      showM(`<div class="mt">Confirmar</div>
+        <div class="ms" style="color:#A32D2D;font-weight:600">Confirme uma segunda vez para apagar.</div>
+        <div class="ag">
+          <button class="ab ac" id="r2-sim">Confirmar — apagar agora</button>
+          <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+        </div>`);
+      document.getElementById('r2-sim').onclick=function(){ executarReset(); };
+    };
+  });
 };
 
 function executarReset(){
+  // v1.9.9.2 — GUARDA DURA, não só na tela. `confirmReset` já pede PIN e já
+  // bloqueia, mas a verificação vive TAMBÉM aqui: é esta função que apaga, e um
+  // atalho futuro (ou um caminho que ninguém previu) não pode passar por fora
+  // da regra. Barato, e torna o estrago estruturalmente inalcançável.
+  const _ativas=_gsHospedagensAtivas();
+  if(_ativas.length){
+    console.warn('[RESET] bloqueado —', _ativas.length, 'hospedagem(ns) ativa(s)');
+    try{ showToast('🚫 Há '+_ativas.length+' hospedagens ativas. Faça o check-out antes de limpar o mapa.',6000); }catch(e){}
+    try{ addLogSistema('Limpar mapa BLOQUEADO na execução — '+_ativas.length+' hospedagem(ns) ativa(s)',
+      {aud:true, acao:'mapa_limpo_bloqueado', alvo:String(_ativas.length)}); }catch(e){}
+    return false;
+  }
   const ts = Date.now();
   const snap = buildSnapshot(); snap.ts = ts;
   try{ localStorage.setItem(BACKUP_KEY_TUDO, JSON.stringify(snap)); }catch(e){}
@@ -3953,6 +4501,7 @@ function executarReset(){
   _gsBackupAuto('mapa limpo');   // v1.9.6.3
   upd(); saveData(); closeOv();
   atualizarBotoesRestore();
+  return true;
 }
 
 function atualizarBotoesRestore(){
@@ -5031,9 +5580,10 @@ function executarBusca(q){
     const campos=[d.apt,d.model,d.color,d.plate,d.guest,d.hospedagem].map(v=>(v||'').toLowerCase());
     if(campos.some(c=>c.includes(ql))) _buscaHits.push({type:'vaga',id});
   });
-  Object.entries(PASSEIO).forEach(([apt,d])=>{
-    const campos=[apt,d.model,d.color,d.plate,d.guest,d.hospedagem].map(v=>(v||'').toLowerCase());
-    if(campos.some(c=>c.includes(ql))) _buscaHits.push({type:'passeio',apt});
+  // v1.9.9.2: a chave é o GS; o apartamento é campo. Os dois continuam buscáveis.
+  Object.entries(PASSEIO).forEach(([gs,d])=>{
+    const campos=[d.apt,gs,d.model,d.color,d.plate,d.guest,d.hospedagem].map(v=>(v||'').toLowerCase());
+    if(campos.some(c=>c.includes(ql))) _buscaHits.push({type:'passeio',apt:String(d.apt||''),gs:gs});
   });
   const cnt=document.getElementById('busca-count');
   const prev=document.getElementById('busca-prev');
@@ -5072,7 +5622,10 @@ function highlightBuscaResult(idx){
       const navbar=document.getElementById('navbar'); if(navbar) navbar.style.display='';
       const btn=document.getElementById('pt-arrow'); if(btn) btn.textContent='▾';
     }
-    const el=document.querySelector('.oi[data-apt="'+hit.apt+'"]');
+    // v1.9.9.2: realça pelo GS — com dois carros do mesmo apto fora, `data-apt`
+    // acharia o card errado. `data-gs` é único por construção.
+    const el=document.querySelector('.oi[data-gs="'+(hit.gs||'')+'"]')
+          || document.querySelector('.oi[data-apt="'+(hit.apt||'')+'"]');
     if(el) el.classList.add('passeio-highlight');
   }
 }
@@ -5288,10 +5841,9 @@ function renderAgrupadoresPainel(){
       const vagaKey=Object.keys(S).find(function(k){ return S[k]&&S[k].hospedagem===gs&&S[k].status==='occupied'; });
       if(vagaKey){
         hospNaGaragem++;
-      } else if(h.apt && PASSEIO[h.apt] && PASSEIO[h.apt].hospedagem===gs){
-        hospPasseio++;
-      } else if(h.apt && PASSEIO[h.apt]){
-        // fallback: apt aparece em passeio mesmo sem campo hospedagem
+      // v1.9.9.2: a chave É o GS — uma consulta direta, sem fallback por apto
+      // (que contava o carro do OUTRO hóspede do mesmo apartamento).
+      } else if(PASSEIO[gs]){
         hospPasseio++;
       } else {
         // fallback: contabilizar como na garagem
@@ -5764,7 +6316,8 @@ function renderExpansaoHospedados(filtro){
   // Filtrar
   const lista=ativas.filter(function(h){
     if(filtro==='tudo') return true;
-    const naPasseio=h.apt && PASSEIO[h.apt];
+    // v1.9.9.2: pelo GS, nunca pelo apartamento.
+    const naPasseio=!!PASSEIO[h.numero];
     if(filtro==='passeio') return !!naPasseio && h.status!=='aguardando_designacao';
     if(filtro==='garagem') return !naPasseio && h.status!=='aguardando_designacao';
     return true;
@@ -5783,14 +6336,14 @@ function renderExpansaoHospedados(filtro){
     } else {
       const vagaKey=_vagaIdDoGs(h.numero);
       if(vagaKey){ vaga='Vaga '+vagaKey; vagaIdEl=vagaKey; }
-      else if(h.apt && PASSEIO[h.apt]) vaga='A passeio';
+      else if(PASSEIO[h.numero]) vaga='A passeio';
       else if(h.vaga_inicial) vaga='Vaga '+h.vaga_inicial;
     }
     const veic=[h.model,h.color,h.plate].filter(Boolean).join(' · ')||'—';
     const click=vagaIdEl
       ?(' onclick="fecharExpansao();showDet(\''+_vtEsc(vagaIdEl)+'\',0)"')
       :(h.status==='aguardando_designacao'?(' onclick="fecharExpansao();abrirDetalhesAguardando(\''+_vtEsc(h.numero||'')+'\')"'):
-        (h.apt && PASSEIO[h.apt]?(' onclick="fecharExpansao();showPasseioDetail(\''+_vtEsc(h.apt)+'\')"'):''));
+        (PASSEIO[h.numero]?(' onclick="fecharExpansao();showPasseioDetail(\''+_vtEsc(h.numero||'')+'\')"'):''));
     const cls=click?' clicavel':'';
     html+='<div class="exp-item'+cls+'"'+click+'>'+
       '<div class="exp-item-titulo">'+_vtEsc(h.numero||'')+' · Apt '+_vtEsc(h.apt||'')+(h.guest?' · '+_vtEsc(h.guest):'')+tagAg+'</div>'+
@@ -6431,7 +6984,13 @@ function _vstStep1(){
   if(apt){
     const vagaId=Object.keys(S).find(k=>S[k].apt===apt&&S[k].status==='occupied');
     if(vagaId){preMod=S[vagaId].model||'';preCor=S[vagaId].color||'';prePla=S[vagaId].plate||'';preGst=S[vagaId].guest||'';}
-    else if(PASSEIO[apt]){preMod=PASSEIO[apt].model||'';preCor=PASSEIO[apt].color||'';prePla=PASSEIO[apt].plate||'';preGst=PASSEIO[apt].guest||'';}
+    else {
+      // v1.9.9.2: o passeio e indexado pelo GS. So pre-preenche quando e
+      // INEQUIVOCO (um unico carro daquele apto fora) - com dois, preencher
+      // com "o primeiro" era o chute que a v1.9.7.0 veio extinguir.
+      const _fp=_passeioPorApt(apt);
+      if(_fp.length===1){const _pd=_fp[0].d;preMod=_pd.model||'';preCor=_pd.color||'';prePla=_pd.plate||'';preGst=_pd.guest||'';}
+    }
   }
   showM(`<div class="mt">📋 Nova Vistoria</div>
     <div class="ms" style="margin-bottom:10px">Dados do veículo</div>
@@ -6667,7 +7226,7 @@ function _vstPreConfirmar(modo){
   let autoHosp='';
   const vagaId=Object.keys(S).find(k=>S[k].apt===apt&&S[k].status==='occupied');
   if(vagaId&&S[vagaId].hospedagem) autoHosp=S[vagaId].hospedagem;
-  else if(PASSEIO[apt]?.hospedagem) autoHosp=PASSEIO[apt].hospedagem;
+  else { const _fp=_passeioPorApt(apt); if(_fp.length===1) autoHosp=_fp[0].d.hospedagem||''; }   // v1.9.9.2: so o caso inequivoco
 
   if(autoHosp){
     // Há hospedagem ativa — oferece vincular
@@ -6688,7 +7247,7 @@ function _vstPreConfirmar(modo){
     // Não há hospedagem ativa — oferece escolher de lista ou pular
     const aptsAtivos=[];
     Object.entries(S).forEach(([vid,vd])=>{if(vd.status==='occupied'&&vd.apt&&!vd.mergedSlave)aptsAtivos.push({apt:vd.apt,hosp:vd.hospedagem||''});});
-    Object.entries(PASSEIO).forEach(([a,pd])=>aptsAtivos.push({apt:a,hosp:pd.hospedagem||''}));
+    Object.entries(PASSEIO).forEach(([g,pd])=>{ if(!_passeioEhQuarentena(g)) aptsAtivos.push({apt:String(pd.apt||''),hosp:pd.hospedagem||g}); });
     const uniq=[...new Map(aptsAtivos.map(x=>[x.apt,x])).values()];
     // ordena: sem vistoria primeiro
     uniq.sort((a,b)=>{
@@ -13528,10 +14087,12 @@ function _hhjMaterial(gs){
     const d = S[vagaId];
     dv = { model:d.model, color:d.color, plate:d.plate, guest:d.guest, obs:d.obs||'',
            size:d.size||'small', vaga:vagaId, hospedagem:gs, apt:apt };
-  } else if(apt && PASSEIO && PASSEIO[apt] && PASSEIO[apt].hospedagem === gs){
-    const p = PASSEIO[apt];
+  // v1.9.9.2: consulta direta pela chave GS — nem apartamento, nem conferência
+  // de campo. O documento vivo do hóspede nunca mais pode pegar o carro do outro.
+  } else if(PASSEIO && PASSEIO[gs]){
+    const p = PASSEIO[gs];
     dv = { model:p.model, color:p.color, plate:p.plate, guest:p.guest, obs:p.obs||'',
-           size:p.size||'small', vaga:p.lastVaga||'', hospedagem:gs, apt:apt };
+           size:p.size||'small', vaga:p.lastVaga||'', hospedagem:gs, apt:(p.apt||apt) };
   } else {
     dv = { model:h.model||'', color:h.color||'', plate:h.plate||'', guest:h.guest||h.hospede||'',
            obs:'', size:'small', vaga:h.vaga_inicial||'', hospedagem:gs, apt:apt };
@@ -14777,6 +15338,165 @@ const PONTOS_RECARGA = [
 ];
 function _pontoDaVaga(id){ return PONTOS_RECARGA.find(function(p){ return p.vagas.indexOf(id) >= 0; }); }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.2 — BLOCO C: A RECARGA TRAVA A SAÍDA DO CARRO
+// ════════════════════════════════════════════════════════════════════════════
+// Caso real do hotel (20/09/2026): carro em recarga na Vaga 8C (Apt 360 ·
+// GS233) teve o check-out feito SEM encerrar a recarga. Medido na verificação:
+// `doChk` não tocava em `RECARGAS`, então a recarga ficava `ativo:true` presa a
+// uma hospedagem já encerrada.
+//
+// Os pontos de recarga são FIXOS (8C/9C/1D). Um carro não sai da vaga
+// carregando — nem para check-out, nem para troca de vaga, nem a passeio.
+//
+// REGRA INEGOCIÁVEL: a recarga NUNCA é encerrada automaticamente. Ela mede
+// tempo que vira dinheiro; encerrar por conta própria seria o app decidir
+// quanto cobrar. O que ele faz é PARAR a ação e oferecer o encerramento.
+
+// A recarga ATIVA de uma hospedagem, ou null. Procura pelo GS (o vínculo) e,
+// como rede, pela própria vaga — que é a verdade física do carregador.
+function _rcAtivaDaHosp(gs, vagaId){
+  try{
+    if(typeof RECARGAS === 'undefined' || !RECARGAS) return null;
+    if(vagaId && RECARGAS[vagaId] && RECARGAS[vagaId].ativo){
+      return { vagaId: vagaId, r: RECARGAS[vagaId] };
+    }
+    if(!gs) return null;
+    const k = Object.keys(RECARGAS).filter(function(v){
+      return RECARGAS[v] && RECARGAS[v].ativo && String(RECARGAS[v].hospedagem||'') === String(gs);
+    })[0];
+    return k ? { vagaId: k, r: RECARGAS[k] } : null;
+  }catch(e){ return null; }
+}
+
+// Continuação pendente: a ação original, a ser retomada DO PONTO ONDE PAROU
+// depois que o encerramento termina. É só uma; o app é de um toque por vez.
+let _rcRetomar = null;
+
+// A TRAVA. Devolve `true` quando a ação pode seguir. Devolvendo `false`, já
+// mostrou o aviso — quem chamou simplesmente retorna.
+//
+// `ref` é a vaga (string) ou `{gs}`. `retomar` é a ação original; ela é
+// re-executada do zero depois do encerramento, e é por isso que a trava fica
+// ANTES de qualquer mudança de estado e antes de pedir dado ao operador: assim
+// "voltar à ação original" nunca faz ninguém redigitar nada.
+function _rcLiberado(ref, acaoTxt, retomar){
+  try{
+    if(typeof MODULOS !== 'undefined' && MODULOS && MODULOS.recarga === false) return true;
+    let vagaId = '', gs = '';
+    if(ref && typeof ref === 'object'){ gs = String(ref.gs||''); vagaId = String(ref.vaga||''); }
+    else { vagaId = String(ref||''); }
+    if(!gs && vagaId){
+      try{ const r = _gsResolverHosp({vaga:vagaId}); if(r && r.gs && !r.ambiguo) gs = r.gs; }catch(e){}
+    }
+    const achado = _rcAtivaDaHosp(gs, vagaId);
+    if(!achado) return true;
+    _rcAvisoTravado(achado, acaoTxt, retomar);
+    return false;
+  }catch(e){
+    // FAIL-OPEN: a trava existe para proteger a cobrança, não para impedir a
+    // operação. Um erro aqui não pode deixar o manobrista sem fazer check-out.
+    console.warn('[RECARGA] trava não pôde ser avaliada, ação liberada:', e && e.message);
+    return true;
+  }
+}
+
+function _rcAvisoTravado(achado, acaoTxt, retomar){
+  const vagaId = achado.vagaId, r = achado.r;
+  const quando = _fmtDHRc(r.inicio_ts);
+  const veic = (S[vagaId] && (S[vagaId].model||S[vagaId].color))
+    ? (S[vagaId].model||'') + (S[vagaId].color?' '+S[vagaId].color:'')
+    : '';
+  showM('<div class="mt">⚡ Carro em recarga</div>' +
+    '<div class="ms" style="background:#f5f4f0;border-radius:7px;padding:7px 10px;color:#1A2238;margin-bottom:10px">' +
+      '<strong>Vaga ' + _vtEsc(vagaId) + ' · Apt ' + _vtEsc(String(r.apt||'—')) + '</strong>' +
+      (r.hospedagem ? ' · ' + _vtEsc(String(r.hospedagem)) : '') +
+      (veic ? '<br>' + _vtEsc(veic) : '') + '</div>' +
+    '<div class="warn-box" style="font-size:12px">Este carro está em recarga desde <strong>' +
+      _vtEsc(quando) + '</strong>. Encerre a recarga antes de ' + _vtEsc(acaoTxt) + '.</div>' +
+    '<div class="ag">' +
+      '<button class="bsv" id="rct-encerrar" style="background:#1F9A5F">⚡ Encerrar recarga agora</button>' +
+      '<button class="bcx" id="rct-cancelar" style="margin-top:4px">Cancelar</button>' +
+    '</div>');
+  setTimeout(function(){
+    const b = document.getElementById('rct-encerrar');
+    if(b) b.onclick = function(){
+      // A ação original fica guardada e é retomada quando o encerramento
+      // terminar de verdade (incluindo a entrega do comprovante).
+      _rcRetomar = (typeof retomar === 'function') ? retomar : null;
+      closeOv();
+      showRecargaFinalizar(vagaId);
+    };
+    const c = document.getElementById('rct-cancelar');
+    // Cancelar o encerramento = cancelar a ação. Nada pela metade.
+    if(c) c.onclick = function(){ _rcRetomar = null; closeOv(); };
+  }, 0);
+}
+
+// Dispara a continuação, se houver. Sempre em `setTimeout` para o overlay do
+// encerramento já ter saído da tela antes de a ação original abrir o seu.
+function _rcDispararRetomada(){
+  const f = _rcRetomar;
+  _rcRetomar = null;
+  if(typeof f !== 'function') return;
+  setTimeout(function(){
+    try{ f(); }
+    catch(e){ console.error('[RECARGA] retomada da ação original falhou:', e); }
+  }, 260);
+}
+
+// ── C1: o CAMPO `hospedagem` das recargas existentes ───────────────────────
+// A chave continua sendo a VAGA (decisão registrada acima). O que esta migração
+// faz é preencher/corrigir o VÍNCULO das recargas que nasceram com o ponteiro
+// cru — e marcar, sem descartar, as que não dão para identificar.
+// Não destrutiva, idempotente, e nunca sobrescreve um GS que confere.
+function _gsMigrarRecargaGs(){
+  const out = { verificadas:0, ganharamGs:0, quarentena:0, jaOk:0 };
+  try{
+    if(typeof RECARGAS === 'undefined' || !RECARGAS) return out;
+    let mudou = false;
+    Object.keys(RECARGAS).forEach(function(vagaId){
+      const r = RECARGAS[vagaId];
+      if(!r) return;
+      out.verificadas++;
+      const gsAtual = String(r.hospedagem||'');
+      // Confere: o GS existe de fato? Um GS que não está em HOSPEDAGENS é um
+      // ponteiro para lugar nenhum — vale o mesmo que vazio.
+      if(gsAtual && HOSPEDAGENS && HOSPEDAGENS[gsAtual]){
+        if(r._semgs){ delete r._semgs; mudou = true; }
+        out.jaOk++;
+        return;
+      }
+      let gs = '';
+      try{
+        const res = _gsResolverHosp({vaga:vagaId, apt:String(r.apt||'')});
+        if(res && res.gs && !res.ambiguo) gs = String(res.gs);
+      }catch(e){}
+      if(gs){
+        r.hospedagem = gs;
+        if(r._semgs) delete r._semgs;
+        out.ganharamGs++; mudou = true;
+      } else {
+        // QUARENTENA: a recarga continua inteira e encerrável (é dinheiro sendo
+        // medido). O que ela ganha é a marca de "sem hospedagem identificada",
+        // visível ao gestor na tela de Recarga.
+        if(!r._semgs){ r._semgs = true; mudou = true; }
+        out.quarentena++;
+      }
+    });
+    if(mudou){
+      try{ saveRecargas(); }catch(e){}
+      try{ addLogSistema('Vínculo das recargas revisto: ' + out.ganharamGs + ' ganharam GS, ' +
+        out.quarentena + ' sem hospedagem identificada, ' + out.jaOk + ' já corretas.',
+        {aud:true, acao:'migracao_recarga_gs'}); }catch(e){}
+    }
+    return out;
+  }catch(e){
+    console.warn('[MIG recarga] falhou:', e && e.message);
+    return out;
+  }
+}
+
 function getRecargaState(vagaId){
   const vaga=S[vagaId];
   const cfg=VAGAS_RECARGA[vagaId]; if(!cfg) return 'sem-carro';
@@ -15088,7 +15808,11 @@ function _rcNotifIdsDaVaga(vagaId){
 function _rcNotifGrupo(vagaId){ return 'garagespot-recarga-' + String(vagaId || ''); }
 
 function _rcNotifCorpo(vagaId, r, k){
-  const base = 'Vaga ' + vagaId + (r && r.apt ? ' · Apt ' + r.apt : '') + ' — o veículo pode ser liberado.';
+  // v1.9.9.2 (D1): o alarme diz DESDE QUANDO o carro está carregando. Uma
+  // notificação `ongoing` que repete por uma hora e pode ser lida no dia
+  // seguinte precisa dizer de que dia ela fala.
+  const desde = (r && r.inicio_ts) ? (' Em recarga desde ' + _fmtDHRc(r.inicio_ts) + '.') : '';
+  const base = 'Vaga ' + vagaId + (r && r.apt ? ' · Apt ' + r.apt : '') + ' — o veículo pode ser liberado.' + desde;
   return k ? (base + ' (lembrete ' + k + ' de ' + RC_REPET_MAX + ')') : base;
 }
 
@@ -15382,8 +16106,10 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   if(typeof ref==='function') ref(vagaId);
   // Parte 5 v1.9.4.4: registrar como movimentação (aparece no painel e nos detalhes "i")
   if(apt && typeof addHistorico==='function'){
-    const fimHr=_hLocal(new Date(fim));
-    addHistorico(apt,'recarga_iniciada',vagaId,'Recarga iniciada · término previsto '+fimHr,usuarioStr,hospedagem);
+    // v1.9.9.2 (D1): com data. Recarga que atravessa a meia-noite é o caso
+    // NORMAL aqui — "término previsto 04:20" sozinho não diz de que dia.
+    const fimHr=_fmtDHRc(fim);
+    addHistorico(apt,'recarga_iniciada',vagaId,'Recarga iniciada '+_fmtDHRc(Date.now())+' · término previsto '+fimHr,usuarioStr,hospedagem);
   }
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   showToast('⚡ Recarga iniciada — Vaga '+vagaId);
@@ -15409,7 +16135,7 @@ function showProlongarRecarga(vagaId){
   const sug = new Date(base + 30*60000);
   const hh = String(sug.getHours()).padStart(2,'0')+':'+String(sug.getMinutes()).padStart(2,'0');
   showM(`<div class="mt">⏱ Prolongar recarga — Vaga ${_vtEsc(vagaId)}</div>
-    <div class="ms">Apt. ${_vtEsc(r.apt||'—')} · início ${_fmtHM(r.inicio_ts)} · término atual ${_fmtHM(r.fim_ts)}</div>
+    <div class="ms">Apt. ${_vtEsc(r.apt||'—')} · início ${_fmtDHRc(r.inicio_ts)} · término atual ${_fmtDHRc(r.fim_ts)}</div>
     <label class="fl">Novo horário de término <span class="req">*</span></label>
     <input class="fi" id="rc-prol-fim" type="time" value="${hh}" style="font-size:15px">
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:7px;padding:7px 10px;font-size:11px;color:#0F6E56;margin-top:6px;line-height:1.5">
@@ -15446,7 +16172,7 @@ function _prolongarRecargaAplicar(vagaId){
   try{ if(_rcAlarme && _rcAlarme.vagaId === vagaId) _rcPararAlarme(); }catch(e){}
   // reagenda os dois: o nativo (que avisa de verdade) e o timer de primeiro plano
   agendarAlertaRecarga(vagaId);
-  const hrNovo = _fmtHM(novo), hrAnt = _fmtHM(anterior);
+  const hrNovo = _fmtDHRc(novo), hrAnt = _fmtDHRc(anterior);   // v1.9.9.2 (D1): com data
   if(r.apt && typeof addHistorico === 'function'){
     addHistorico(r.apt, 'recarga_prolongada', vagaId,
       'Recarga prolongada · de ' + hrAnt + ' para ' + hrNovo, r.usuario || '', r.hospedagem);
@@ -15464,7 +16190,16 @@ function showRecargaModal(vagaId){
   const vaga=S[vagaId]; if(!vaga||vaga.status!=='occupied') return;
   const mc=document.getElementById('mc');
   const agora=new Date(); const hh=String(agora.getHours()).padStart(2,'0')+':'+String(agora.getMinutes()).padStart(2,'0');
-  const apt=vaga.apt||''; const hosp=vaga.hospedagem||'';
+  const apt=vaga.apt||'';
+  // v1.9.9.2 (C1): o GS da recarga passa pelo RESOLVEDOR, não pelo ponteiro cru
+  // da vaga. `vaga.hospedagem||''` ficava VAZIO na vaga grande (a célula tocada
+  // não carrega o GS) — e a recarga nascia sem vínculo, logo sem documento no
+  // balde certo e sem a trava do C2 funcionando. A chave de `RECARGAS` continua
+  // sendo a VAGA (o carregador é fixo ali, e os ids do alarme derivam dela);
+  // o que ganhou vínculo confiável é o CAMPO `hospedagem`.
+  let hosp='';
+  try{ const _rH=_gsResolverHosp({vaga:vagaId}); if(_rH && _rH.gs && !_rH.ambiguo) hosp=_rH.gs; }catch(e){}
+  if(!hosp) hosp=vaga.hospedagem||'';
   const filaInfo=FILA_RECARGA.filter(f=>f.vagaId===vagaId);
   confirmarUsuario('iniciando recarga',function(usuario){
     showM(`<div class="mt">⚡ Iniciar Recarga — Vaga ${vagaId}</div>
@@ -15594,6 +16329,65 @@ function _rcEditarPeriodo(vagaId){
   },80);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.2 — BLOCO D: O ENCERRAMENTO TEM DATA, NÃO SÓ HORA
+// ════════════════════════════════════════════════════════════════════════════
+// O CASO REAL, e a conta errada que ele produziu (hotel, 20/09/2026):
+//   início   D-2 15:50   ·   programado  D 04:20   ·   agora  D 08:10
+//   "até o programado" → 36h30  → R$ 365,00
+//   "até agora"        → 40h15  → R$ 402,50
+//   "Outro horário" = 08:10 → 64h15 → R$ 642,50   ← MESMO 08:10, 24 h A MAIS
+//
+// CAUSA MEDIDA: `_hhmmParaMs` faz `if(ms <= Date.now()) ms += 86400000` — ela
+// SEMPRE devolve a PRÓXIMA ocorrência daquele HH:MM. Foi escrita para o INÍCIO
+// da recarga (onde a hora final é naturalmente futura) e reaproveitada no
+// ENCERRAMENTO (onde é naturalmente passada). Um helper, duas intenções opostas.
+//
+// ⚠️ `_hhmmParaMs` NÃO FOI ALTERADA de propósito: o fluxo de INÍCIO depende do
+// comportamento "próxima ocorrência" dela (é assim que uma recarga que termina
+// às 04:20 da madrugada seguinte é agendada). O encerramento ganhou helper
+// próprio, ancorado em DATA + HORA explícitas — sem nenhum palpite de dia.
+function _rcDataHoraParaMs(ymd, hhmm){
+  try{
+    const dp = String(ymd||'').split('-').map(Number);
+    const tp = String(hhmm||'').split(':').map(Number);
+    if(dp.length < 3 || tp.length < 2) return NaN;
+    for(let i=0;i<3;i++){ if(!isFinite(dp[i])) return NaN; }
+    if(!isFinite(tp[0]) || !isFinite(tp[1])) return NaN;
+    return new Date(dp[0], dp[1]-1, dp[2], tp[0], tp[1], 0, 0).getTime();
+  }catch(e){ return NaN; }
+}
+// Dia de calendário LOCAL ('AAAA-MM-DD'). Pelos getters, nunca por toISOString()
+// — regra permanente do projeto desde a v1.9.4.14.
+function _rcDiaLocal(ts){
+  const d = _dtObj(ts);
+  return d.getFullYear() + '-' + _p2GS(d.getMonth()+1) + '-' + _p2GS(d.getDate());
+}
+// Instante truncado ao MINUTO. "Cobrar até agora" passa por aqui para que
+// escolher em "Outro horário" o mesmo dia e a mesma hora de agora dê EXATAMENTE
+// o mesmo valor (exigência D3) — por construção, não por sorte do arredondamento.
+// Segundos não têm função nenhuma numa cobrança medida em frações de 15 min.
+function _rcTruncMin(ts){ return Math.floor(Number(ts||0)/60000)*60000; }
+
+// Os dias oferecidos no seletor: do dia do INÍCIO até hoje, inclusive. O teto é
+// `hoje` porque o teto do valor é `agora` — não se cobra por tempo que ainda
+// não passou. Limite de sanidade de 60 dias para uma recarga esquecida não
+// gerar uma lista interminável.
+function _rcDiasDoPeriodo(inicioMs, agoraMs){
+  const out = [];
+  try{
+    const d = _dtObj(inicioMs); d.setHours(0,0,0,0);
+    const fim = _dtObj(agoraMs); fim.setHours(0,0,0,0);
+    let guarda = 0;
+    while(d.getTime() <= fim.getTime() && guarda < 60){
+      out.push({ v:_rcDiaLocal(d), rot:_p2GS(d.getDate())+'/'+_p2GS(d.getMonth()+1) });
+      d.setDate(d.getDate()+1); guarda++;
+    }
+  }catch(e){}
+  if(!out.length) out.push({ v:_rcDiaLocal(agoraMs), rot:_p2GS(_dtObj(agoraMs).getDate())+'/'+_p2GS(_dtObj(agoraMs).getMonth()+1) });
+  return out;
+}
+
 // v1.9.4.3.3: Encerramento com cobrança (3 opções quando em atraso). Cortesia (valorHora=0) = R$ 0,00.
 function showRecargaFinalizar(vagaId){
   const r=RECARGAS[vagaId]; if(!r) return;
@@ -15611,13 +16405,21 @@ let _rcEncerrarEstado = null;
 function _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now){
   // Calcular as opções
   const opcaoProgramado = { modo:'programado', fimMs:r.fim_ts };
-  const opcaoAgora      = { modo:'agora',      fimMs:Math.max(r.inicio_ts+60000, now) };
+  // v1.9.9.2: truncado ao minuto — ver `_rcTruncMin`. É o que torna D3 exato.
+  const opcaoAgora      = { modo:'agora',      fimMs:Math.max(r.inicio_ts+60000, _rcTruncMin(now)) };
   const fimOutroDefault = String(new Date(now).getHours()).padStart(2,'0')+':'+String(new Date(now).getMinutes()).padStart(2,'0');
-  const opcaoOutro      = { modo:'outro',      fimMs:_hhmmParaMs(fimOutroDefault), hhmm:fimOutroDefault };
+  // v1.9.9.2 (D2): "Outro horário" guarda DIA + HORA e é ancorado por
+  // `_rcDataHoraParaMs`. O padrão é o dia e a hora de AGORA — o que faz a opção
+  // nascer idêntica a "Cobrar até agora", como D3 exige.
+  const diaOutroDefault = _rcDiaLocal(now);
+  const opcaoOutro      = { modo:'outro', dia:diaOutroDefault, hhmm:fimOutroDefault,
+                            fimMs:_rcDataHoraParaMs(diaOutroDefault, fimOutroDefault) };
 
   // Opção padrão: se em atraso, "programado"; se ainda no prazo, "agora" (encerramento antecipado)
   _rcEncerrarEstado = {
     vagaId, r, usuario, usuarioStr, emAtraso,
+    agoraMs: now,
+    dias: _rcDiasDoPeriodo(r.inicio_ts, now),
     opcoes: { programado:opcaoProgramado, agora:opcaoAgora, outro:opcaoOutro },
     selecionada: emAtraso ? 'programado' : 'agora'
   };
@@ -15628,29 +16430,34 @@ function _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now){
     : '';
   const atrasoMin = emAtraso ? Math.max(0, Math.round((now - r.fim_ts)/60000)) : 0;
 
-  function _calc(modo){
-    const op = _rcEncerrarEstado.opcoes[modo];
-    const fimMs = op.fimMs;
-    const {mins, valor} = calcValorRecarga(r.inicio_ts, fimMs);
-    return { fimMs, mins, valor, hhmm:_fmtHM(fimMs) };
-  }
-
+  // ── MONTAGEM: UMA ÚNICA VEZ ──────────────────────────────────────────────
+  // ⚠️ ACHADO DA VERIFICAÇÃO, corrigido aqui: a versão anterior re-renderizava
+  // `#rc-enc-opcoes` inteiro no evento `input` do campo de hora — o
+  // `<input type="time">` era DESTRUÍDO E RECRIADO A CADA TECLA (medido:
+  // `inputMesmoNo:false`, `document.activeElement` vazio). No WebView isso fecha
+  // o seletor nativo a cada dígito. Agora os CONTROLES são montados uma vez e
+  // só os VALORES CALCULADOS são atualizados (`_rcEncerrarAtualizarOpcoes`).
   function _renderOpcao(modo, titulo){
     const sel = _rcEncerrarEstado.selecionada === modo;
-    const c = _calc(modo);
-    const outroInput = modo === 'outro'
-      ? '<input type="time" class="fi" id="rc-enc-outro-input" value="'+(_rcEncerrarEstado.opcoes.outro.hhmm||'')+'" style="margin-top:6px'+(sel?'':';display:none')+'">'
-      : '';
-    const sub = modo === 'outro' && !sel
-      ? 'Defina o horário manualmente'
-      : 'Término: <strong>'+c.hhmm+'</strong> · '+_fmtDurRecarga(c.mins)+' · <strong>R$ '+c.valor.toFixed(2).replace('.',',')+'</strong>';
+    let extra = '';
+    if(modo === 'outro'){
+      const st = _rcEncerrarEstado;
+      const opts = st.dias.map(function(d){
+        return '<option value="'+d.v+'"'+(d.v===st.opcoes.outro.dia?' selected':'')+'>'+d.rot+'</option>';
+      }).join('');
+      extra =
+        '<div id="rc-enc-outro-campos" style="display:'+(sel?'flex':'none')+';gap:6px;margin-top:6px">' +
+          '<select class="fi" id="rc-enc-outro-dia" style="flex:1;margin:0" aria-label="Dia do término">'+opts+'</select>' +
+          '<input type="time" class="fi" id="rc-enc-outro-input" style="flex:1;margin:0" aria-label="Hora do término" value="'+(st.opcoes.outro.hhmm||'')+'">' +
+        '</div>';
+    }
     return ''+
       '<div class="rcp-opc-horario '+(sel?'selecionada':'')+'" data-modo="'+modo+'" onclick="_rcEncerrarSelecionar(\''+modo+'\')">' +
         '<div class="rcp-opc-radio"></div>' +
         '<div style="flex:1">' +
           '<div style="font-size:13px;font-weight:700;color:#1A2238;margin-bottom:2px">'+titulo+'</div>' +
-          '<div class="rcp-opc-sub">'+sub+'</div>' +
-          outroInput +
+          '<div class="rcp-opc-sub" id="rc-enc-sub-'+modo+'">'+_rcSubDaOpcao(modo)+'</div>' +
+          extra +
         '</div>' +
       '</div>';
   }
@@ -15658,16 +16465,30 @@ function _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now){
   const corteHtml = (RECARGA_CONFIG.valorHora||0) === 0
     ? '<div style="background:#EEF6FF;border:1px solid #C7DAEC;border-radius:7px;padding:8px 12px;font-size:12px;color:#185FA5;margin-bottom:10px">🎁 <strong>Cortesia ativa</strong> — valor/hora = R$ 0,00, o total será R$ 0,00</div>'
     : '';
+  // v1.9.9.2 (D1): com DATA. Era aqui que o operador lia "programado até 04:20 ·
+  // agora 08:10" sem nenhuma pista de que eram dias diferentes.
   const alertaAtraso = emAtraso
-    ? '<div style="background:#FFF7EC;border:1px solid #FFE0B3;border-radius:8px;padding:9px 12px;font-size:12px;color:#8A5A1A;margin-bottom:12px"><strong>⚠️ Em atraso</strong>: programado até <strong>'+_fmtHM(r.fim_ts)+'</strong> · agora <strong>'+_fmtHM(now)+'</strong> · atraso de <strong>'+_fmtDurRecarga(atrasoMin)+'</strong></div>'
+    ? '<div style="background:#FFF7EC;border:1px solid #FFE0B3;border-radius:8px;padding:9px 12px;font-size:12px;color:#8A5A1A;margin-bottom:12px"><strong>⚠️ Em atraso</strong>: programado até <strong>'+_fmtDHRc(r.fim_ts)+'</strong> · agora <strong>'+_fmtDHRc(now)+'</strong> · atraso de <strong>'+_fmtDurRecarga(atrasoMin)+'</strong></div>'
+    : '';
+  // v1.9.9.2: o INÍCIO sempre aparece — é o outro extremo da conta, e sem ele o
+  // valor não é verificável por quem está olhando a tela.
+  const linhaInicio = '<div style="font-size:11px;color:#5A6478;margin-bottom:8px">Início da recarga: <strong>'+_fmtDHRc(r.inicio_ts)+'</strong></div>';
+  // C3: encerramento tardio — a hospedagem já foi fechada. Sem PIN (decisão do
+  // Douglas: o encerramento já funciona, não criar burocracia nova), mas DITO na
+  // tela e registrado na trilha e no histórico do GS.
+  const _hospFechada = !!(r.hospedagem && HOSPEDAGENS[r.hospedagem] && HOSPEDAGENS[r.hospedagem].checkout_ts);
+  const avisoTardio = _hospFechada
+    ? '<div style="background:#EEF6FF;border:1px solid #C7DAEC;border-radius:7px;padding:8px 12px;font-size:12px;color:#185FA5;margin-bottom:10px">ℹ️ <strong>Encerramento tardio</strong> — o check-out da hospedagem '+_vtEsc(String(r.hospedagem))+' já foi feito em <strong>'+_fmtDHRc(HOSPEDAGENS[r.hospedagem].checkout_ts)+'</strong>. O encerramento vale e fica registrado; o documento de fechamento já salvo não é alterado.</div>'
     : '';
 
   showM(''+
     '<div class="mt">⏱ Encerrar recarga — Vaga '+vagaId+'</div>' +
     '<div class="ms" style="background:#f5f4f0;border-radius:7px;padding:7px 10px;color:#1A2238;margin-bottom:10px"><strong>'+_vtEsc(carro)+'</strong>'+(veicLinha?' · '+_vtEsc(veicLinha):'')+'</div>' +
     alertaAtraso +
+    avisoTardio +
     corteHtml +
-    '<label class="fl">Horário a ser cobrado e registrado</label>' +
+    linhaInicio +
+    '<label class="fl">Data e hora a cobrar e registrar</label>' +
     '<div id="rc-enc-opcoes">' +
       _renderOpcao('programado','Cobrar até o horário programado') +
       _renderOpcao('agora','Cobrar até agora') +
@@ -15679,18 +16500,77 @@ function _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now){
     '</div>');
 
   setTimeout(function(){
-    const inputOutro = document.getElementById('rc-enc-outro-input');
-    if(inputOutro){
-      inputOutro.addEventListener('input', function(e){
-        _rcEncerrarEstado.opcoes.outro.hhmm = e.target.value;
-        _rcEncerrarEstado.opcoes.outro.fimMs = _hhmmParaMs(e.target.value);
-        _rcEncerrarAtualizarOpcoes();
-      });
-    }
+    _rcEncerrarLigarCampos();
     document.getElementById('rc-enc-confirmar')?.addEventListener('click', function(){
-      _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr);
+      // C4: nenhuma rejeição pode ficar sem dono neste fluxo. Sem este `.catch`,
+      // um `throw` no rabo da função virava unhandled rejection — invisível no
+      // tablet — e o botão parecia não responder.
+      try{
+        const p = _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr);
+        if(p && typeof p.catch === 'function') p.catch(function(e){ _rcEncerrarFalhou(vagaId, e); });
+      }catch(e){ _rcEncerrarFalhou(vagaId, e); }
     });
   }, 80);
+}
+
+// Liga os campos de "Outro horário" UMA VEZ. `change` e `input`: o primeiro é o
+// que o seletor nativo do Android dispara ao confirmar; o segundo cobre o
+// teclado. Nenhum dos dois re-renderiza controle — só recalcula.
+function _rcEncerrarLigarCampos(){
+  const st = _rcEncerrarEstado; if(!st) return;
+  const _ler = function(){
+    const dia = (document.getElementById('rc-enc-outro-dia')||{}).value || st.opcoes.outro.dia;
+    const hh  = (document.getElementById('rc-enc-outro-input')||{}).value || '';
+    st.opcoes.outro.dia  = dia;
+    st.opcoes.outro.hhmm = hh;
+    st.opcoes.outro.fimMs = hh ? _rcDataHoraParaMs(dia, hh) : NaN;
+    _rcEncerrarAtualizarOpcoes();
+  };
+  ['change','input'].forEach(function(ev){
+    document.getElementById('rc-enc-outro-dia')?.addEventListener(ev, _ler);
+    document.getElementById('rc-enc-outro-input')?.addEventListener(ev, _ler);
+  });
+}
+
+// O texto de uma opção. Ponto ÚNICO: a montagem e a atualização leem daqui, então
+// não existe mais um segundo desenho da mesma linha para divergir.
+function _rcSubDaOpcao(modo){
+  const st = _rcEncerrarEstado; if(!st) return '';
+  const op = st.opcoes[modo];
+  const sel = st.selecionada === modo;
+  if(modo === 'outro'){
+    // Não selecionada: convida a definir. Mostrar o valor calculado aqui faria
+    // "Outro horário" repetir, palavra por palavra, a linha de "Cobrar até
+    // agora" (é esse o padrão dela) — duas opções idênticas na tela.
+    if(!sel) return 'Defina a data e a hora manualmente';
+    const v = _rcValidarOutro();
+    if(!v.ok) return '<span style="color:#A32D2D">⚠️ '+v.erro+'</span>';
+  }
+  const fimMs = op.fimMs;
+  if(!isFinite(fimMs)) return '<span style="color:#A32D2D">⚠️ Informe a data e a hora</span>';
+  const c = calcValorRecarga(st.r.inicio_ts, fimMs);
+  // D1: com DATA. "Término: 04:20" era o texto que esconderia 24 h de diferença.
+  return 'Término: <strong>'+_fmtDHRc(fimMs)+'</strong> · '+_fmtDurRecarga(c.mins)+
+         ' · <strong>R$ '+c.valor.toFixed(2).replace('.',',')+'</strong>';
+}
+
+// D2 — validação do "Outro horário". Piso: DEPOIS do início. Teto: ≤ AGORA.
+// O teto é decisão registrada: a verificação mostrou que o código anterior
+// ACEITAVA futuro sem aviso (foi assim que o caso real cobrou um término em
+// D+1), e não havia nenhuma intenção de teto no código para preservar.
+// Não se cobra por tempo que ainda não passou.
+function _rcValidarOutro(){
+  const st = _rcEncerrarEstado;
+  if(!st) return { ok:false, erro:'estado perdido' };
+  const op = st.opcoes.outro;
+  if(!op.hhmm) return { ok:false, erro:'Informe a hora do término' };
+  const ms = _rcDataHoraParaMs(op.dia, op.hhmm);
+  if(!isFinite(ms)) return { ok:false, erro:'Data ou hora inválida' };
+  if(ms <= st.r.inicio_ts) return { ok:false, erro:'O término tem de ser depois do início ('+_fmtDHRc(st.r.inicio_ts)+')' };
+  // Compara com AGORA de verdade, não com o `now` congelado na abertura do modal
+  // — o operador pode ficar minutos na tela.
+  if(ms > _rcTruncMin(Date.now()) + 60000) return { ok:false, erro:'O término não pode ser no futuro' };
+  return { ok:true, fimMs:ms };
 }
 
 window._rcEncerrarSelecionar = function(modo){
@@ -15699,47 +16579,51 @@ window._rcEncerrarSelecionar = function(modo){
   _rcEncerrarAtualizarOpcoes();
 };
 
+// ATUALIZA, não re-renderiza. Mexe só em: classe de selecionado, visibilidade do
+// bloco de campos e o texto calculado de cada opção. Os controles (o `select` do
+// dia e o `input` da hora) NUNCA são recriados — é isso que mantém o foco e o
+// seletor nativo abertos enquanto o operador escolhe.
 function _rcEncerrarAtualizarOpcoes(){
-  if(!_rcEncerrarEstado) return;
+  const st = _rcEncerrarEstado; if(!st) return;
   const cont = document.getElementById('rc-enc-opcoes');
   if(!cont) return;
-  cont.innerHTML = ''+
-    _rcRenderUmaOpcao('programado','Cobrar até o horário programado') +
-    _rcRenderUmaOpcao('agora','Cobrar até agora') +
-    _rcRenderUmaOpcao('outro','Outro horário');
-  // re-anexa listener do input "outro"
-  const inputOutro = document.getElementById('rc-enc-outro-input');
-  if(inputOutro){
-    inputOutro.addEventListener('input', function(e){
-      _rcEncerrarEstado.opcoes.outro.hhmm = e.target.value;
-      _rcEncerrarEstado.opcoes.outro.fimMs = _hhmmParaMs(e.target.value);
-      _rcEncerrarAtualizarOpcoes();
-    });
-  }
+  ['programado','agora','outro'].forEach(function(modo){
+    const card = cont.querySelector('.rcp-opc-horario[data-modo="'+modo+'"]');
+    if(card) card.classList.toggle('selecionada', st.selecionada === modo);
+    const sub = document.getElementById('rc-enc-sub-'+modo);
+    if(sub) sub.innerHTML = _rcSubDaOpcao(modo);
+  });
+  const campos = document.getElementById('rc-enc-outro-campos');
+  if(campos) campos.style.display = (st.selecionada === 'outro') ? 'flex' : 'none';
 }
 
-function _rcRenderUmaOpcao(modo, titulo){
-  const st = _rcEncerrarEstado;
-  if(!st) return '';
-  const op = st.opcoes[modo];
-  const sel = st.selecionada === modo;
-  const {mins, valor} = calcValorRecarga(st.r.inicio_ts, op.fimMs);
-  const hhmm = _fmtHM(op.fimMs);
-  const outroInput = modo === 'outro'
-    ? '<input type="time" class="fi" id="rc-enc-outro-input" value="'+(st.opcoes.outro.hhmm||'')+'" style="margin-top:6px'+(sel?'':';display:none')+'">'
-    : '';
-  const sub = modo === 'outro' && !sel
-    ? 'Defina o horário manualmente'
-    : 'Término: <strong>'+hhmm+'</strong> · '+_fmtDurRecarga(mins)+' · <strong>R$ '+valor.toFixed(2).replace('.',',')+'</strong>';
-  return ''+
-    '<div class="rcp-opc-horario '+(sel?'selecionada':'')+'" data-modo="'+modo+'" onclick="_rcEncerrarSelecionar(\''+modo+'\')">' +
-      '<div class="rcp-opc-radio"></div>' +
-      '<div style="flex:1">' +
-        '<div style="font-size:13px;font-weight:700;color:#1A2238;margin-bottom:2px">'+titulo+'</div>' +
-        '<div class="rcp-opc-sub">'+sub+'</div>' +
-        outroInput +
-      '</div>' +
-    '</div>';
+// C4 — AVISO EXPLÍCITO. A regra: ou funciona, ou mostra por que não funcionou.
+// Nunca mais um modal congelado com o botão inerte.
+function _rcEncerrarFalhou(vagaId, e, jaGravado){
+  const motivo = (e && (e.message || e.name)) || String(e || 'erro desconhecido');
+  console.error('[RECARGA] encerramento —', motivo, e);
+  try{ closeOv(); }catch(x){}
+  _rcEncerrarEstado = null;
+  try{
+    addLogSistema('Falha no encerramento da recarga (vaga ' + vagaId + '): ' + motivo +
+      (jaGravado ? ' — a recarga JÁ FOI ENCERRADA e registrada; o que falhou foi o comprovante.' : ' — nada foi gravado.'),
+      {aud:true, acao:'recarga_encerrar_falhou', alvo:String(vagaId)});
+  }catch(x){}
+  const titulo = jaGravado ? '⚠️ Recarga encerrada — comprovante não gerado' : '⚠️ A recarga NÃO foi encerrada';
+  const corpo = jaGravado
+    ? 'A recarga foi <strong>encerrada e registrada</strong> (o valor está no histórico de recargas). ' +
+      'O que não deu foi gerar o comprovante em PDF.<br><br>Motivo: <code style="font-size:11px">' + _vtEsc(motivo) + '</code>' +
+      '<br><br>O documento pode ser gerado de novo pelo relatório de recargas.'
+    : 'Não foi possível encerrar a recarga, e <strong>nada foi alterado</strong>.' +
+      '<br><br>Motivo: <code style="font-size:11px">' + _vtEsc(motivo) + '</code>' +
+      '<br><br>Tente de novo. Se persistir, avise o suporte.';
+  try{
+    showM('<div class="mt">' + titulo + '</div>' +
+      '<div class="warn-box" style="font-size:12px">' + corpo + '</div>' +
+      '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
+  }catch(x){
+    try{ showToast('⚠️ ' + titulo + ' — ' + motivo, 8000); }catch(y){}
+  }
 }
 
 async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
@@ -15747,11 +16631,18 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   const op = st.opcoes[st.selecionada];
   let fimReal = op.fimMs;
   if(st.selecionada === 'outro'){
-    if(!st.opcoes.outro.hhmm){ showToast('Defina o horário em "Outro horário"',2500); return; }
-    fimReal = _hhmmParaMs(st.opcoes.outro.hhmm);
+    // v1.9.9.2 (D2): validação explícita, com a mensagem na própria tela. Antes
+    // o único piso era "início + 1 min" e o FUTURO passava sem aviso.
+    const v = _rcValidarOutro();
+    if(!v.ok){ showToast('⚠️ '+v.erro, 4000); _rcEncerrarAtualizarOpcoes(); return; }
+    fimReal = v.fimMs;
   }
   if(fimReal < r.inicio_ts + 60000) fimReal = r.inicio_ts + 60000; // mínimo 1min
   const {mins, horas, valor} = calcValorRecarga(r.inicio_ts, fimReal);
+  // C3: a hospedagem já estava encerrada? Fica dito no registro financeiro, na
+  // trilha e no histórico do GS. NÃO regera o PDF de fechamento já salvo —
+  // PDFs nunca são apagados nem substituídos.
+  const _tardio = !!(r.hospedagem && HOSPEDAGENS[r.hospedagem] && HOSPEDAGENS[r.hospedagem].checkout_ts);
   // Registrar no histórico
   const entrada = {
     vagaId, apt:r.apt, hospedagem:r.hospedagem,
@@ -15761,6 +16652,9 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
     modo_encerramento:st.selecionada,
     mins, horas, valor, valor_hora:RECARGA_CONFIG.valorHora, arredondamento:RECARGA_CONFIG.arredondamento,
     cortesia:(RECARGA_CONFIG.valorHora||0) === 0,
+    encerramento_tardio:_tardio,
+    motivo_tardio:_tardio?'encerramento tardio — hospedagem já encerrada':'',
+    hosp_checkout_ts:_tardio?HOSPEDAGENS[r.hospedagem].checkout_ts:null,
     usuario:usuarioStr, ts:Date.now()
   };
   if(typeof HISTORICO_RECARGAS !== 'undefined' && Array.isArray(HISTORICO_RECARGAS)) HISTORICO_RECARGAS.push(entrada);
@@ -15788,42 +16682,94 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   if(r.apt && typeof addHistorico==='function'){
     const valTxt = entrada.cortesia ? 'Cortesia' : ('R$ '+valor.toFixed(2).replace('.',','));
     const durTxt = (typeof _fmtDurRecarga==='function') ? _fmtDurRecarga(mins) : (mins+'min');
-    addHistorico(r.apt,'recarga_encerrada',vagaId,'Recarga encerrada · '+durTxt+' · '+valTxt,usuarioStr,r.hospedagem);
+    // v1.9.9.2 (D1): o detalhe traz início e término COM DATA — é este texto que
+    // o PDF de fechamento e os detalhes "ℹ️" renderizam.
+    const janela = _fmtDHRc(r.inicio_ts)+' → '+_fmtDHRc(fimReal);
+    addHistorico(r.apt,'recarga_encerrada',vagaId,
+      'Recarga encerrada · '+janela+' · '+durTxt+' · '+valTxt+
+      (_tardio?' · encerramento tardio — hospedagem já encerrada':''),
+      usuarioStr,r.hospedagem);
   }
-  // Liberar ponto: encerrar recarga
+  // C3: trilha de auditoria do encerramento tardio. Separada do histórico porque
+  // a trilha é append-only e não pode ser editada nem pelo gestor.
+  if(_tardio){
+    try{
+      addLogSistema('Recarga encerrada APÓS o check-out da hospedagem '+r.hospedagem+
+        ' (vaga '+vagaId+'): cobrado até '+_fmtDHRc(fimReal)+' · '+_fmtDurRecarga(mins)+
+        ' · R$ '+valor.toFixed(2).replace('.',',')+
+        ' · motivo: encerramento tardio — hospedagem já encerrada',
+        {aud:true, quem:(usuario&&usuario.nome)||usuarioStr||'', acao:'recarga_encerrada_tardia',
+         alvo:String(r.hospedagem||vagaId)});
+    }catch(e){}
+  }
+  // ══════════════════════════════════════════════════════════════════════════
+  // v1.9.9.2 (C4) — A GRAVAÇÃO, E SÓ DEPOIS O MODAL SAI.
+  // ══════════════════════════════════════════════════════════════════════════
+  // Antes, `closeOv()` só vinha DEPOIS de `ref`, `_gsBackupAuto` e
+  // `buildRecargaDoc` — os três desprotegidos, dentro de um `async` chamado sem
+  // `await` nem `.catch()`. Medido na verificação: um `throw` em qualquer um dos
+  // três deixava o modal EXATAMENTE como estava, sem aviso nenhum, enquanto a
+  // recarga JÁ estava encerrada em disco. Era isso o "botão não respondeu".
+  //
+  // Agora: grava → fecha o modal → tudo o que vem depois é acessório e
+  // protegido. Falha dali para frente avisa, e diz que a recarga já foi
+  // encerrada (ela foi).
   RECARGAS[vagaId].ativo = false;
   RECARGAS[vagaId].confirmada = true;
   RECARGAS[vagaId].fim_ts = fimReal;
   saveRecargas();
-  // v1.9.6.1: cancela o agendamento nativo — a recarga acabou, e uma notificação
-  // chegando depois disso seria pior do que não avisar.
-  try{ _rcCancelarNotificacao(vagaId); }catch(e){}
-  try{ if(_recTimers[vagaId]){ clearTimeout(_recTimers[vagaId]); delete _recTimers[vagaId]; } }catch(e){}
-  _gsBackupAuto('recarga encerrada '+vagaId); // v1.9.4.11
-  try{ _hhjMarcar(r && r.hospedagem, 'recarga encerrada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
-  if(typeof ref === 'function') ref(vagaId);
-  if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
-  // PDF
-  const docPdf = buildRecargaDoc([entrada]);
-  const nome = 'Recarga_'+r.apt+'_'+fmtNomeData(r.inicio_ts)+'_GarageSpot';
   closeOv();
   _rcEncerrarEstado = null;
+
+  // Daqui para baixo nada pode derrubar o fluxo: a verdade já está gravada.
+  try{ _rcCancelarNotificacao(vagaId); }catch(e){}
+  try{ if(_recTimers[vagaId]){ clearTimeout(_recTimers[vagaId]); delete _recTimers[vagaId]; } }catch(e){}
+  // v1.9.9.1: o backup é o elo com histórico de estourar memória neste tablet —
+  // e era o suspeito nº 1 do travamento. Protegido.
+  try{ _gsBackupAuto('recarga encerrada '+vagaId); }catch(e){ console.warn('[RECARGA] backup pós-encerramento falhou:', e && e.message); }
+  try{ _hhjMarcar(r && r.hospedagem, 'recarga encerrada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
+  try{ if(typeof ref === 'function') ref(vagaId); }catch(e){ console.warn('[RECARGA] redesenho da vaga falhou:', e && e.message); }
+  try{ if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga(); }catch(e){ console.warn('[RECARGA] redesenho da tela falhou:', e && e.message); }
+
+  // PDF — acessório. A recarga está encerrada e o valor está no histórico
+  // financeiro; se o comprovante não sair, isso é DITO, não escondido.
+  let docPdf = null, nome = '';
+  try{
+    docPdf = buildRecargaDoc([entrada]);
+    nome = 'Recarga_'+r.apt+'_'+fmtNomeData(r.inicio_ts)+'_GarageSpot';
+  }catch(e){
+    _rcEncerrarFalhou(vagaId, e, true);
+    _rcDispararRetomada();
+    return;
+  }
   // v1.9.6.1: mesmo padrão do fechamento de hospedagem — SEMPRE salva no dispositivo,
   // e compartilhar é ação adicional. Antes só oferecia compartilhar, e quem quisesse
   // apenas guardar o comprovante não tinha como.
   if(docPdf){
-    // A entrega resolve assim que o arquivo está salvo; a oferta da fila espera o
-    // modal sair da tela, para os dois não disputarem o overlay.
-    const _ent = await _pdfEntregar('Registro de Recarga', docPdf, nome,
-      'Vaga '+vagaId+' · Apt '+(r.apt||'—')+' · R$ '+valor.toFixed(2).replace('.',','),
-      function(){ try{ _verificarFilaRecarga(vagaId); }catch(e){} });
-    // v1.9.6.6: entra no registro de documentos do aparelho. Sem registro não há
-    // confirmação na nuvem, e sem confirmação a limpeza nunca o alcança.
-    try{ if(_ent && _ent.salvo && _ent.nome) _gsRegistrarPDFLocal(_ent.nome, 'recarga'); }catch(e){}
+    try{
+      // A entrega resolve assim que o arquivo está salvo; a oferta da fila espera o
+      // modal sair da tela, para os dois não disputarem o overlay.
+      const _ent = await _pdfEntregar('Registro de Recarga', docPdf, nome,
+        'Vaga '+vagaId+' · Apt '+(r.apt||'—')+' · R$ '+valor.toFixed(2).replace('.',','),
+        function(){
+          try{ _verificarFilaRecarga(vagaId); }catch(e){}
+          // C2: concluído o encerramento, VOLTA À AÇÃO ORIGINAL do ponto onde
+          // parou — sem redigitar nada. Aqui, porque é quando o modal do
+          // comprovante efetivamente sai da tela.
+          _rcDispararRetomada();
+        });
+      // v1.9.6.6: entra no registro de documentos do aparelho. Sem registro não há
+      // confirmação na nuvem, e sem confirmação a limpeza nunca o alcança.
+      try{ if(_ent && _ent.salvo && _ent.nome) _gsRegistrarPDFLocal(_ent.nome, 'recarga'); }catch(e){}
+    }catch(e){
+      _rcEncerrarFalhou(vagaId, e, true);
+      _rcDispararRetomada();
+    }
   }
   else {
     showToast('Recarga encerrada — R$ '+valor.toFixed(2).replace('.',','),3500);
-    _verificarFilaRecarga(vagaId);
+    try{ _verificarFilaRecarga(vagaId); }catch(e){}
+    _rcDispararRetomada();
   }
 }
 
@@ -15904,7 +16850,7 @@ function renderTelaRecarga(){
       const statusTxt  = concluido ? '✓ Concluído' : '⚡ Ativo';
       const cardCls    = concluido ? 'rcp-card concluido' : 'rcp-card ativo';
       const linhaDest  = concluido
-        ? '<div class="rcp-info-row destaque"><span>Concluído</span><strong class="restante">'+_fmtHM(r.fim_ts)+'</strong></div>'
+        ? '<div class="rcp-info-row destaque"><span>Concluído</span><strong class="restante">'+_fmtDHRc(r.fim_ts)+'</strong></div>'
         : '<div class="rcp-info-row destaque"><span>Restante</span><strong class="restante">'+_fmtDurRecarga(rem)+'</strong></div>';
       // v1.9.6.1: "Prolongar" ao lado do botão principal, nos DOIS estados. É ao
       // CONCLUIR que se decide continuar (o hóspede pede mais tempo), e o manobrista
@@ -15928,8 +16874,8 @@ function renderTelaRecarga(){
           '<div class="rcp-bateria-big '+bateriaCls+'"><div class="rcp-bateria-big-nivel"></div>'+checkSuffix+'</div>' +
           '<div class="rcp-info">' +
             '<div class="rcp-info-row"><span>Carro</span><strong>'+_vtEsc(carro)+'</strong></div>' +
-            '<div class="rcp-info-row"><span>Início</span><strong>'+_fmtHM(r.inicio_ts)+'</strong></div>' +
-            '<div class="rcp-info-row"><span>Término previsto</span><strong>'+_fmtHM(r.fim_ts)+'</strong></div>' +
+            '<div class="rcp-info-row"><span>Início</span><strong>'+_fmtDHRc(r.inicio_ts)+'</strong></div>' +
+            '<div class="rcp-info-row"><span>Término previsto</span><strong>'+_fmtDHRc(r.fim_ts)+'</strong></div>' +
             linhaDest +
           '</div>' +
           botaoCard +
@@ -15975,8 +16921,13 @@ function renderTelaRecarga(){
     return ''+
       '<div class="rcp-ativa'+bordaCls+'">' +
         '<div>' +
-          '<div class="rcp-ativa-titulo"><span class="rcp-ativa-tag">'+vagaId+'</span>'+_vtEsc(carro)+'</div>' +
-          '<div class="rcp-ativa-det">Início '+_fmtHM(r.inicio_ts)+' · término previsto '+_fmtHM(r.fim_ts)+(r.usuario?' · '+_vtEsc(r.usuario):'')+'</div>' +
+          '<div class="rcp-ativa-titulo"><span class="rcp-ativa-tag">'+vagaId+'</span>'+_vtEsc(carro)+
+            // v1.9.9.2 (C1): a recarga sem hospedagem identificada é DITA. Ela
+            // continua encerrável (é dinheiro sendo medido), mas o gestor vê que
+            // o vínculo está aberto em vez de descobrir no fim do mês.
+            (r._semgs?'<span style="font-size:9px;background:#FFF3E0;color:#BF360C;border-radius:3px;padding:1px 4px;font-weight:700;margin-left:4px" title="Recarga sem hospedagem identificada">⚠️ sem GS</span>':'')+
+            (r.hospedagem&&!r._semgs?'<span style="font-size:9px;color:#5A6478;margin-left:4px">'+_vtEsc(String(r.hospedagem))+'</span>':'')+'</div>' +
+          '<div class="rcp-ativa-det">Início '+_fmtDHRc(r.inicio_ts)+' · término previsto '+_fmtDHRc(r.fim_ts)+(r.usuario?' · '+_vtEsc(r.usuario):'')+'</div>' +
           '<div class="rcp-progresso"><div class="rcp-progresso-barra" style="width:'+pct.toFixed(1)+'%"></div></div>' +
         '</div>' +
         '<div class="rcp-tempo">' +
@@ -15991,7 +16942,7 @@ function renderTelaRecarga(){
 
   // Fila
   function _renderFila(f,i){
-    const sub = 'Vaga '+f.vagaId+(f.ts_pedido?' · aguardando desde '+_fmtHM(f.ts_pedido):'');
+    const sub = 'Vaga '+f.vagaId+(f.ts_pedido?' · aguardando desde '+_fmtDHRc(f.ts_pedido):'');
     return ''+
       '<div class="rcp-fila">' +
         '<div class="rcp-fila-pos">'+(i+1)+'</div>' +
@@ -16012,7 +16963,7 @@ function renderTelaRecarga(){
     ? '<div style="color:#8892A6;font-size:12px;text-align:center;padding:14px;background:#fff;border-radius:10px">Sem histórico</div>'
     : hist.map(function(h){
         const dur = h.mins || 0;
-        const dataFmt = _fmtDM(h.inicio_ts)+' '+_fmtHM(h.inicio_ts)+' → '+_fmtHM(h.fim_ts);
+        const dataFmt = _fmtDHRc(h.inicio_ts)+' → '+_fmtDHRc(h.fim_ts);
         const veic = [h.model, h.color].filter(Boolean).join(' ');
         const titulo = 'Vaga '+h.vagaId+' · Apt '+_vtEsc(h.apt||'')+(veic?' · '+_vtEsc(veic):'');
         const valorTxt = (h.cortesia || h.valor === 0) ? 'Cortesia' : 'R$ '+(h.valor||0).toFixed(2).replace('.',',');
@@ -16492,7 +17443,7 @@ function _rcConfirmacaoFinal(carro, fimMs){
     '<div class="mt">⚡ Confirmar início?</div>' +
     '<div style="background:#F2FBF6;border:1px solid #C7EBD9;border-radius:8px;padding:11px 13px;margin-bottom:10px">' +
       '<div style="font-size:13px;font-weight:700;color:#1A2238">Apt '+_vtEsc(carro.apt||'')+(veic?' · '+_vtEsc(veic):'')+'</div>' +
-      '<div style="font-size:12px;color:#5A6478;margin-top:2px">Vaga '+vp+' · '+_fmtDurRecarga(totalMin)+' · Término: '+_fmtHM(fimMs)+'</div>' +
+      '<div style="font-size:12px;color:#5A6478;margin-top:2px">Vaga '+vp+' · '+_fmtDurRecarga(totalMin)+' · Término: '+_fmtDHRc(fimMs)+'</div>' +
       '<div style="font-size:15px;font-weight:800;color:#1F9A5F;margin-top:8px">R$ '+valor.toFixed(2).replace('.',',')+'</div>' +
     '</div>' +
     '<div class="b2">' +
@@ -16772,6 +17723,19 @@ function buildRecargaDoc(entradas){
   if(!cortesia){
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(133,79,11);
     doc.text('Informar ao recepcionista: lancar R$ '+total.toFixed(2).replace('.',',')+' no Apt. '+apt+' referente a recarga de veiculo.',105,finalY+12,{align:'center'});
+  }
+  // v1.9.9.2 (C3): o ENCERRAMENTO TARDIO fica dito no próprio comprovante. É
+  // assim que ele fica documentado sem tocar no PDF de fechamento já salvo —
+  // PDFs nunca são apagados nem substituídos. O comprovante de recarga é um
+  // documento NOVO, com data de emissão posterior ao check-out, e quem o abrir
+  // entende por que ele existe depois do fechamento.
+  const _tard = entradas.filter(function(e){ return e && e.encerramento_tardio; });
+  if(_tard.length){
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(24,95,165);
+    const _qdo = _tard[0].hosp_checkout_ts ? (' O check-out foi em ' + _dtLocal(_tard[0].hosp_checkout_ts) + '.') : '';
+    const _msg = _pdfTxt('Encerramento tardio: a recarga foi encerrada apos o check-out da hospedagem.' + _qdo +
+      ' O documento de fechamento ja emitido nao foi alterado.');
+    doc.text(_msg, 105, finalY + (cortesia ? 12 : 18), {align:'center', maxWidth:185});
   }
   doc.setTextColor(0,0,0);
   _pdfFooter(doc);
@@ -19700,7 +20664,7 @@ function getAnexos(id, fromPasseio){
 
 function autoRenameAnexo(id, fromPasseio, file){
   if(!file.type.startsWith('image/')) return file.name;
-  const apt = fromPasseio ? id : (S[id]?.apt||'');
+  const apt = fromPasseio ? (PASSEIO[id]?.apt||'') : (S[id]?.apt||'');
   // v1.9.7.0: o nome do arquivo também é vínculo — resolve pelo GS, não pelo
   // ponteiro cru da vaga, senão a foto da vaga grande sai sem o número da
   // hospedagem no nome.
@@ -19747,7 +20711,7 @@ function addAnexo(id, fromPasseio, file){
       });
       saveAnexos();
       // Registra no histórico
-      const apt = fromPasseio ? id : (S[id]?.apt||'');
+      const apt = fromPasseio ? (PASSEIO[id]?.apt||'') : (S[id]?.apt||'');
       const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
       if(apt) addHistorico(apt,'edicao',fromPasseio?'':id,`Foto adicionada: ${nome}`,'',hospNum);
       // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto nova entra no documento vivo.
@@ -19764,7 +20728,7 @@ function removeAnexo(id, fromPasseio, idx){
     const nome = ANEXOS[key][idx]?.name||'';
     ANEXOS[key].splice(idx,1);
     saveAnexos();
-    const apt = fromPasseio ? id : (S[id]?.apt||'');
+    const apt = fromPasseio ? (PASSEIO[id]?.apt||'') : (S[id]?.apt||'');
     const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
     if(apt && nome) addHistorico(apt,'edicao',fromPasseio?'':id,`Foto removida: ${nome}`,'',hospNum);
     // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto removida também altera o documento vivo.
@@ -19812,7 +20776,7 @@ function renderAnexosArea(id, fromPasseio, containerId){
         <div class="attach-actions">
           ${(()=>{
             // v1.9.4.1.4: 📋 abre menu de vistorias da hospedagem (lista + Nova Vistoria)
-            const _ap=fromPasseio?id:(S[id]?.apt||'');
+            const _ap=fromPasseio?(PASSEIO[id]?.apt||''):(S[id]?.apt||'');
             const _hosp=fromPasseio?(PASSEIO[id]?.hospedagem||''):(S[id]?.hospedagem||'');
             const _vist=_listarVistoriasDaHosp(_hosp,_ap);
             const _hasPend=_vist.some(function(v){return v.assinatura_pendente&&!v.ts_assinada;});
@@ -19916,7 +20880,7 @@ window.delAtt = function(id, fp, idx, containerId){
           ANEXOS[key].splice(idx,1);
           saveAnexos();
         }
-        const apt = fromPasseio ? id : (S[id]?.apt||'');
+        const apt = fromPasseio ? (PASSEIO[id]?.apt||'') : (S[id]?.apt||'');
         const hospNum = _gsDaVaga(id, fromPasseio);
         if(apt && typeof addHistorico==='function'){
           addHistorico(apt,'exclusao_anexo',fromPasseio?'':id,'Exclusão de anexo — gestor (via senha PIN): '+nomeReal,'Gestor (via senha PIN)',hospNum);
@@ -20568,13 +21532,33 @@ function applySnapshot(data){
     S[id].hospedagem   = saved.hospedagem   || '';
   });
   if(data.passeio){
-    Object.entries(data.passeio).forEach(([apt,d])=>{
-      PASSEIO[apt] = {
+    // ══════════════════════════════════════════════════════════════════════
+    // v1.9.9.2 — RETROCOMPATIBILIDADE (B2). Um backup ANTERIOR a esta versão
+    // traz o passeio indexado por APARTAMENTO. Normalizar aqui é obrigatório:
+    // sem isto, restaurar um arquivo antigo reintroduziria a estrutura legada
+    // num app que só sabe ler a nova — os carros a passeio desapareceriam da
+    // tela sem nada ter sido apagado. Passa pela MESMA função da migração do
+    // init, então as duas pontas não podem divergir.
+    // ══════════════════════════════════════════════════════════════════════
+    let _entrada = data.passeio;
+    try{
+      const _m = _gsPasseioMigrar(JSON.parse(JSON.stringify(data.passeio)));
+      // Falha na validação → entra o bruto, como antes (nada se perde); a
+      // migração do init tenta de novo depois e registra se não der.
+      if(_m.ok) _entrada = _m.novo;
+      else console.warn('[RESTAURAR] passeio não normalizado:', _m.erro);
+    }catch(e){ console.warn('[RESTAURAR] passeio não normalizado:', e && e.message); }
+    Object.entries(_entrada).forEach(([k,d])=>{
+      PASSEIO[k] = {
+        apt:d.apt||'',
         model:d.model||'', color:d.color||'', plate:d.plate||'',
         guest:d.guest||'', obs:d.obs||'', lastVaga:d.lastVaga||'',
         size:d.size||'small', hospedagem:d.hospedagem||'',
         saida_ts:d.saida_ts||null,
       };
+      // Preserva as marcas da quarentena — são elas que fazem o registro
+      // aparecer como "pendente de identificação" em vez de sumir.
+      if(d._quarentena){ PASSEIO[k]._quarentena = true; PASSEIO[k]._quarentena_apt = d._quarentena_apt||d.apt||''; }
     });
   }
   return true;
@@ -20872,6 +21856,15 @@ checkLicense().then(async (ativo)=>{
       // v1.9.7.0: reancora anexos mal-vinculados ao GS correto ANTES que
       // qualquer check-out apague. Roda uma vez só; não destrutiva; idempotente.
       try { _gsMigrarVinculoAnexos(); } catch(e){ console.warn('[MIGR v1970] pós-init:', e); }
+      // ══════════════════════════════════════════════════════════════════
+      // v1.9.9.2 (B2 / C1) — PASSEIO POR GS E VÍNCULO DAS RECARGAS.
+      // DEPOIS de `_GS_PRONTO` (os dados reais já estão em memória; antes disso
+      // `PASSEIO` está vazio e a migração gravaria o nada por cima) e DEPOIS de
+      // `loadHospedagens`, que é a fonte do resolvedor. As duas são não
+      // destrutivas, validadas e idempotentes; falha NÃO grava e AVISA.
+      // ══════════════════════════════════════════════════════════════════
+      try { _gsMigrarPasseioParaGs(); } catch(e){ console.warn('[MIG passeio] pós-init:', e); }
+      try { _gsMigrarRecargaGs(); } catch(e){ console.warn('[MIG recarga] pós-init:', e); }
       // v1.9.8.0: rascunho de check-in já concluído sai em silêncio (regra do
       // Douglas: o rascunho morre quando o GS nasce). Depende de HOSPEDAGENS já
       // estar carregado — por isso aqui, e não antes.
