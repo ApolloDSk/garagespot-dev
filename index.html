@@ -1350,9 +1350,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.9.2';
-const GS_VERSION_CODE = 29;
-const GS_BUILD_TS = '2026-10-06';
+const GS_VERSION = 'v1.9.9.3';
+const GS_VERSION_CODE = 30;
+const GS_BUILD_TS = '2026-10-14';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -1442,9 +1442,13 @@ function _dtLocalCurta(ts){ return _dLocalCurta(ts) + ', ' + _hLocal(ts); }
 // Sem ano de propósito: a recarga é um evento de horas, e o dia já desfaz toda
 // a ambiguidade que existia. O PDF (documento financeiro, lido meses depois)
 // continua com o ano, por `_dtLocal`.
+// v1.9.9.3: COM O ANO — 'DD/MM/AAAA HH:MM' (pedido do Douglas). A recarga pode
+// atravessar a virada do ano e a tela é lida dias depois; sem o ano, 02/01 é
+// ambíguo. Continua sendo a fonte ÚNICA de data/hora da recarga na tela (card,
+// encerrar, prolongar, aviso de trava, alarme/notificação e o texto do evento).
 function _fmtDHRc(ts){
   try{ const d = _dtObj(ts); if(!ts || isNaN(d.getTime())) return '—';
-    return _p2GS(d.getDate()) + '/' + _p2GS(d.getMonth()+1) + ' ' + _hLocal(d); }catch(e){ return '—'; }
+    return _dLocal(d) + ' ' + _hLocal(d); }catch(e){ return '—'; }
 }
 const _GS_DIAS_ABREV  = ['dom.','seg.','ter.','qua.','qui.','sex.','sáb.'];
 const _GS_MESES_ABREV = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
@@ -3380,7 +3384,9 @@ function perguntarCheckin(vagaId, apt, model, color, plate, guest, obs){
   if(_nciFechandoGuard){ console.log('[BUG T] perguntarCheckin bloqueado pelo escudo'); return; }
   const mc=document.getElementById('mc');
   // Verifica se apt já tem histórico ativo (sem checkout)
-  const hist=HISTORICO[apt]||[];
+  // v1.9.9.3: o histórico do apto não é mais zerado no check-in — o mesmo
+  // recorte de antes vem de `_histAptDesdeUltimoCheckin`.
+  const hist=_histAptDesdeUltimoCheckin(apt);
   const temHistoricoAtivo=hist.length>0 && !hist.some(e=>e.tipo==='checkout');
   // Se já tem histórico ativo, registra como retorno normal sem perguntar
   if(temHistoricoAtivo){
@@ -3448,6 +3454,12 @@ function _perguntarSaidaPrevista(apt, onOk, onVoltar){
 
 function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevista){
   const d=S[id];
+  // v1.9.9.3: o GS é decidido ANTES de tocar na vaga — se ele já existir, nada muda.
+  let numH='';
+  if(isCheckin){
+    numH=nextNumHospedagem();
+    if(_gsRecusarGSExistente(numH,'check-in pela vaga')){ try{ closeOv(); }catch(e){} return; }
+  }
   d.apt=String(apt||'');d.model=String(model||'');d.color=String(color||'');
   d.plate=String(plate||'');d.guest=String(guest||'');d.obs=String(obs||'');d.status='occupied';
   if(id.endsWith('A')){
@@ -3465,7 +3477,6 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
   }
   const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
   if(isCheckin){
-    const numH=nextNumHospedagem();
     d.hospedagem=numH;
     _gsSincronizarHospPares(id);   // v1.9.7.0: vaga grande — a célula TOCADA tem de carregar o GS
     // v1.9.4.11 (Bug B): ponto único de criação — `saida_prevista` SEMPRE gravada.
@@ -3722,6 +3733,181 @@ function _doOutExec(id, aptKey, hospNum, usuarioStr){
   }
 }
 
+// v1.9.9.3: o retrato dos anexos ANTES de qualquer apagamento (Bug Q, v1.9.4.1.7),
+// extraído para servir aos dois check-outs. `vagaId` vazio (passeio) = só `h_<gs>`.
+function _gsSnapshotAnexosCheckout(id, hospNum){
+  const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[], recargas:[], todos:[] };
+  (function(){
+    // v1.9.4.5: tudo no ID estável da hospedagem (h_<gs>); ainda dobra v_<id> legado.
+    const keyV=id?('v_'+id):'';   // v1.9.9.3: sem vaga (passeio) não há balde legado de vaga
+    const keyH='h_'+(hospNum||'');
+    const todos=((keyV&&ANEXOS[keyV])||[]).concat(ANEXOS[keyH]||[]);
+    // Parte 5 v1.9.4.8: guarda a lista COMPLETA — o PDF de check-out precisa ser
+    // completo (todos os anexos, inclusive PDFs/docs via "Arquivo"). Nada pode sumir.
+    _snapshotAnexosCheckout.todos=todos.slice();
+    _snapshotAnexosCheckout.fotos=todos.filter(function(a){
+      if(!a) return false;
+      const ehFoto=a.tipo==='foto' || (a.isImg===true && a.tipo!=='vistoria' && !a.tipo);
+      return ehFoto && !!(a.data||a.base64Original);
+    });
+    _snapshotAnexosCheckout.vistorias=todos.filter(function(a){
+      return a && a.tipo==='vistoria' && !!(a.data||a.base64Original);
+    });
+    // Parte 3 v1.9.4.5: documentos de recarga também entram no PDF de check-out
+    _snapshotAnexosCheckout.recargas=todos.filter(function(a){
+      return a && a.tipo==='recarga' && !!(a.data||a.base64Original);
+    });
+    console.log('[BUG Q] snapshot:', _snapshotAnexosCheckout.fotos.length, 'fotos +', _snapshotAnexosCheckout.vistorias.length, 'vistorias +', _snapshotAnexosCheckout.recargas.length, 'recargas ANTES de deletar');
+  })();
+  return _snapshotAnexosCheckout;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.3 — O DOCUMENTO DE FECHAMENTO É UM SÓ, PARA OS DOIS CHECK-OUTS
+// ════════════════════════════════════════════════════════════════════════════
+// Extraído de dentro do `_chkExec` (check-out pela vaga) SEM mudar uma linha da
+// lógica, para o check-out A PASSEIO (`showPasseioCheckout`) passar a usar EXATAMENTE
+// o mesmo caminho: backup completo, retirada do Hospedados Hoje, PDF montado e
+// salvo no aparelho, registro em `garagespot_pdfs_local`, envio ao Drive e — só
+// DEPOIS do PDF salvo — a limpeza do balde `h_<gs>`. Até a v1.9.9.2 o check-out a
+// passeio fechava a hospedagem sem documento nenhum.
+// ctx: {hospNum, apt, vaga, dv, hist, snapshot, anexos}. `vaga` é '' no passeio.
+function _gsDocumentoDeFechamento(ctx){
+  ctx = ctx || {};
+  const hospNum = ctx.hospNum || '';
+  const aptKey  = ctx.apt || '';
+  const id      = ctx.vaga || '';
+  const dvChk   = ctx.dv || {};
+  const histChk = ctx.hist || [];
+  const anexosChk = ctx.anexos || [];
+  const _snapshotAnexosCheckout = ctx.snapshot || _gsSnapshotAnexosCheckout(id, hospNum);
+  const _resChk = {gs:hospNum, ambiguo:false, candidatos:[], origem:'checkout'};
+  // v1.9.4.11: check-out é evento crítico → backup COMPLETO (com fotos) agora
+  _gsBackupAuto('check-out '+(hospNum||aptKey), {completo:true});
+  // v1.9.6.6: o provisório sai de `Hospedados Hoje` — NENHUM hóspede que já
+  // saiu pode continuar lá. Disparado e esquecido: se a rede falhar agora, a
+  // conferência do tique retira depois. Nada disto pode atrasar o check-out.
+  try{ if(hospNum) _hhjRetirar(hospNum); }catch(eHhj){ console.warn('[HHJ] retirada não agendada:',eHhj&&eHhj.message); }
+  // Parte 1 v1.9.4.9: o PDF de check-out é SALVO NO DISPOSITIVO automaticamente
+  // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
+  // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
+  // no navegador, baixa o arquivo. O snapshot preserva os anexos (já deletados acima).
+  // ══════════════════════════════════════════════════════════════════
+  // v1.9.4.12: a montagem do PDF era SÍNCRONA e acontecia AQUI, antes do
+  // modal aparecer — a tela ficava congelada durante todo o processo.
+  // Agora o modal abre na hora, com barra de progresso, e o documento é
+  // montado em etapas assíncronas com as imagens já comprimidas.
+  // v1.9.6.6: os TRÊS botões viraram DOIS — [OK] e [Compartilhar PDF]. Os três
+  // anteriores ofereciam uma escolha que não existia: o app SEMPRE salvou no
+  // dispositivo e SEMPRE mandou para a nuvem, nas três opções. "Salvar" e
+  // "Fechar" faziam a mesma coisa, e "Salvar" ainda insinuava que sem apertá-lo
+  // o documento se perderia. Agora a mensagem diz o que já aconteceu (aparelho
+  // E nuvem) e os botões só decidem se o manobrista quer compartilhar também.
+  // ══════════════════════════════════════════════════════════════════
+  // v1.9.5.2: o nome traz as DUAS pontas da hospedagem; a data de check-in vem
+  // de HOSPEDAGENS (já disponível aqui — o bloco acima grava usuario_checkout).
+  const _coCheckinTs=(HOSPEDAGENS[hospNum]&&HOSPEDAGENS[hospNum].checkin_ts)||null;
+  const _coNome=fmtNomeCheckout(aptKey,hospNum,Date.now(),_coCheckinTs);
+  showM(`<div class="mt">✅ Check-out realizado!</div>
+    <div class="ms">Hospedagem ${hospNum||'s/n'} · Apt. ${aptKey}<br>${dvChk.guest||'Hóspede não identificado'}</div>
+    <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">📄 Preparando o documento…</div>
+    <div id="co-prog-wrap" style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin:-4px 0 10px"><div id="co-prog" style="background:#185FA5;height:100%;width:0%;transition:width .2s"></div></div>
+    <div class="ag" id="co-acoes" style="display:none">
+      <button class="bsv" id="co-ok">OK</button>
+      <button class="bcx" id="co-share" style="margin-top:4px">📤 Compartilhar PDF</button>
+    </div>`);
+  (async()=>{
+    const _st=function(){ return document.getElementById('co-save-status'); };
+    const _prog=function(p){
+      const b=document.getElementById('co-prog'); if(b) b.style.width=Math.round(p)+'%';
+    };
+    let _coConteudo=null, _salvo=null, _coNuvem='';
+    try{
+      const doc=await buildRegistroDocAsync(aptKey,dvChk,histChk,_snapshotAnexosCheckout,function(feitos,total){
+        const el=_st(); if(el) el.textContent='📄 Preparando imagens… ('+feitos+' de '+total+')';
+        _prog(total?(feitos/total)*90:90);
+      });
+      _coConteudo=doc||buildRegistroHTML(aptKey,dvChk,histChk,anexosChk);
+    }catch(e){
+      console.error('[PDF checkout] montagem falhou, usando fallback HTML:',e);
+      try{ _coConteudo=buildRegistroHTML(aptKey,dvChk,histChk,anexosChk); }catch(e2){}
+    }
+    _prog(95);
+    const el2=_st(); if(el2) el2.textContent='💾 Salvando no dispositivo…';
+    // O app SEMPRE salva no dispositivo E SEMPRE manda para a nuvem — os botões
+    // não decidem nada disso, e é por isso que agora são só dois.
+    if(_coConteudo){
+      _salvo=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
+      // v1.9.5.2: cópia para a nuvem SÓ DEPOIS de o arquivo estar no dispositivo,
+      // e fire-and-forget — falha de rede não trava, não reverte e não atrasa o
+      // check-out. Sem Drive conectado, entra na fila de pendentes.
+      try{
+        if(_salvo&&_salvo.sucesso&&typeof _coConteudo.output==='function'){
+          const _b64=_coConteudo.output('datauristring').split(',')[1];
+          // v1.9.6.6: o PDF entra no registro de documentos do aparelho ANTES de
+          // qualquer tentativa de envio. Sem registro não há confirmação, e sem
+          // confirmação a limpeza nunca o alcança — é essa a ordem segura.
+          try{ _gsRegistrarPDFLocal(_salvo.nome,'fechamento'); }catch(eR){}
+          _gdEspelharPDFFechamento(_salvo.nome,_b64,aptKey,_coCheckinTs);
+          _coNuvem=_gdConectado()?' · enviando para a nuvem':' · na fila para a nuvem';
+        }
+      }catch(ePdfNuvem){ console.warn('[DRIVE] PDF de fechamento não agendado:',ePdfNuvem&&ePdfNuvem.message); }
+    }
+    // ══════════════════════════════════════════════════════════════════
+    // v1.9.7.0 — DOCUMENTAÇÃO É SAGRADA. Os anexos só são apagados DEPOIS de
+    // o PDF de fechamento estar gerado e salvo. Se o documento não saiu, os
+    // anexos FICAM: um balde a mais é recuperável, uma foto perdida não é.
+    // ══════════════════════════════════════════════════════════════════
+    if(_salvo && _salvo.sucesso){
+      _gsApagarAnexosDoCheckout(_resChk, {vaga:id, apt:aptKey});
+    } else {
+      console.warn('[CHECKOUT] PDF não salvo — anexos PRESERVADOS');
+      try{
+        addLogSistema('Apagamento de anexos ABORTADO no check-out — o PDF de fechamento não foi salvo (vaga '+id+', apto '+aptKey+'). Os anexos foram PRESERVADOS.',
+          {aud:true, acao:'checkout_anexo_abortado', alvo:(hospNum||aptKey), origem:'automatico'});
+      }catch(eAb){}
+    }
+    _prog(100);
+    const pw=document.getElementById('co-prog-wrap'); if(pw) pw.style.display='none';
+    const acoes=document.getElementById('co-acoes'); if(acoes) acoes.style.display='';
+    const el=_st();
+    if(el){
+      if(_salvo&&_salvo.sucesso){
+        el.style.cssText='background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
+        // A mensagem verde diz as DUAS pontas — aparelho e nuvem —, que é o que
+        // o manobrista precisa saber para poder simplesmente apertar OK.
+        el.textContent=(_salvo.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+_salvo.nome:'✅ PDF baixado · '+_salvo.nome)+_coNuvem;
+      } else {
+        el.style.cssText='background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
+        el.textContent='⚠️ Não foi possível salvar automaticamente — use "Compartilhar PDF" para guardar o documento.';
+      }
+    }
+    const bs=document.getElementById('co-ok');
+    if(bs) bs.onclick=function(){ closeOv(); };
+    const bc=document.getElementById('co-share');
+    if(bc) bc.onclick=async function(){
+      // v1.9.4.12: compartilha o arquivo JÁ SALVO — não remonta o PDF
+      // (antes, compartilhar disparava uma segunda geração completa).
+      if(_salvo&&_salvo.sucesso&&_salvo.uri&&window.Capacitor?.Plugins?.Share){
+        try{
+          await window.Capacitor.Plugins.Share.share({
+            title:'GarageSpot — Registro de Movimentacao',
+            url:_salvo.uri, dialogTitle:'Compartilhar registro'
+          });
+          closeOv(); return;
+        }catch(e){
+          const msg=(e&&(e.message||e.errorMessage)||'').toLowerCase();
+          if(msg.includes('cancel')||msg.includes('dismiss')||msg.includes('abort')||msg.includes('close')){ return; }
+          console.warn('[PDF checkout] share do arquivo salvo falhou, refazendo:',e&&e.message);
+        }
+      }
+      closeOv();
+      if(_coConteudo){ await gerarECompartilharPDF('Registro de Movimentacao',_coConteudo,_coNome); }
+      else { await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); }
+    };
+  })();
+}
+
 function doChk(id){
   const d=S[id];
   const aptKey=d.apt;
@@ -3802,29 +3988,7 @@ function doChk(id){
       const anexosChk=getAnexos(id,false);
       // Bug Q v1.9.4.1.7: snapshot de TODAS as fotos ANTES de liberar vaga + deletar anexos.
       // Sem isto, buildRegistroDoc rodaria depois da deleção e encontraria ANEXOS vazio.
-      const _snapshotAnexosCheckout={ vagaId:id, gs:hospNum, fotos:[], vistorias:[], recargas:[], todos:[] };
-      (function(){
-        // v1.9.4.5: tudo no ID estável da hospedagem (h_<gs>); ainda dobra v_<id> legado.
-        const keyV='v_'+id;
-        const keyH='h_'+(hospNum||'');
-        const todos=(ANEXOS[keyV]||[]).concat(ANEXOS[keyH]||[]);
-        // Parte 5 v1.9.4.8: guarda a lista COMPLETA — o PDF de check-out precisa ser
-        // completo (todos os anexos, inclusive PDFs/docs via "Arquivo"). Nada pode sumir.
-        _snapshotAnexosCheckout.todos=todos.slice();
-        _snapshotAnexosCheckout.fotos=todos.filter(function(a){
-          if(!a) return false;
-          const ehFoto=a.tipo==='foto' || (a.isImg===true && a.tipo!=='vistoria' && !a.tipo);
-          return ehFoto && !!(a.data||a.base64Original);
-        });
-        _snapshotAnexosCheckout.vistorias=todos.filter(function(a){
-          return a && a.tipo==='vistoria' && !!(a.data||a.base64Original);
-        });
-        // Parte 3 v1.9.4.5: documentos de recarga também entram no PDF de check-out
-        _snapshotAnexosCheckout.recargas=todos.filter(function(a){
-          return a && a.tipo==='recarga' && !!(a.data||a.base64Original);
-        });
-        console.log('[BUG Q] snapshot:', _snapshotAnexosCheckout.fotos.length, 'fotos +', _snapshotAnexosCheckout.vistorias.length, 'vistorias +', _snapshotAnexosCheckout.recargas.length, 'recargas ANTES de deletar');
-      })();
+      const _snapshotAnexosCheckout=_gsSnapshotAnexosCheckout(id, hospNum);
 
       // v1.9.9.2: o passeio é indexado pelo GS. Apagar por apartamento levaria
       // embora o registro do OUTRO carro do mesmo apto.
@@ -3849,130 +4013,8 @@ function doChk(id){
       // bloco assíncrono, SÓ DEPOIS de o PDF de fechamento estar gerado e salvo,
       // e SÓ do balde `h_<gs>` desta hospedagem. Apagar `v_`/`p_` às cegas era
       // como a vistoria do segundo carro do apartamento sumia.
-      // v1.9.4.11: check-out é evento crítico → backup COMPLETO (com fotos) agora
-      _gsBackupAuto('check-out '+(hospNum||aptKey), {completo:true});
-      // v1.9.6.6: o provisório sai de `Hospedados Hoje` — NENHUM hóspede que já
-      // saiu pode continuar lá. Disparado e esquecido: se a rede falhar agora, a
-      // conferência do tique retira depois. Nada disto pode atrasar o check-out.
-      try{ if(hospNum) _hhjRetirar(hospNum); }catch(eHhj){ console.warn('[HHJ] retirada não agendada:',eHhj&&eHhj.message); }
-      // Parte 1 v1.9.4.9: o PDF de check-out é SALVO NO DISPOSITIVO automaticamente
-      // (independente de compartilhar). Compartilhar virou ação ADICIONAL/opcional.
-      // Reaproveita o @capacitor/filesystem que o app já usa (sem plugin nativo novo);
-      // no navegador, baixa o arquivo. O snapshot preserva os anexos (já deletados acima).
-      // ══════════════════════════════════════════════════════════════════
-      // v1.9.4.12: a montagem do PDF era SÍNCRONA e acontecia AQUI, antes do
-      // modal aparecer — a tela ficava congelada durante todo o processo.
-      // Agora o modal abre na hora, com barra de progresso, e o documento é
-      // montado em etapas assíncronas com as imagens já comprimidas.
-      // v1.9.6.6: os TRÊS botões viraram DOIS — [OK] e [Compartilhar PDF]. Os três
-      // anteriores ofereciam uma escolha que não existia: o app SEMPRE salvou no
-      // dispositivo e SEMPRE mandou para a nuvem, nas três opções. "Salvar" e
-      // "Fechar" faziam a mesma coisa, e "Salvar" ainda insinuava que sem apertá-lo
-      // o documento se perderia. Agora a mensagem diz o que já aconteceu (aparelho
-      // E nuvem) e os botões só decidem se o manobrista quer compartilhar também.
-      // ══════════════════════════════════════════════════════════════════
-      // v1.9.5.2: o nome traz as DUAS pontas da hospedagem; a data de check-in vem
-      // de HOSPEDAGENS (já disponível aqui — o bloco acima grava usuario_checkout).
-      const _coCheckinTs=(HOSPEDAGENS[hospNum]&&HOSPEDAGENS[hospNum].checkin_ts)||null;
-      const _coNome=fmtNomeCheckout(aptKey,hospNum,Date.now(),_coCheckinTs);
-      showM(`<div class="mt">✅ Check-out realizado!</div>
-        <div class="ms">Hospedagem ${hospNum||'s/n'} · Apt. ${aptKey}<br>${dvChk.guest||'Hóspede não identificado'}</div>
-        <div id="co-save-status" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#633806">📄 Preparando o documento…</div>
-        <div id="co-prog-wrap" style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin:-4px 0 10px"><div id="co-prog" style="background:#185FA5;height:100%;width:0%;transition:width .2s"></div></div>
-        <div class="ag" id="co-acoes" style="display:none">
-          <button class="bsv" id="co-ok">OK</button>
-          <button class="bcx" id="co-share" style="margin-top:4px">📤 Compartilhar PDF</button>
-        </div>`);
-      (async()=>{
-        const _st=function(){ return document.getElementById('co-save-status'); };
-        const _prog=function(p){
-          const b=document.getElementById('co-prog'); if(b) b.style.width=Math.round(p)+'%';
-        };
-        let _coConteudo=null, _salvo=null, _coNuvem='';
-        try{
-          const doc=await buildRegistroDocAsync(aptKey,dvChk,histChk,_snapshotAnexosCheckout,function(feitos,total){
-            const el=_st(); if(el) el.textContent='📄 Preparando imagens… ('+feitos+' de '+total+')';
-            _prog(total?(feitos/total)*90:90);
-          });
-          _coConteudo=doc||buildRegistroHTML(aptKey,dvChk,histChk,anexosChk);
-        }catch(e){
-          console.error('[PDF checkout] montagem falhou, usando fallback HTML:',e);
-          try{ _coConteudo=buildRegistroHTML(aptKey,dvChk,histChk,anexosChk); }catch(e2){}
-        }
-        _prog(95);
-        const el2=_st(); if(el2) el2.textContent='💾 Salvando no dispositivo…';
-        // O app SEMPRE salva no dispositivo E SEMPRE manda para a nuvem — os botões
-        // não decidem nada disso, e é por isso que agora são só dois.
-        if(_coConteudo){
-          _salvo=await salvarPDFNoDispositivo('Registro de Movimentacao',_coConteudo,_coNome);
-          // v1.9.5.2: cópia para a nuvem SÓ DEPOIS de o arquivo estar no dispositivo,
-          // e fire-and-forget — falha de rede não trava, não reverte e não atrasa o
-          // check-out. Sem Drive conectado, entra na fila de pendentes.
-          try{
-            if(_salvo&&_salvo.sucesso&&typeof _coConteudo.output==='function'){
-              const _b64=_coConteudo.output('datauristring').split(',')[1];
-              // v1.9.6.6: o PDF entra no registro de documentos do aparelho ANTES de
-              // qualquer tentativa de envio. Sem registro não há confirmação, e sem
-              // confirmação a limpeza nunca o alcança — é essa a ordem segura.
-              try{ _gsRegistrarPDFLocal(_salvo.nome,'fechamento'); }catch(eR){}
-              _gdEspelharPDFFechamento(_salvo.nome,_b64,aptKey,_coCheckinTs);
-              _coNuvem=_gdConectado()?' · enviando para a nuvem':' · na fila para a nuvem';
-            }
-          }catch(ePdfNuvem){ console.warn('[DRIVE] PDF de fechamento não agendado:',ePdfNuvem&&ePdfNuvem.message); }
-        }
-        // ══════════════════════════════════════════════════════════════════
-        // v1.9.7.0 — DOCUMENTAÇÃO É SAGRADA. Os anexos só são apagados DEPOIS de
-        // o PDF de fechamento estar gerado e salvo. Se o documento não saiu, os
-        // anexos FICAM: um balde a mais é recuperável, uma foto perdida não é.
-        // ══════════════════════════════════════════════════════════════════
-        if(_salvo && _salvo.sucesso){
-          _gsApagarAnexosDoCheckout(_resChk, {vaga:id, apt:aptKey});
-        } else {
-          console.warn('[CHECKOUT] PDF não salvo — anexos PRESERVADOS');
-          try{
-            addLogSistema('Apagamento de anexos ABORTADO no check-out — o PDF de fechamento não foi salvo (vaga '+id+', apto '+aptKey+'). Os anexos foram PRESERVADOS.',
-              {aud:true, acao:'checkout_anexo_abortado', alvo:(hospNum||aptKey), origem:'automatico'});
-          }catch(eAb){}
-        }
-        _prog(100);
-        const pw=document.getElementById('co-prog-wrap'); if(pw) pw.style.display='none';
-        const acoes=document.getElementById('co-acoes'); if(acoes) acoes.style.display='';
-        const el=_st();
-        if(el){
-          if(_salvo&&_salvo.sucesso){
-            el.style.cssText='background:#EEF9F2;border:1px solid #A6D8B6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#0F6E56';
-            // A mensagem verde diz as DUAS pontas — aparelho e nuvem —, que é o que
-            // o manobrista precisa saber para poder simplesmente apertar OK.
-            el.textContent=(_salvo.nativo?'✅ PDF salvo no dispositivo · GarageSpot/'+_salvo.nome:'✅ PDF baixado · '+_salvo.nome)+_coNuvem;
-          } else {
-            el.style.cssText='background:#FFE5E5;border:1px solid #C53030;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:#C53030';
-            el.textContent='⚠️ Não foi possível salvar automaticamente — use "Compartilhar PDF" para guardar o documento.';
-          }
-        }
-        const bs=document.getElementById('co-ok');
-        if(bs) bs.onclick=function(){ closeOv(); };
-        const bc=document.getElementById('co-share');
-        if(bc) bc.onclick=async function(){
-          // v1.9.4.12: compartilha o arquivo JÁ SALVO — não remonta o PDF
-          // (antes, compartilhar disparava uma segunda geração completa).
-          if(_salvo&&_salvo.sucesso&&_salvo.uri&&window.Capacitor?.Plugins?.Share){
-            try{
-              await window.Capacitor.Plugins.Share.share({
-                title:'GarageSpot — Registro de Movimentacao',
-                url:_salvo.uri, dialogTitle:'Compartilhar registro'
-              });
-              closeOv(); return;
-            }catch(e){
-              const msg=(e&&(e.message||e.errorMessage)||'').toLowerCase();
-              if(msg.includes('cancel')||msg.includes('dismiss')||msg.includes('abort')||msg.includes('close')){ return; }
-              console.warn('[PDF checkout] share do arquivo salvo falhou, refazendo:',e&&e.message);
-            }
-          }
-          closeOv();
-          if(_coConteudo){ await gerarECompartilharPDF('Registro de Movimentacao',_coConteudo,_coNome); }
-          else { await compartilharPDF(aptKey,dvChk,histChk,anexosChk,_snapshotAnexosCheckout); }
-        };
-      })();
+      _gsDocumentoDeFechamento({hospNum:hospNum, apt:aptKey, vaga:id, dv:dvChk, hist:histChk,
+        snapshot:_snapshotAnexosCheckout, anexos:anexosChk});
   }
 }
 
@@ -3992,7 +4034,9 @@ window.doShare = function(id, fp){
   const dv={model:d.model||'',color:d.color||'',plate:d.plate||'',
              guest:d.guest||'',obs:d.obs||'',size:d.size||'small',
              vaga:fromPasseio?(d.lastVaga||''):id,hospedagem:d.hospedagem||''};
-  const hist=getHistorico(apt);
+  // v1.9.9.3: recortado pela HOSPEDAGEM — o histórico do apto agora acumula.
+  const _hShare=dv.hospedagem?HOSPEDAGENS[dv.hospedagem]:null;
+  const hist=dv.hospedagem?_gsHistoricoDaHospedagem(apt, dv.hospedagem, (_hShare&&_hShare.checkin_ts)||null):getHistorico(apt);
   const anexos=getAnexos(id,fromPasseio);
   compartilharPDF(apt,dv,hist,anexos);
 };
@@ -4383,11 +4427,21 @@ function showPasseioCheckout(gs){
       HOSPEDAGENS[hospNum].checkout_ts=Date.now();
       HOSPEDAGENS[hospNum].usuario_checkout=usuarioStr;
       saveHospedagens();
+      // v1.9.9.3 — O CHECK-OUT A PASSEIO GERA O MESMO DOCUMENTO DE FECHAMENTO.
+      // Recorte do histórico e retrato dos anexos ANTES de qualquer apagamento —
+      // a mesma ordem do check-out pela vaga. O documento (PDF salvo, registrado,
+      // enviado ao Drive; balde limpo só depois; backup completo; Hospedados Hoje)
+      // sai pela MESMA função, `_gsDocumentoDeFechamento`.
+      const histP=_gsHistoricoDaHospedagem(apt, hospNum, HOSPEDAGENS[hospNum].checkin_ts||null);
+      const dvP={model:d.model||'',color:d.color||'',plate:d.plate||'',guest:d.guest||'',
+                 obs:d.obs||'',size:d.size||'small',vaga:'',hospedagem:hospNum,apt:apt};
+      const snapP=_gsSnapshotAnexosCheckout('', hospNum);
+      const anexosP=(ANEXOS['h_'+hospNum]||[]).slice();
       // Só agora: `checkout_ts` está gravado.
       if(HOSPEDAGENS[hospNum].checkout_ts) delete PASSEIO[gs];
-      upd(); saveData(); closeOv();
-      try{ if(hospNum) _hhjRetirar(hospNum); }catch(e){}
-      showToast('✅ Check-out realizado — '+hospNum, 3000);
+      upd(); saveData();
+      _gsDocumentoDeFechamento({hospNum:hospNum, apt:apt, vaga:'', dv:dvP, hist:histP,
+        snapshot:snapP, anexos:anexosP});
     });
   };
 }
@@ -4669,12 +4723,57 @@ function tick(){
 }
 
 // ── HOSPEDAGEM ────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.3 — O GS NUNCA SOBRESCREVE UMA HOSPEDAGEM
+// ════════════════════════════════════════════════════════════════════════
+// O contador era a ÚNICA fonte: um aparelho restaurado de backup (ou com o
+// contador atrás por qualquer motivo) emitia um GS já existente, e o check-in
+// fazia `HOSPEDAGENS[gs]=…` por cima da hospedagem anterior. Agora o próximo
+// número é o máximo entre o contador e o maior GS numérico existente, mais um,
+// e qualquer GS já usado é pulado. NADA que já existe é renumerado.
+function _gsFormatarGS(n){ return 'GS'+(n<=999?String(n).padStart(3,'0'):String(n)); }
+// Maior número entre as chaves no formato GS<dígitos>. Séries com letra (como
+// a offline planejada para o servidor) não entram na conta da série numérica.
+function _gsMaiorGSNumerico(){
+  let m=0;
+  try{
+    Object.keys(HOSPEDAGENS||{}).forEach(function(k){
+      const x=/^GS(\d+)$/i.exec(String(k));
+      if(x){ const v=parseInt(x[1],10); if(v>m) m=v; }
+    });
+  }catch(e){}
+  return m;
+}
+function _gsLerContadorGS(){
+  try{ return parseInt(localStorage.getItem('garagespot_hospedagem_counter')||'0',10)||0; }catch(e){ return 0; }
+}
 function nextNumHospedagem(){
-  let counter=0;
-  try{ const s=localStorage.getItem('garagespot_hospedagem_counter'); if(s) counter=parseInt(s)||0; }catch(e){}
-  counter++;
-  try{ localStorage.setItem('garagespot_hospedagem_counter',String(counter)); }catch(e){}
-  return 'GS'+(counter<=999?String(counter).padStart(3,'0'):String(counter));
+  const counter=Math.max(_gsLerContadorGS(), _gsMaiorGSNumerico());
+  let n=counter+1, guarda=0;
+  while(HOSPEDAGENS && HOSPEDAGENS[_gsFormatarGS(n)] && guarda<100000){ n++; guarda++; }
+  try{ localStorage.setItem('garagespot_hospedagem_counter',String(n)); }catch(e){}
+  return _gsFormatarGS(n);
+}
+// Reconciliação após restauração: contador = máx(aparelho, arquivo, maior GS).
+// Só SOBE — recuar o contador é exatamente o que reabriria a colisão.
+function _gsReconciliarContadorGS(extras, origem){
+  const atual=_gsLerContadorGS();
+  let alvo=Math.max(atual, _gsMaiorGSNumerico());
+  (extras||[]).forEach(function(v){ const x=parseInt(v,10); if(!isNaN(x) && x>alvo) alvo=x; });
+  if(alvo>atual){
+    try{ localStorage.setItem('garagespot_hospedagem_counter',String(alvo)); }catch(e){}
+    try{ addLogSistema('Contador de GS reconciliado ('+(origem||'restauração')+'): '+atual+' → '+alvo); }catch(e){}
+  }
+  return alvo;
+}
+// Trava dura de criação: devolve TRUE (recusou, com aviso e trilha) se o GS já existe.
+function _gsRecusarGSExistente(gs, onde){
+  if(!gs || !HOSPEDAGENS || !HOSPEDAGENS[gs]) return false;
+  console.warn('[GS] criação RECUSADA — '+gs+' já existe ('+(onde||'?')+')');
+  try{ addLogSistema('Criação de hospedagem RECUSADA: '+gs+' já existe ('+(onde||'?')+'). A hospedagem existente foi preservada.',
+    {aud:true, acao:'gs_existente_recusado', alvo:String(gs), origem:'automatico'}); }catch(e){}
+  try{ showToast('⚠️ O número '+gs+' já pertence a outra hospedagem — nada foi sobrescrito. Tente de novo.', 6000); }catch(e){}
+  return true;
 }
 function saveHospedagens(){
   // Bug W v1.9.4.1.6: storage protegido com 3 slots de backup
@@ -6898,6 +6997,45 @@ function _getConfigPontosAtual(){
 function saveConfigPontos(arr){
   try{ localStorage.setItem(RECARGA_PONTOS_LS, JSON.stringify(arr)); }catch(e){}
 }
+// ════════════════════════════════════════════════════════════════════════
+// v1.9.9.3 — A FILA DE RECARGA É GRAVADA. Até a v1.9.9.2 ela vivia só na
+// memória: fechar o app (ou o Android matar o processo) esvaziava a fila sem
+// aviso. Agora toda alteração grava, a abertura carrega, e ela entra no backup.
+// ════════════════════════════════════════════════════════════════════════
+const FILA_RECARGA_LS = 'garagespot_fila_recarga';
+function saveFilaRecarga(){
+  try{ _gsSetItemSeguro(FILA_RECARGA_LS, JSON.stringify(Array.isArray(FILA_RECARGA)?FILA_RECARGA:[]), 'fila de recarga'); }catch(e){}
+}
+// Item que aponta para hospedagem JÁ ENCERRADA não volta para a fila: o carro
+// saiu do hotel. Sai com registro no log de sistema — nunca em silêncio.
+// Item sem GS (legado) ou de GS desconhecido FICA: na dúvida, não se descarta.
+function _rcFilaDescartarEncerrados(origem){
+  let fora=0;
+  try{
+    const fica=[];
+    (Array.isArray(FILA_RECARGA)?FILA_RECARGA:[]).forEach(function(f){
+      if(!f) return;
+      const h=(f.hospedagem && HOSPEDAGENS) ? HOSPEDAGENS[f.hospedagem] : null;
+      if(h && h.checkout_ts){
+        fora++;
+        try{ addLogSistema('Fila de recarga ('+(origem||'abertura')+'): item descartado — hospedagem '+f.hospedagem+' já encerrada (apto '+(f.apt||'?')+', vaga '+(f.vagaId||'?')+')'); }catch(e){}
+        return;
+      }
+      fica.push(f);
+    });
+    if(fora){ FILA_RECARGA.length=0; fica.forEach(function(f){ FILA_RECARGA.push(f); }); saveFilaRecarga(); }
+  }catch(e){ console.warn('[FILA RECARGA] descarte falhou (fila mantida):', e && e.message); }
+  return fora;
+}
+function loadFilaRecarga(){
+  try{
+    const r=localStorage.getItem(FILA_RECARGA_LS);
+    const a=r?JSON.parse(r):null;
+    FILA_RECARGA.length=0;
+    if(Array.isArray(a)) a.forEach(function(f){ if(f && typeof f==='object') FILA_RECARGA.push(f); });
+  }catch(e){ console.warn('[FILA RECARGA] leitura falhou:', e && e.message); }
+  _rcFilaDescartarEncerrados('abertura');
+}
 function saveRecargaCfg(){ try{localStorage.setItem(RECARGA_CFG_LS,JSON.stringify(RECARGA_CONFIG));}catch(e){} }
 
 // ── MÓDULOS ATIVOS ────────────────────────────────────────────────────────
@@ -9114,6 +9252,17 @@ function _nciFinalizar(){
   ld.className='vst-loading-overlay';
   ld.innerHTML='<div class="vst-loading-content"><div class="vst-spinner"></div><div>Finalizando vistoria…</div></div>';
   ov.appendChild(ld);
+  // v1.9.9.3: o GS foi emitido na ABERTURA do check-in. Se entre a abertura e a
+  // confirmação ele passou a existir (restauração de backup, por exemplo), um
+  // número LIVRE é emitido e o documento é recomposto com ele — o GS impresso
+  // no documento tem de ser o da hospedagem. Nada existente é tocado.
+  if(!_nciD._commitFeito && !(_nciD._modoNovaVistoria && _nciD._gsExistente) && _nciD.gs && HOSPEDAGENS[_nciD.gs]){
+    const _gsAntigo=_nciD.gs;
+    _nciD.gs=nextNumHospedagem();
+    _nciD.documento_final_b64=null;
+    try{ addLogSistema('Check-in com vistoria: o número '+_gsAntigo+' já existia — emitido '+_nciD.gs+' (documento recomposto)',
+      {aud:true, acao:'gs_reemitido', alvo:_gsAntigo+' → '+_nciD.gs, origem:'automatico'}); }catch(e){}
+  }
   // Compor se ainda não temos
   const p = _nciD.documento_final_b64
     ? Promise.resolve(_nciD.documento_final_b64)
@@ -9141,7 +9290,9 @@ function _nciFinalizar(){
       console.error('[NCI] erro commit:',e);
       showModalAux({
         titulo:'Erro ao finalizar vistoria',
-        texto:'Não foi possível gerar o documento. Tente novamente. Se persistir, verifique o espaço disponível no aparelho.',
+        texto:(e && e.message==='GS_EXISTENTE')
+          ? 'O número desta hospedagem já pertence a outra hospedagem. Nada foi sobrescrito. Tente confirmar de novo.'
+          : 'Não foi possível gerar o documento. Tente novamente. Se persistir, verifique o espaço disponível no aparelho.',
         botoes:[{label:'OK',cls:'primary',action:'close'}]
       });
     }
@@ -9667,6 +9818,8 @@ function _nciCommitCheckin(){
     _nciCommitNovaVistoriaAdicional();
     return;
   }
+  // v1.9.9.3: trava dura — o GS deste check-in nunca sobrescreve outra hospedagem.
+  if(_gsRecusarGSExistente(d.gs,'check-in com vistoria')) throw new Error('GS_EXISTENTE');
   // Consumir o número de vistoria (incrementar agora)
   const numero=nextNumVistoria();
   d.numero=numero;
@@ -10398,6 +10551,7 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   if(!p){ showToast('Check-in pendente não encontrado',3000); return; }
   const v=S[vagaId];
   if(!v||v.status!=='free'){ showToast('Vaga não disponível',3000); return; }
+  if(_gsRecusarGSExistente(p.gs,'designação de check-in pendente')) return;   // v1.9.9.3
   v.status='occupied'; v.apt=p.apt; v.model=p.model; v.color=p.color;
   v.plate=p.plate; v.guest=p.guest; v.obs=p.obs; v.size=p.size; v.hospedagem=p.gs;
   if(p.size==='large'&&vagaId.endsWith('A')){
@@ -10570,6 +10724,8 @@ function _gsMontarSnapshot(comFotos){
     vistorias_lixeira: VISTORIAS_LIXEIRA || {},
     vistoria_counter: localStorage.getItem(VISTORIA_COUNTER_KEY) || '0',
     checkins_pendentes: CHECKINS_PENDENTES || {},
+    // v1.9.9.3: a fila de recarga passou a ser gravada — e o backup devolve tudo.
+    fila_recarga: (typeof FILA_RECARGA !== 'undefined' && Array.isArray(FILA_RECARGA)) ? FILA_RECARGA : [],
   };
   return snap;
 }
@@ -12126,7 +12282,7 @@ async function _gsAplicarBackup(obj, origem){
   const res = { hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0, historico:0, turnos:0,
                 pinGestor:0, pinsUsuarios:0, config:0, trilha:0, ignorados:0,
                 mapaVagas:0, mapaPasseio:0, recargas:0, recargaHist:0, lixeira:0, pendentes:0,
-                plantaoManual:0 };
+                plantaoManual:0, filaRecarga:0 };
 
   // 1) Hospedagens — só as que faltam (as do aparelho vencem)
   try {
@@ -12463,6 +12619,31 @@ async function _gsAplicarBackup(obj, origem){
     }
   } catch(e){ console.warn('[IMPORT] plantão manual:', e); }
 
+  // v1.9.9.3 — ETAPA NOVA: fila de recarga. Mescla aditiva por
+  // GS|vaga|pedido (o que já está no aparelho nunca sai) e, no fim, o descarte
+  // dos itens de hospedagem já encerrada — a mesma regra da abertura.
+  try {
+    const fr = _gsColecaoDoBackup(n, 'fila_recarga', FILA_RECARGA_LS);
+    if(Array.isArray(fr) && fr.length){
+      const sig = function(e){ return String((e&&e.hospedagem)||'')+'|'+String((e&&e.vagaId)||'')+'|'+String((e&&e.ts_pedido)||''); };
+      const vistos = {};
+      FILA_RECARGA.forEach(function(e){ if(e) vistos[sig(e)] = true; });
+      let novos = 0;
+      fr.forEach(function(e){
+        if(!e || typeof e !== 'object' || vistos[sig(e)]) return;
+        vistos[sig(e)] = true; FILA_RECARGA.push(e); novos++;
+      });
+      if(novos){
+        FILA_RECARGA.sort(function(a,b){ return (a.ts_pedido||0)-(b.ts_pedido||0); });
+        saveFilaRecarga();
+        res.filaRecarga = novos - _rcFilaDescartarEncerrados('restauração');
+      }
+    }
+  } catch(e){ console.warn('[IMPORT] fila de recarga:', e); }
+  // v1.9.9.3 — o contador de GS sai daqui RECONCILIADO: o máximo entre o do
+  // aparelho, o do arquivo e o maior GS presente. Antes, um aparelho que já
+  // tinha a chave ficava com o contador dele e podia emitir um GS existente.
+  try { _gsReconciliarContadorGS([ n.ls ? n.ls['garagespot_hospedagem_counter'] : null ], 'restauração (mesclar)'); } catch(e){}
   try { _atualizarContadores(); } catch(e){}
   try { if(typeof addLogSistema === 'function') addLogSistema(
     'Importação (' + (origem||'arquivo') + '): +' + res.hospedagens + ' hosp., +' + res.usuarios +
@@ -12473,6 +12654,7 @@ async function _gsAplicarBackup(obj, origem){
     (res.recargaHist ? ', +' + res.recargaHist + ' registro(s) de recarga' : '') +
     (res.pendentes ? ', +' + res.pendentes + ' check-in(s) pendente(s)' : '') +
     (res.plantaoManual ? ', +' + res.plantaoManual + ' inclusão(ões) de plantão' : '') +
+    (res.filaRecarga ? ', +' + res.filaRecarga + ' na fila de recarga' : '') +
     (res.pinsUsuarios ? ', +' + res.pinsUsuarios + ' PIN(s) de funcionário' : '') +
     (res.config ? ', +' + res.config + ' ajuste(s)' : '') +
     (res.trilha ? ', +' + res.trilha + ' registro(s) de trilha' : '') +
@@ -12593,6 +12775,7 @@ function _gsRecarregarTudoDoDisco(){
   try{ loadPlantaoManual(); }catch(e){}
   try{ loadPlantaoOverride(); }catch(e){}
   try{ loadRecargas(); }catch(e){}   // lê RECARGAS, config, pontos E HISTORICO_RECARGAS
+  try{ loadFilaRecarga(); }catch(e){}   // v1.9.9.3 (depois de loadHospedagens: descarta encerrados)
   try{ loadCheckinsPendentes(); }catch(e){}
   try{ loadModulos(); }catch(e){}
   try{ loadTema(); }catch(e){}
@@ -12656,9 +12839,11 @@ async function _gsSubstituirPorBackup(obj, origem){
     return res;
   }
 
+  const _ctrAparelho = _gsLerContadorGS();   // v1.9.9.3: o contador do aparelho entra na reconciliação
   try{
     await _gsEscreverVerbatim(n);
     _gsRecarregarTudoDoDisco();
+    try{ _gsReconciliarContadorGS([_ctrAparelho], 'restauração (substituir)'); }catch(eC){}
     res.ok = true;
   }catch(e){
     res.erro = (e && e.message) || String(e);
@@ -16380,11 +16565,11 @@ function _rcDiasDoPeriodo(inicioMs, agoraMs){
     const fim = _dtObj(agoraMs); fim.setHours(0,0,0,0);
     let guarda = 0;
     while(d.getTime() <= fim.getTime() && guarda < 60){
-      out.push({ v:_rcDiaLocal(d), rot:_p2GS(d.getDate())+'/'+_p2GS(d.getMonth()+1) });
+      out.push({ v:_rcDiaLocal(d), rot:_dLocal(d) });   // v1.9.9.3: com o ano
       d.setDate(d.getDate()+1); guarda++;
     }
   }catch(e){}
-  if(!out.length) out.push({ v:_rcDiaLocal(agoraMs), rot:_p2GS(_dtObj(agoraMs).getDate())+'/'+_p2GS(_dtObj(agoraMs).getMonth()+1) });
+  if(!out.length) out.push({ v:_rcDiaLocal(agoraMs), rot:_dLocal(_dtObj(agoraMs)) });
   return out;
 }
 
@@ -16815,6 +17000,7 @@ function showRecargaFila(vagaId){
         const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
         const hosp=vaga?.hospedagem||'';
         FILA_RECARGA.push({apt,vagaId,hospedagem:hosp,ts_pedido:Date.now(),usuario:usuarioStr});
+        saveFilaRecarga();   // v1.9.9.3
         closeOv();
         showToast('Apt. '+apt+' adicionado a fila de recarga');
       });
@@ -17204,7 +17390,7 @@ function _rcAvaliarRemanejamento(carro){
       _rcMoverCarroParaPonto(carro, vagaLivre, function(){
         if(carro.fonte === 'fila'){
           const idxF = FILA_RECARGA.findIndex(function(f){ return f && f.apt===carro.apt && f.vagaId===carro.vagaId; });
-          if(idxF >= 0) FILA_RECARGA.splice(idxF, 1);
+          if(idxF >= 0){ FILA_RECARGA.splice(idxF, 1); saveFilaRecarga(); }   // v1.9.9.3
         }
         const carroNoPonto = { fonte:'vaga', vagaId:vagaLivre, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
         _rcModalTempo(carroNoPonto);
@@ -17306,7 +17492,7 @@ window._rcConsumirRemanejamento = function(vagaDestino){
     _rcMoverCarroParaPonto(carro, vagaLivreNoPonto, function(){
       if(carro.fonte === 'fila'){
         const idxF = FILA_RECARGA.findIndex(function(f){ return f && f.apt===carro.apt && f.vagaId===carro.vagaId; });
-        if(idxF >= 0) FILA_RECARGA.splice(idxF, 1);
+        if(idxF >= 0){ FILA_RECARGA.splice(idxF, 1); saveFilaRecarga(); }   // v1.9.9.3
       }
       const carroNoPonto = { fonte:'vaga', vagaId:vagaLivreNoPonto, apt:carro.apt, model:carro.model, color:carro.color, plate:carro.plate, guest:carro.guest, hospedagem:carro.hospedagem };
       _rcModalTempo(carroNoPonto);
@@ -17464,6 +17650,7 @@ window._removerDaFilaRecarga = function(idx){
   if(idx < 0 || idx >= FILA_RECARGA.length) return;
   const f = FILA_RECARGA[idx];
   FILA_RECARGA.splice(idx, 1);
+  saveFilaRecarga();   // v1.9.9.3
   showToast('Apt '+(f && f.apt || '?')+' removido da fila',2200);
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
 };
@@ -17510,6 +17697,7 @@ window._abrirAddFilaModal = function(){
       confirmarUsuario('entrando na fila de recarga', function(usuario){
         const usuarioStr = usuario ? (usuario.nome+' · '+usuario.cargo) : '';
         FILA_RECARGA.push({ apt:carro.apt, vagaId:carro.vagaId, hospedagem:carro.hospedagem, model:carro.model, color:carro.color, ts_pedido:Date.now(), usuario:usuarioStr });
+        saveFilaRecarga();   // v1.9.9.3
         if(typeof closeOv==='function') closeOv();
         showToast('Apt '+carro.apt+' adicionado à fila',2500);
         if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
@@ -18990,7 +19178,10 @@ function showToast(msg,duration){
 // ── MODAL HISTÓRICO ───────────────────────────────────────────────────────
 function showHistoricoModal(apt, hospedagem, detId, detFp){
   // Parte 5 v1.9.4.4: ordenar da mais recente → mais antiga (antes era ordem de inserção)
-  const hist=getHistorico(apt).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  // v1.9.9.3: com a hospedagem conhecida, só a movimentação DELA (o histórico do
+  // apto agora acumula todas as hospedagens que passaram por ele).
+  const _hMod=hospedagem?HOSPEDAGENS[hospedagem]:null;
+  const hist=(hospedagem?_gsHistoricoDaHospedagem(apt, hospedagem, (_hMod&&_hMod.checkin_ts)||null):getHistorico(apt)).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
   const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D',recarga_iniciada:'#BA7517',recarga_encerrada:'#1F9A5F',recarga_editada:'#185FA5',exclusao_anexo:'#A32D2D'};
   const titulo=hospedagem?`ℹ️ Apt. ${apt} · ${hospedagem}`:`ℹ️ Apt. ${apt}`;
@@ -19031,6 +19222,15 @@ function fmtElapsed(ts){
 
 function addHistorico(apt, tipo, vaga, extra, usuario, hospedagem){
   if(!apt) return;
+  // v1.9.9.3: todo evento novo leva o GS. Quem chama sem ele mas com a VAGA tem
+  // o GS resolvido pelo resolvedor único — e só pelo ponteiro da vaga (ou do par
+  // do merge), nunca pelo apartamento: sem certeza, o evento fica como veio.
+  if(!hospedagem && vaga){
+    try{
+      const r=_gsResolverHosp({vaga:vaga});
+      if(r && r.gs && !r.ambiguo && (r.origem==='vaga' || r.origem==='vaga_par')) hospedagem=r.gs;
+    }catch(e){}
+  }
   if(!HISTORICO[apt]) HISTORICO[apt]=[];
   HISTORICO[apt].push({tipo, ts:Date.now(), vaga:vaga||'', extra:extra||'',
     usuario:usuario||'', hospedagem:hospedagem||''});
@@ -19049,10 +19249,28 @@ function loadHistorico(){
   try{ _contadorAnterior.historico = _gsContar(HISTORICO); }catch(e){}
 }
 
+// v1.9.9.3 — O CHECK-IN ACRESCENTA, NUNCA SUBSTITUI. Até a v1.9.9.2 isto era
+// `HISTORICO[apt]=[…]`: cada check-in apagava a movimentação de TODAS as
+// hospedagens anteriores do apartamento — inclusive a do outro carro do mesmo
+// apartamento, ainda ativo, cujo PDF de fechamento saía sem a movimentação.
+// O recorte por hospedagem (`_gsHistoricoDaHospedagem`) é quem separa os carros.
+// A marca `inicio:1` diz onde o antigo apagamento cortava a lista — é ela que
+// mantém o significado de `_histAptDesdeUltimoCheckin`.
 function iniciarHistorico(apt, vaga, hospedagem, usuario){
-  HISTORICO[apt]=[{tipo:'checkin', ts:Date.now(), vaga:vaga, extra:'',
-    usuario:usuario||'', hospedagem:hospedagem||''}];
+  if(!apt) return;
+  if(!Array.isArray(HISTORICO[apt])) HISTORICO[apt]=[];
+  HISTORICO[apt].push({tipo:'checkin', ts:Date.now(), vaga:vaga, extra:'',
+    usuario:usuario||'', hospedagem:hospedagem||'', inicio:1});
   saveHistorico();
+}
+
+// Os eventos do apartamento a partir do ÚLTIMO check-in — exatamente o que a
+// lista continha quando o check-in a zerava. Lista sem marca (legado) = a lista
+// inteira, que é o que ela era.
+function _histAptDesdeUltimoCheckin(apt){
+  const l=HISTORICO[apt]||[];
+  for(let i=l.length-1;i>=0;i--){ if(l[i] && l[i].inicio) return l.slice(i); }
+  return l.slice();
 }
 
 function getHistorico(apt){ return HISTORICO[apt]||[]; }
@@ -21823,6 +22041,7 @@ checkLicense().then(async (ativo)=>{
       loadPlantaoManual();
       loadPlantaoOverride();
       loadRecargas();
+      loadFilaRecarga();   // v1.9.9.3 — depois de loadHospedagens (descarte de encerrados)
       // v1.9.4.2: VISTORIAS_LIXEIRA continua no localStorage (pequena, sem documento_final_b64)
       try{const d=localStorage.getItem(VISTORIAS_LIXEIRA_LS);if(d)VISTORIAS_LIXEIRA=JSON.parse(d)||{};}catch(e){}
       loadCheckinsPendentes();
