@@ -1350,9 +1350,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.9.3';
-const GS_VERSION_CODE = 30;
-const GS_BUILD_TS = '2026-10-14';
+const GS_VERSION = 'v1.9.9.4';
+// v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
+const GS_VERSION_CODE = 29;
+const GS_BUILD_TS = '2026-10-15';
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -1973,6 +1974,7 @@ function _gsApagarAnexosDoCheckout(res, ctx){
     console.log('[CHECKOUT] nada a apagar em', kh);
     return { apagou:false, motivo:'balde vazio', quantidade:0 };
   }
+  _gsRegistrarRemocao('balde', kh);   // v1.9.9.4: caminho legítimo (sentinela)
   delete ANEXOS[kh];
   saveAnexos({permitirVazio:true});   // limpeza INTENCIONAL do check-out
   try{
@@ -7061,7 +7063,10 @@ function saveVistorias(opts){
   // Fire-and-forget (assinatura sync mantida para callers existentes)
   // v1.9.4.10 (Bug A): idem anexos — a corrida zerava o store.
   // opts.permitirVazio = exclusão intencional da última vistoria.
+  if(_gsRecuperando) return;                                    // v1.9.9.4
+  if(_GS_PROT){ _gsProtegidoSalvarPendentes(); return; }        // v1.9.9.4
   if(!_gsGuardaSave('vistorias', VISTORIAS, opts)) return;
+  if(!_gsSentConferir('vistorias', opts)){ _gsProtegidoSalvarPendentes(); return; }   // v1.9.9.4
   try { saveVistoriasIDB(); } catch(e){ console.error('[BUG #1] saveVistorias falhou:', e); }
 }
 // v1.9.4.11: sob as guardas (a lixeira esvazia por ação do gestor → permitirVazio)
@@ -7433,6 +7438,7 @@ function _vstConfirmar(assinatura){
         ts_editada:now,usuario_editou:usuarioStr,
       });
       if(assinatura&&!v.ts_assinada){v.assinatura=assinatura;v.ts_assinada=now;v.usuario_assinou=usuarioStr;}
+      _gsRegistrarRemocao('rechave', 'vistorias');   // v1.9.9.4: a edição pode re-vincular a vistoria a outro GS
       saveVistorias();
       if(_vstD.apt) addHistorico(_vstD.apt,'vistoria_editada','',id,usuarioStr,v.hospedagem||'');
     } else {
@@ -7727,6 +7733,7 @@ function deletarVistoria(id){
     confirmarUsuario('excluindo vistoria',function(usuario){
       const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
       if(v.apt) addHistorico(v.apt,'vistoria_deletada','',v.numero,usuarioStr,v.hospedagem||'');
+      _gsRegistrarRemocao('vistoria', id);   // v1.9.9.4: caminho legítimo (sentinela)
       delete VISTORIAS[id];
       saveVistorias({permitirVazio:true}); // v1.9.4.10: exclusão INTENCIONAL
       const vagaId=Object.keys(S).find(k=>S[k].apt===v.apt&&S[k].status==='occupied');
@@ -10734,6 +10741,8 @@ function _gsMontarSnapshot(comFotos){
 function _gsValidarSnapshot(snap){
   try {
     if(!snap || typeof snap !== 'object') return {ok:false, motivo:'snapshot inválido'};
+    // v1.9.9.4 (Bloco E): modo protegido = nenhum backup (protege a última cópia boa).
+    if(_GS_PROT){ _gsBackupPausadoMotivo = 'possível perda de dados'; return {ok:false, motivo:'backup pausado: modo protegido (possível perda de dados)'}; }
     const c = snap.contagens || {};
     const totalAgora = (c.hospedagens||0) + (c.usuarios||0) + (c.vistorias||0) + (c.anexos||0);
     const totalAntes = (_contadorAnterior.hospedagens||0) + (_contadorAnterior.usuarios||0) +
@@ -10751,6 +10760,25 @@ function _gsValidarSnapshot(snap){
         return {ok:false, motivo:'snapshot parcial — ' + nome + ' zerada (tinha ' + antes + ')'};
       }
     }
+    // v1.9.9.4 (Bloco E): DEPOIS das checagens antigas (que mantêm as mensagens),
+    // a conferência contra a SENTINELA — não contra a memória.
+    // Faltando algo que a sentinela diz existir, o backup NÃO é feito e o app entra
+    // no modo protegido. O backup "sem fotos" (exportação de emergência) é dispensado
+    // da conta dos anexos por definição.
+    try{
+      const _s = _gsSentPronta ? _gsSentLer() : null;
+      if(_s){
+        const _ax = snap.sem_fotos ? null : ((snap.indexeddb && snap.indexeddb.anexos) || ANEXOS);
+        const _vs = (snap.indexeddb && snap.indexeddb.vistorias) || VISTORIAS;
+        const _sx = snap.sem_fotos ? Object.assign({}, _s, { anexos:{ total:0, por_gs:{} } }) : _s;
+        const _f = _gsSentFaltas(_sx, _ax || {}, _vs);
+        if(_f.length){
+          _gsBackupPausadoMotivo = 'possível perda de dados';
+          _gsEntrarProtegido('backup_com_falta', _f.slice(0, 8).join(', '));
+          return {ok:false, motivo:'backup pausado: possível perda de dados (' + _f.slice(0, 4).join(', ') + ')'};
+        }
+      }
+    }catch(eS){ console.warn('[BACKUP] conferência com a sentinela falhou:', eS && eS.message); }
     if(snap.tipo === 'completo' && !snap.indexeddb){
       return {ok:false, motivo:'snapshot marcado como completo mas sem o IndexedDB'};
     }
@@ -11166,6 +11194,12 @@ async function fazerBackupLocal(motivo, opts){
       console.warn('[BUG A] backup abortado: app ainda inicializando');
       return {ok:false,erro:'app ainda inicializando'};
     }
+    // v1.9.9.4: modo protegido = nenhum backup, nem manual (protege a última cópia boa).
+    if(_GS_PROT){
+      _gsBackupPausadoMotivo = 'possível perda de dados';
+      if(typeof addLogSistema === 'function') addLogSistema('Backup pausado (' + (motivo || '?') + '): modo protegido — a última cópia boa é preservada');
+      return {ok:false, erro:'backup pausado: modo protegido (possível perda de dados)', pausado:true};
+    }
     const comFotos = (opts.comFotos !== false);
     const snap = _gsMontarSnapshot(comFotos);
     const val = _gsValidarSnapshot(snap);
@@ -11230,6 +11264,7 @@ async function fazerBackupLocal(motivo, opts){
     DRIVE_STATUS.ultimo_backup=Date.now();
     DRIVE_STATUS.falha_backup=false;
     saveDriveStatus();
+    _gsBackupPausadoMotivo = '';   // v1.9.9.4
     // Bug latente v1.9.4.1.8: era logSistema (não definido) — causava ReferenceError em cada backup/designação
     // v1.9.9.1: o TAMANHO entra no log. Sem ele, a próxima falha de memória volta
     // a ser discutida por impressão em vez de medida.
@@ -11331,6 +11366,7 @@ function _gsDecidirBackupMinimizar(){
 function _gsConferirBackupNaAbertura(){
   try{
     if(!gsPronto()) return { fez:false, motivo:'app ainda inicializando' };
+    if(_gsSuspenso('backup da abertura')) return { fez:false, motivo:'modo protegido' };   // v1.9.9.4
     if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return { fez:false, motivo:'app em segundo plano' };
     if(typeof navigator !== 'undefined' && navigator.onLine === false) return { fez:false, motivo:'sem conexão' };
     // ── v1.9.6.3 — A CONFERÊNCIA PASSA A OLHAR TAMBÉM A NUVEM ──────────────
@@ -11393,6 +11429,7 @@ function _gsBackupAuto(motivo, opts){
   opts = opts || {};
   try {
     if(!gsPronto()) return;               // camada 1 (Bug A) também aqui
+    if(_gsSuspenso('backup automático')) return;   // v1.9.9.4
     if(_gsBackupTimer) clearTimeout(_gsBackupTimer);
     const atraso = (opts.imediato ? 0 : 15000);
     _gsBackupTimer = setTimeout(function(){
@@ -11420,7 +11457,8 @@ async function fazerBackupAgora(){
     showToast('⚠️ Backup não gravado: '+(r.erro||'erro')+' · Nada foi apagado.',6000);
     // v1.9.9.1: falhar não pode ser o fim da linha. Se o completo não coube, o
     // app oferece na hora o caminho que cabe — tirar os registros sem as fotos.
-    _gsOferecerSemFotos('o backup completo');
+    // v1.9.9.4: backup PAUSADO pela blindagem não é falta de memória — não oferece.
+    if(!r.pausado) _gsOferecerSemFotos('o backup completo');
   }
 }
 
@@ -11514,6 +11552,9 @@ function _gsPodaAvaliarLocal(reg, agora, maisRecenteTs){
   if(!/\.json$/i.test(nome))        return { podar:false, motivo:'não é .json — fora do escopo da limpeza' };
   // 2. O mais recente NUNCA sai, aconteça o que acontecer.
   if(reg.ts === maisRecenteTs)      return { podar:false, motivo:'é o backup mais recente' };
+  // v1.9.9.4: o ÚLTIMO BACKUP COMPLETO BOM (o do registro de integridade, que só
+  // um backup aprovado na conferência atualiza) fica fixado.
+  if(_gsNomeUltimoBom() === nome)    return { podar:false, motivo:'é o último backup completo bom (fixado)' };
   // 3. Sem confirmação na nuvem, FICA — por mais velho que seja. Esta é a regra
   //    que dá sentido à janela: o dispositivo é rede de segurança justamente
   //    para o que ainda não chegou na nuvem.
@@ -11563,6 +11604,7 @@ async function _gsPodaApagarArquivoLocal(nome){
 // Executa a poda LOCAL. Falha no meio → ABORTA, mantém íntegro o que sobrou,
 // registra e relata. O registro só é regravado no fim, refletindo o disco.
 async function _gsPodaExecutarLocal(){
+  if(_gsSuspenso('limpeza local')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = _gsPodaSimularLocal();
   if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
@@ -11714,6 +11756,7 @@ async function _gsPodaApagarPDFLocal(nome){
 }
 
 async function _gsPodaExecutarPDFs(){
+  if(_gsSuspenso('limpeza de PDFs')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = _gsPodaSimularPDFs();
   if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
@@ -11769,6 +11812,8 @@ function _gdPodaPlanejarNuvem(arquivos, agora){
     if(nome.indexOf('backup_') !== 0){ out.manter.push({ nome:nome, motivo:'não é da série de backups (rolante/outro)' }); return; }
     const t = Date.parse(f.createdTime || '') || 0;
     if(!t){ out.manter.push({ nome:nome, motivo:'sem data confiável — na dúvida, fica' }); return; }
+    // v1.9.9.4: o último backup completo bom fica FIXADO também na nuvem.
+    if(_gsNomeUltimoBom() === nome){ out.manter.push({ nome:nome, motivo:'é o último backup completo bom (fixado)' }); return; }
     candidatos.push({ id:f.id, nome:nome, ts:t, size:Number(f.size||0) });
   });
   candidatos.sort(function(a,b){ return b.ts - a.ts; });      // recente → antigo
@@ -11820,6 +11865,7 @@ async function _gdPodaLixeira(token, id){
 }
 
 async function _gdPodaExecutarNuvem(){
+  if(_gsSuspenso('limpeza da nuvem')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = await _gdPodaSimularNuvem();
   if(plano.indisponivel) return { ok:false, erro:'nuvem não conectada' };
@@ -11851,8 +11897,13 @@ async function _gdPodaExecutarNuvem(){
 // Roda a poda de verdade — SÓ se o gestor tiver ligado. Uma vez por dia basta:
 // a janela é de 7 dias, então não há nada que ganhe em rodar mais vezes.
 const GS_PODA_ULT_LS = 'garagespot_poda_ultima';
+function _gsNomeUltimoBom(){
+  try{ const m = JSON.parse(localStorage.getItem(GS_BACKUP_META_LS) || 'null'); return (m && m.nome) ? String(m.nome) : ''; }
+  catch(e){ return ''; }
+}
 async function _gsPodaRodarSeLigada(){
   try{
+    if(_gsSuspenso('limpeza (poda)')) return;   // v1.9.9.4
     if(!_gsPodaLigada()) return;
     let ult = 0;
     try{ ult = parseInt(localStorage.getItem(GS_PODA_ULT_LS) || '0', 10) || 0; }catch(e){}
@@ -12844,6 +12895,20 @@ async function _gsSubstituirPorBackup(obj, origem){
     await _gsEscreverVerbatim(n);
     _gsRecarregarTudoDoDisco();
     try{ _gsReconciliarContadorGS([_ctrAparelho], 'restauração (substituir)'); }catch(eC){}
+    // v1.9.9.4 (Bloco G): a sentinela passa a ser o RESULTADO. Se o aparelho estava
+    // em modo protegido, o que entrou durante ele (pendentes) é SOMADO por cima —
+    // o "idêntico ao backup" não pode custar uma foto tirada depois.
+    try{
+      const _pend = await _gsLerPendentes();
+      if(_gsPendentesTem(_pend)){
+        _gsMesclarPendentesNaMemoria(_pend);
+        await saveAnexosIDB(); await saveVistoriasIDB();
+      }
+      let _mc = await _gsIdbGet(DB_STORE, GS_MARCA_KEY);
+      if(!_mc || !_mc.id){ _mc = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsIdbPut(DB_STORE, GS_MARCA_KEY, _mc); }
+      _gsSentDeMemoria(_idbAvailable() ? _mc.id : '');
+      if(_idbAvailable()){ await _gsLimparPendentes(); _gsSairProtegido('restauração (substituir) pelo gestor'); }
+    }catch(eS){ console.warn('[SUBSTITUIR] sentinela:', eS && eS.message); }
     res.ok = true;
   }catch(e){
     res.erro = (e && e.message) || String(e);
@@ -13789,6 +13854,7 @@ async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
 // é re-serializado: o mesmo pacote que foi para o disco vai para a nuvem.
 function _gdEspelharNoDrive(nome, json, motivo){
   try{
+    if(_gsSuspenso('envio de backup à nuvem')) return;   // v1.9.9.4
     if(!_gdDisponivel() || !_gdConectado()) return;
     // v1.9.5.3 — NÃO subir quando não há para onde subir. Três guardas:
     //  1. app escondido: o backup do `visibilitychange` 'hidden' era exatamente o
@@ -13846,6 +13912,7 @@ let _gdRolanteMotivo = '';
 // Fire-and-forget: nada aqui pode atrasar nem afetar o backup local.
 function _gdEspelharEstadoAtual(json, motivo){
   try{
+    if(_gsSuspenso('estado atual na nuvem')) return;   // v1.9.9.4
     if(!_gdDisponivel() || !_gdConectado()) return;
     _gdRolantePendente = json;
     _gdRolanteMotivo = motivo || 'mudança';
@@ -13875,6 +13942,7 @@ const GD_ROLANTE_EMVOO_TETO_MS = 5 * 60 * 1000;
 let _gdRolanteEmVooDesde = 0;
 
 async function _gdFlushRolante(){
+  if(_gsSuspenso('estado atual na nuvem')) return;   // v1.9.9.4
   try{
     if(_gdRolanteEmVoo){
       const parado = Date.now() - (_gdRolanteEmVooDesde || 0);
@@ -13983,6 +14051,7 @@ function _gdMesAntigoParaNovo(nome){
 }
 
 async function _gdMigrarEstrutura(){
+  if(_gsSuspenso('migração de pastas')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(localStorage.getItem(GD_MIGRACAO_LS) === 'ok') return;      // já rodou
@@ -14103,6 +14172,8 @@ function _gdTirarPDFPendente(nomeArquivo){
 // não devolve promessa ao fluxo do check-out.
 function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
   try{
+    // v1.9.9.4: em modo protegido o PDF (já salvo no aparelho) entra na fila e sobe depois.
+    if(_GS_PROT){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'modo protegido'); return; }
     if(!_gdDisponivel() || !_gdConectado()){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'Drive não conectado'); return; }
     _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs).then(function(r){
       _gdTirarPDFPendente(nomeArquivo);
@@ -14132,6 +14203,7 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
 // que continuam existindo. Nenhum item é perdido: o que não coube fica na fila.
 const GD_PDF_LOTE_USUARIO = 3;
 async function _gdTentarPDFsPendentes(opts){
+  if(_gsSuspenso('reenvio de PDFs')) return;   // v1.9.9.4
   opts = opts || {};
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
@@ -14434,6 +14506,7 @@ async function _hhjEnviarUm(gs){
 // Tira o documento provisório da pasta. Chamado no check-out e pela conferência.
 // NUNCA falha para fora: um provisório que sobrou é conserto da próxima rodada.
 async function _hhjRetirar(gs){
+  if(_gsSuspenso('Hospedados Hoje')) return;   // v1.9.9.4 (a conferência retira depois)
   try{
     const est = _hhjEstado();
     const reg = est.arquivos[gs];
@@ -14471,6 +14544,7 @@ function _hhjMarcar(gs, motivo){
 // Trabalhador de segundo plano. UM documento por vez, com respiro entre eles.
 // Qualquer condição ruim: sai calado e tenta no tique de 10 min.
 async function _hhjProcessar(){
+  if(_gsSuspenso('Hospedados Hoje')) return;   // v1.9.9.4
   if(_hhjRodando) return;
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
@@ -14514,6 +14588,7 @@ async function _hhjProcessar(){
 // envio ter dado certo na hora: ninguém que já saiu continua lá, e sem hospedagem
 // ativa a pasta fica VAZIA. Roda no tique, depois do lote.
 async function _hhjConferir(){
+  if(_gsSuspenso('Hospedados Hoje')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(_gdEnviando) return;
@@ -14727,6 +14802,7 @@ async function _gdHistEnviarUm(item){
 
 // Processa um LOTE. Chamada pelo tique; sai calada em qualquer condição ruim.
 async function _gdHistProcessar(){
+  if(_gsSuspenso('varredura do histórico')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(DRIVE_STATUS.nuvem_cheio) return;             // sem espaço, não adianta insistir
@@ -14807,6 +14883,7 @@ function _gdReorgSalvar(e){
 }
 
 async function _gdReorganizarSemData(){
+  if(_gsSuspenso('reorganização da nuvem')) return;   // v1.9.9.4
   try{
     const est0 = _gdReorgEstado();
     if(est0.concluida) return;
@@ -15052,6 +15129,7 @@ const GD_AUD_LOTE = 200;
 // Roda no tique. Sai calada em qualquer condição ruim — nada aqui pode atrasar,
 // travar ou sequer aparecer para quem está operando o app.
 async function _gdArquivarAuditoria(){
+  if(_gsSuspenso('arquivamento da trilha')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(DRIVE_STATUS.nuvem_cheio) return;
@@ -15144,6 +15222,7 @@ function _gdAgendarRetentativa(){
 // Chamado pelo tique periódico. Fail-safe: qualquer erro aqui é engolido — a nuvem
 // nunca pode derrubar o app nem atrapalhar quem está operando o mapa.
 async function _gdTentarPendente(){
+  if(_gsSuspenso('retentativa da nuvem')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     // v1.9.5.3: não insistir quando as condições ainda são ruins — seria só
@@ -15461,6 +15540,7 @@ function _gsAmbiente(href){
 // ignorado por construção — a meta só é gravada em backup completo validado.
 async function _gsChecarIntegridade(){
   try {
+    if(_GS_PROT) return false;   // v1.9.9.4: o modo protegido já está à vista (faixa)
     let meta = null;
     try { meta = JSON.parse(localStorage.getItem(GS_BACKUP_META_LS) || 'null'); } catch(e){}
     if(!meta || !meta.contagens){ return false; }        // instalação nova → não dispara
@@ -18081,6 +18161,8 @@ function _gdUltimoContatoNuvem(){
 
 function _gdRodapeEstado(){
   try{
+    // v1.9.9.4: blindagem acima de tudo — o backup pausado tem de estar à vista.
+    if(_GS_PROT || _gsBackupPausadoMotivo) return { classe:'ruim', txt:'Backup pausado: possível perda de dados' };
     if(!_gdDisponivel()) return null;
     if(!_gdConectado())  return { classe:'alerta', txt:'Nuvem: não conectada' };
     // v1.9.5.4: vínculo existe, permissão não — estado próprio, não "desconectada".
@@ -18124,6 +18206,7 @@ function fmtHrCurta(ts){
 }
 function _gdRodapeHTML(){
   const st = _gdRodapeEstado();
+  // (v1.9.9.4: o estado de backup pausado vale mesmo sem a nuvem disponível)
   if(!st) return '';
   const cor = st.classe === 'ok' ? '#0F6E56' : (st.classe === 'ruim' ? '#A32D2D' : '#B26A00');
   const peso = st.classe === 'ok' ? '600' : '700';
@@ -20664,6 +20747,9 @@ function _gsDaVaga(id, fromPasseio){
 function _migrarAnexosParaHosp(gs, legadoKeys){
   if(!gs) return null;
   const kh='h_'+gs;
+  // v1.9.9.4: em modo protegido nada é re-chaveado (o banco suspeito fica intocado).
+  if(_GS_PROT) return kh;
+  _gsRegistrarRemocao('rechave', 'anexos');   // re-vínculo: v_/p_ → h_ (legítimo)
   let mudou=false;
   (legadoKeys||[]).forEach(function(k){
     if(k && k!==kh && Array.isArray(ANEXOS[k]) && ANEXOS[k].length){
@@ -20795,6 +20881,7 @@ function _gsMigrarVinculoAnexos(opts){
   opts = opts || {};
   const res = { rodou:false, religados:0, baldesLegados:0, movidosEntreHosp:0,
                 baldesPreservados:0, semDestino:[] };
+  if(_GS_PROT){ console.warn('[MIGR v1970] adiada: modo protegido'); return res; }   // v1.9.9.4
   try{
     if(!opts.forcar){
       // v1.9.8.0: as DUAS marcas precisam estar presentes para pular. Um aparelho
@@ -20853,6 +20940,7 @@ function _gsMigrarVinculoAnexos(opts){
     if(mudou){
       // Concatena e move; nunca esvazia. Sem `permitirVazio` de propósito: se
       // isto for a zero, é bug e a guarda tem de barrar.
+      _gsRegistrarRemocao('rechave', 'anexos');   // v1.9.9.4: re-vínculo legítimo
       try{ saveAnexos(); }catch(e){ console.error('[MIGR v1970] saveAnexos falhou:', e); }
     }
     try{ localStorage.setItem(MIGR_VINC_LS, String(Date.now())); }catch(e){}
@@ -20944,6 +21032,7 @@ function removeAnexo(id, fromPasseio, idx){
   const key = getAnexoKey(id, fromPasseio);
   if(ANEXOS[key]){
     const nome = ANEXOS[key][idx]?.name||'';
+    _gsRegistrarRemocao('item', { balde:key, anexo:ANEXOS[key][idx] });   // v1.9.9.4
     ANEXOS[key].splice(idx,1);
     saveAnexos();
     const apt = fromPasseio ? (PASSEIO[id]?.apt||'') : (S[id]?.apt||'');
@@ -20960,7 +21049,13 @@ function saveAnexos(opts){
   // v1.9.4.10 (Bug A): a corrida de init gravava {} aqui e ZERAVA o store do IDB —
   // foi assim que as fotos sumiram no celular dev. opts.permitirVazio = limpeza
   // intencional (check-out).
+  // v1.9.9.4: a recuperação soma em memória e grava no fim, de uma vez.
+  if(_gsRecuperando) return;
+  // v1.9.9.4: modo protegido — o `all` do banco NÃO é regravado; o que é novo
+  // vai para o registro separado de pendentes.
+  if(_GS_PROT){ _gsProtegidoSalvarPendentes(); return; }
   if(!_gsGuardaSave('anexos', ANEXOS, opts)) return;
+  if(!_gsSentConferir('anexos', opts)){ _gsProtegidoSalvarPendentes(); return; }
   try { saveAnexosIDB(); } catch(e){ console.error('[BUG #1] erro em saveAnexos:', e); }
 }
 
@@ -21095,6 +21190,7 @@ window.delAtt = function(id, fp, idx, containerId){
         let nomeReal = nomeAnexo;
         if(ANEXOS[key] && ANEXOS[key][idx]){
           nomeReal = ANEXOS[key][idx].name || nomeAnexo;
+          _gsRegistrarRemocao('item', { balde:key, anexo:ANEXOS[key][idx] });   // v1.9.9.4
           ANEXOS[key].splice(idx,1);
           saveAnexos();
         }
@@ -21147,6 +21243,16 @@ function _atualizarContadores(){
   _contadorAnterior.anexos      = Object.keys(ANEXOS      || {}).length;
   // v1.9.7.0: a guarda por itens precisa da linha de base já no fim do init.
   _contadorAnterior.anexos__itens    = _gsContarItens(ANEXOS || {});
+  // v1.9.9.4: em modo protegido a linha de base NÃO nasce da memória (que pode
+  // estar vazia justamente pela perda): vale o maior entre ela e a sentinela.
+  try{
+    const _s = _GS_PROT ? _gsSentLer() : null;
+    if(_s){
+      _contadorAnterior.vistorias     = Math.max(_contadorAnterior.vistorias, (_s.vistorias && _s.vistorias.total) || 0);
+      _contadorAnterior.anexos        = Math.max(_contadorAnterior.anexos, Object.keys((_s.anexos && _s.anexos.por_gs) || {}).length);
+      _contadorAnterior.anexos__itens = Math.max(_contadorAnterior.anexos__itens, (_s.anexos && _s.anexos.total) || 0);
+    }
+  }catch(e){}
   _contadorAnterior.historico__itens = _gsContarItens(typeof HISTORICO !== 'undefined' ? HISTORICO : null);
   _contadorAnterior.usuarios    = _gsContar(typeof USUARIOS !== 'undefined' ? USUARIOS : null);
   _contadorAnterior.historico   = _gsContar(typeof HISTORICO !== 'undefined' ? HISTORICO : null);
@@ -21437,9 +21543,15 @@ window.gsExportarTudo = function(){
 
 // Abre o banco IndexedDB
 // v1.9.4.2: cria stores 'anexos' e 'vistorias' (DB_VERSION 2)
-function openDB(){
+// v1.9.9.4 (Bloco C): UMA tentativa, com teto de tempo. Um `onsuccess` que
+// chegar depois do teto fecha a conexão em vez de vazar.
+function _gsAbrirBancoUmaVez(tetoMs){
   return new Promise((resolve, reject)=>{
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let feito = false;
+    const t = setTimeout(function(){ if(feito) return; feito = true; reject(new Error('sem resposta em ' + tetoMs + ' ms')); }, tetoMs);
+    let req;
+    try{ req = indexedDB.open(DB_NAME, DB_VERSION); }
+    catch(e){ feito = true; clearTimeout(t); reject(e); return; }
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if(!d.objectStoreNames.contains(DB_STORE))
@@ -21455,12 +21567,38 @@ function openDB(){
       console.log('[IDB] upgrade aplicado | versão:', DB_VERSION, '| stores:', Array.from(d.objectStoreNames));
     };
     req.onsuccess = e => {
-      db = e.target.result;
-      console.log('[IDB] aberto OK | versão:', db.version, '| stores:', Array.from(db.objectStoreNames));
-      resolve(db);
+      const d = e.target.result;
+      if(feito){ try{ d.close(); }catch(_){} return; }
+      feito = true; clearTimeout(t);
+      resolve(d);
     };
-    req.onerror   = () => reject(req.error);
+    req.onerror = () => { if(feito) return; feito = true; clearTimeout(t); reject(req.error || new Error('erro ao abrir o banco')); };
   });
+}
+// v1.9.9.4 (Bloco C): até 3 tentativas, com espera curta, ANTES de desistir. Se
+// as três falharem, quem chamou cai no MODO PROTEGIDO (avaliado em
+// `_gsAvaliarBanco`) — nunca mais no fallback silencioso para o localStorage vazio.
+async function openDB(){
+  const t0 = Date.now();
+  const esperas = [0, 400, 1200];
+  let ult = null;
+  for(let i = 0; i < esperas.length; i++){
+    if(esperas[i]) await new Promise(function(r){ setTimeout(r, esperas[i]); });
+    _gsAbertura.tentativas = i + 1;
+    try{
+      db = await _gsAbrirBancoUmaVez(5000);
+      _gsAbertura.ok = true; _gsAbertura.ms = Date.now() - t0; _gsAbertura.erro = '';
+      console.log('[IDB] aberto OK | versão:', db.version, '| stores:', Array.from(db.objectStoreNames), '| tentativa', i + 1);
+      return db;
+    }catch(e){
+      ult = e;
+      console.warn('[IDB] tentativa ' + (i + 1) + ' de abrir o banco falhou:', e && e.message);
+    }
+  }
+  db = null;
+  _gsAbertura.ok = false; _gsAbertura.ms = Date.now() - t0;
+  _gsAbertura.erro = (ult && ult.message) || String(ult || 'erro');
+  throw ult || new Error('banco não abriu');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -21688,6 +21826,16 @@ async function _migrarParaIndexedDB(){
   await loadAnexosIDB();
   await loadVistoriasIDB();
 
+  // v1.9.9.4 (Bloco B/D): sentinela e marca do banco, ANTES de qualquer gravação.
+  // Suspeita de perda → modo protegido, e esta função NÃO grava nada.
+  let _prot = false;
+  try{ _prot = await _gsAvaliarBanco(); }
+  catch(e){ console.warn('[SENTINELA] avaliação falhou:', e && e.message); _gsEntrarProtegido('avaliacao_falhou', e && e.message, _gsBaseDaMemoria()); _prot = true; }
+  if(_prot){
+    console.warn('[MIGRAÇÃO] modo protegido — nenhuma gravação nem limpeza de legado nesta abertura');
+    return;
+  }
+
   // 2. Garante cópia no IDB se vier do localStorage (ou já está no IDB, no-op)
   if(_idbAvailable() && Object.keys(ANEXOS).length > 0){
     await saveAnexosIDB();
@@ -21713,7 +21861,537 @@ async function _migrarParaIndexedDB(){
 
   // 4. NÃO remove garagespot_anexos / garagespot_vistorias principais — viram backup de emergência
 
+  // v1.9.9.4: pendentes de uma sessão protegida anterior já foram somados e
+  // gravados acima — só agora o registro separado pode sair.
+  if(_gsPendentesParaLimpar && _idbAvailable()){
+    const okA = await _gsConfirmarNoIDB(STORE_ANEXOS, ANEXOS), okV = await _gsConfirmarNoIDB(STORE_VISTORIAS, VISTORIAS);
+    if(okA && okV){ await _gsLimparPendentes(); _gsPendentesParaLimpar = false; }
+  }
+
   console.log('[MIGRAÇÃO] completa. ANEXOS:', Object.keys(ANEXOS).length, 'VISTORIAS:', Object.keys(VISTORIAS).length);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.4 — BLINDAGEM DE DADOS: NENHUMA PERDA SILENCIOSA
+// ════════════════════════════════════════════════════════════════════════════
+// Diagnóstico de 14/10/2026 (celular DEV): o IndexedDB ficou VAZIO enquanto o
+// localStorage seguia íntegro. O app tratou o vazio como normal, re-zerou a
+// referência das proteções a partir da memória vazia, fez o backup da abertura
+// por cima da cópia boa, subiu o vazio para o Drive e gravou `{}` no banco.
+//
+// O que existe a partir daqui, seja qual for a causa (sistema apagou o banco,
+// falha ao abrir, abertura vazia, defeito do app):
+//  • SENTINELA no localStorage (fora do IndexedDB): quantos anexos e vistorias
+//    existem, POR GS, e a MARCA do banco. Só os caminhos legítimos de remoção
+//    (check-out, exclusão de foto/vistoria, re-vínculo, restauração) podem baixá-
+//    la. Qualquer outra redução é PERDA.
+//  • MARCA DO BANCO: um id aleatório gravado DENTRO do IndexedDB e espelhado na
+//    sentinela. Sentinela com marca e banco sem marca = o banco foi apagado por
+//    fora — e isso fica PROVADO na trilha.
+//  • MODO PROTEGIDO: a operação continua NORMAL, mas nada que já existe é
+//    sobrescrito, apagado, podado ou enviado por cima. Faixa fixa no topo.
+//  • RECUPERAÇÃO que SOMA, nunca substitui.
+//
+// MECANISMO DAS FOTOS/VISTORIAS NOVAS EM MODO PROTEGIDO: um registro SEPARADO de
+// pendentes (`pendentes_protegido`, na store `anexos` do próprio banco quando ele
+// abre; no localStorage quando ele não abre). Ele guarda só o que é NOVO em
+// relação ao que o banco tinha ao entrar no modo — o registro `all` (a coleção
+// inteira) NUNCA é regravado por cima de um banco suspeito. Por quê: é a única
+// forma de garantir as duas coisas ao mesmo tempo sem trocar onde os dados moram
+// (isso é a v1.9.9.5): o novo não se perde (fica gravado, sobrevive a fechar o
+// app) e o antigo não é tocado (o `all` fica exatamente como estava). Na saída do
+// modo os pendentes são SOMADOS à coleção, e as remoções legítimas feitas durante
+// o modo (check-out, exclusão) são aplicadas só então.
+const GS_SENT_LS   = 'garagespot_sentinela';
+const GS_PEND_LS   = 'garagespot_pendentes_protegido';
+const GS_PEND_KEY  = 'pendentes_protegido';
+const GS_MARCA_KEY = 'marca_do_banco';
+let _GS_PROT = null;            // {motivo, detalhe, desde, base:{sigs,vist}|null, rem:{baldes,itens,vist}}
+let _gsSentPronta = false;      // a sentinela já foi avaliada nesta abertura
+let _gsRecuperando = false;     // a recuperação está somando backups em memória
+let _gsAbertura = { tentativas:0, ms:0, ok:false, erro:'' };
+let _gsBackupPausadoMotivo = '';
+const _gsSentPerm = { anexos:{ todos:false, chaves:{} }, vistorias:{ todos:false, chaves:{} } };
+const _gsSuspensoAvisado = {};
+
+function gsProtegido(){ return !!_GS_PROT; }
+
+// Chave "por GS" dos anexos: o balde `h_<gs>` conta para o GS; balde legado
+// (`v_`/`p_`) conta pelo próprio nome.
+function _gsChaveSentAnexo(k){ return String(k).indexOf('h_') === 0 ? String(k).slice(2) : String(k); }
+function _gsGsDaVistoria(v){ return String((v && (v.hospedagem || v.hospedagem_gs)) || '_sem'); }
+function _gsSentContarAnexos(obj){
+  const por = {}; let t = 0;
+  try{
+    Object.keys(obj || {}).forEach(function(k){
+      const n = Array.isArray(obj[k]) ? obj[k].length : 0;
+      if(!n) return;
+      const c = _gsChaveSentAnexo(k);
+      por[c] = (por[c] || 0) + n; t += n;
+    });
+  }catch(e){}
+  return { total:t, por_gs:por };
+}
+function _gsSentContarVistorias(obj){
+  const por = {}; let t = 0;
+  try{
+    Object.keys(obj || {}).forEach(function(id){
+      const v = obj[id]; if(!v) return;
+      const g = _gsGsDaVistoria(v);
+      por[g] = (por[g] || 0) + 1; t++;
+    });
+  }catch(e){}
+  return { total:t, por_gs:por };
+}
+function _gsSentLer(){
+  try{ const s = JSON.parse(localStorage.getItem(GS_SENT_LS) || 'null'); return (s && typeof s === 'object') ? s : null; }
+  catch(e){ return null; }
+}
+function _gsSentGravar(s){
+  try{ s.v = 1; s.atualizado_ts = Date.now(); localStorage.setItem(GS_SENT_LS, JSON.stringify(s)); }
+  catch(e){ console.warn('[SENTINELA] não gravou:', e && e.message); }
+}
+// O que a sentinela diz que existe e a memória (ou o objeto dado) não tem.
+function _gsSentFaltas(s, anexosObj, vistObj){
+  const out = [];
+  if(!s) return out;
+  try{
+    const a = _gsSentContarAnexos(anexosObj), v = _gsSentContarVistorias(vistObj);
+    const sa = (s.anexos && s.anexos.por_gs) || {}, sv = (s.vistorias && s.vistorias.por_gs) || {};
+    Object.keys(sa).forEach(function(k){ const t = a.por_gs[k] || 0; if(t < sa[k]) out.push('anexos ' + k + ': ' + sa[k] + '→' + t); });
+    Object.keys(sv).forEach(function(k){ const t = v.por_gs[k] || 0; if(t < sv[k]) out.push('vistorias ' + k + ': ' + sv[k] + '→' + t); });
+  }catch(e){}
+  return out;
+}
+function _gsSentDeMemoria(marcaId){
+  const s = _gsSentLer() || {};
+  s.anexos = _gsSentContarAnexos(ANEXOS);
+  s.vistorias = _gsSentContarVistorias(VISTORIAS);
+  if(marcaId) s.marca = marcaId;
+  _gsSentGravar(s);
+  return s;
+}
+
+// ── Caminhos LEGÍTIMOS de remoção ───────────────────────────────────────────
+// Fora do modo protegido: autoriza a próxima gravação a baixar a sentinela
+// naquela chave. Dentro dele: a remoção é ANOTADA e só é aplicada na saída.
+// tipo: 'balde' (chave do ANEXOS), 'item' ({balde, anexo}), 'vistoria' (id),
+//       'rechave' ('anexos'|'vistorias' — re-vínculo/migração: mexe em várias chaves)
+function _gsRegistrarRemocao(tipo, info){
+  try{
+    if(_GS_PROT){
+      const r = _GS_PROT.rem, b = _GS_PROT.base;
+      if(tipo === 'balde'){ if(r.baldes.indexOf(info) < 0) r.baldes.push(String(info)); }
+      else if(tipo === 'item' && info && info.anexo){
+        const sig = _gsAssinaturaAnexo(info.anexo);
+        if(!b || b.sigs[info.balde + '|' + sig]) r.itens.push({ b:String(info.balde), sig:sig });
+      }
+      else if(tipo === 'vistoria'){ if(r.vist.indexOf(info) < 0) r.vist.push(String(info)); }
+      return;
+    }
+    if(tipo === 'balde') _gsSentPerm.anexos.chaves[_gsChaveSentAnexo(info)] = true;
+    else if(tipo === 'item' && info) _gsSentPerm.anexos.chaves[_gsChaveSentAnexo(info.balde)] = true;
+    else if(tipo === 'vistoria'){ const v = VISTORIAS && VISTORIAS[info]; _gsSentPerm.vistorias.chaves[_gsGsDaVistoria(v)] = true; }
+    else if(tipo === 'rechave'){ if(_gsSentPerm[info]) _gsSentPerm[info].todos = true; }
+  }catch(e){ console.warn('[SENTINELA] registro de remoção falhou:', e && e.message); }
+}
+
+// Conferência na gravação. Devolve false (e entra no modo protegido) quando a
+// coleção em memória perdeu itens por um caminho que NÃO é legítimo.
+function _gsSentConferir(tipo, opts){
+  const perm = _gsSentPerm[tipo];
+  try{
+    if(!_gsSentPronta || _GS_PROT) return true;
+    const s = _gsSentLer();
+    if(!s){ _gsSentDeMemoria(''); return true; }
+    const atual = tipo === 'anexos' ? _gsSentContarAnexos(ANEXOS) : _gsSentContarVistorias(VISTORIAS);
+    const ant = (s[tipo] && s[tipo].por_gs) || {};
+    const todos = perm.todos || !!(opts && opts.permitirVazio);
+    const perdas = [];
+    Object.keys(ant).forEach(function(k){
+      const a = atual.por_gs[k] || 0;
+      if(a < ant[k] && !todos && !perm.chaves[k]) perdas.push(k + ' ' + ant[k] + '→' + a);
+    });
+    if(perdas.length){
+      _gsEntrarProtegido('reducao_sem_caminho_legitimo', tipo + ': ' + perdas.slice(0, 8).join(', '));
+      return false;
+    }
+    s[tipo] = atual; _gsSentGravar(s);
+    return true;
+  }catch(e){ console.warn('[SENTINELA] conferência falhou (gravação segue):', e && e.message); return true; }
+  finally{ perm.todos = false; perm.chaves = {}; }
+}
+
+// ── Marca do banco ──────────────────────────────────────────────────────────
+function _gsIdAleatorio(){
+  try{ if(window.crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+}
+function _gsIdbGet(store, key){
+  return new Promise(function(resolve){
+    try{
+      if(!_idbAvailable() || !db.objectStoreNames.contains(store)){ resolve(undefined); return; }
+      const rq = db.transaction(store, 'readonly').objectStore(store).get(key);
+      rq.onsuccess = function(){ resolve(rq.result); };
+      rq.onerror = function(){ resolve(undefined); };
+    }catch(e){ resolve(undefined); }
+  });
+}
+function _gsIdbPut(store, key, valor){
+  return new Promise(function(resolve){
+    try{
+      if(!_idbAvailable()){ resolve(false); return; }
+      const tx = db.transaction(store, 'readwrite');
+      if(valor === undefined) tx.objectStore(store).delete(key); else tx.objectStore(store).put(valor, key);
+      tx.oncomplete = function(){ resolve(true); };
+      tx.onerror = function(){ resolve(false); };
+      tx.onabort = function(){ resolve(false); };
+    }catch(e){ resolve(false); }
+  });
+}
+
+// ── Pendentes do modo protegido ─────────────────────────────────────────────
+function _gsSigVist(v){
+  try{
+    return [v.id || v.numero || '', v.ts_finalizacao || '', v.ts_assinada || '',
+            String(v.documento_final_b64 || '').length, String(v.assinatura || '').length,
+            (v.avarias || v.danos || []).length, v.apt || '', _gsGsDaVistoria(v)].join('|');
+  }catch(e){ return String(Date.now()); }
+}
+function _gsBaseDaMemoria(){
+  const sigs = {}, vist = {};
+  Object.keys(ANEXOS || {}).forEach(function(k){
+    (Array.isArray(ANEXOS[k]) ? ANEXOS[k] : []).forEach(function(a){ sigs[k + '|' + _gsAssinaturaAnexo(a)] = true; });
+  });
+  Object.keys(VISTORIAS || {}).forEach(function(id){ if(VISTORIAS[id]) vist[id] = _gsSigVist(VISTORIAS[id]); });
+  return { sigs:sigs, vist:vist };
+}
+async function _gsLerPendentes(){
+  const out = { anexos:{}, vistorias:{}, rem_baldes:[], rem_itens:[], rem_vist:[], fontes:[] };
+  const somar = function(p, fonte){
+    if(!p || typeof p !== 'object') return;
+    out.fontes.push(fonte);
+    Object.keys(p.anexos || {}).forEach(function(k){ out.anexos[k] = _gsMesclarAnexosChave(out.anexos[k], p.anexos[k]).lista; });
+    Object.keys(p.vistorias || {}).forEach(function(id){ out.vistorias[id] = p.vistorias[id]; });
+    (p.rem_baldes || []).forEach(function(x){ if(out.rem_baldes.indexOf(x) < 0) out.rem_baldes.push(x); });
+    (p.rem_itens || []).forEach(function(x){ out.rem_itens.push(x); });
+    (p.rem_vist || []).forEach(function(x){ if(out.rem_vist.indexOf(x) < 0) out.rem_vist.push(x); });
+  };
+  try{ somar(await _gsIdbGet(STORE_ANEXOS, GS_PEND_KEY), 'banco'); }catch(e){}
+  try{ somar(JSON.parse(localStorage.getItem(GS_PEND_LS) || 'null'), 'localStorage'); }catch(e){}
+  return out;
+}
+function _gsPendentesTem(p){
+  return !!p && (Object.keys(p.anexos).length || Object.keys(p.vistorias).length ||
+                 p.rem_baldes.length || p.rem_itens.length || p.rem_vist.length);
+}
+// Soma os pendentes à memória (o que foi feito no modo protegido é o mais novo).
+function _gsMesclarPendentesNaMemoria(p){
+  let n = 0;
+  Object.keys(p.anexos).forEach(function(k){
+    const m = _gsMesclarAnexosChave(ANEXOS[k], p.anexos[k]);
+    if(m.somados){ ANEXOS[k] = m.lista; n += m.somados; }
+  });
+  Object.keys(p.vistorias).forEach(function(id){ VISTORIAS[id] = p.vistorias[id]; n++; });
+  return n;
+}
+// Aplica as remoções legítimas anotadas durante o modo protegido.
+function _gsAplicarRemocoesAnotadas(rem){
+  let n = 0;
+  (rem.baldes || []).forEach(function(k){ if(ANEXOS[k]){ delete ANEXOS[k]; n++; } });
+  (rem.itens || []).forEach(function(it){
+    const l = ANEXOS[it.b]; if(!Array.isArray(l)) return;
+    const i = l.findIndex(function(a){ return _gsAssinaturaAnexo(a) === it.sig; });
+    if(i >= 0){ l.splice(i, 1); n++; if(!l.length) delete ANEXOS[it.b]; }
+  });
+  (rem.vist || []).forEach(function(id){ if(VISTORIAS[id]){ delete VISTORIAS[id]; n++; } });
+  return n;
+}
+async function _gsLimparPendentes(){
+  try{ localStorage.removeItem(GS_PEND_LS); }catch(e){}
+  try{ await _gsIdbPut(STORE_ANEXOS, GS_PEND_KEY, undefined); }catch(e){}
+}
+// Grava SÓ o que é novo em relação ao banco (nunca o `all`).
+function _gsProtegidoSalvarPendentes(){
+  try{
+    if(!_GS_PROT || !_GS_PROT.base) return;
+    const b = _GS_PROT.base, pa = {}, pv = {};
+    Object.keys(ANEXOS || {}).forEach(function(k){
+      (Array.isArray(ANEXOS[k]) ? ANEXOS[k] : []).forEach(function(a){
+        if(!b.sigs[k + '|' + _gsAssinaturaAnexo(a)]) (pa[k] = pa[k] || []).push(a);
+      });
+    });
+    Object.keys(VISTORIAS || {}).forEach(function(id){
+      const v = VISTORIAS[id]; if(v && b.vist[id] !== _gsSigVist(v)) pv[id] = v;
+    });
+    const r = _GS_PROT.rem;
+    const pend = { v:1, ts:Date.now(), anexos:pa, vistorias:pv,
+                   rem_baldes:r.baldes.slice(), rem_itens:r.itens.slice(), rem_vist:r.vist.slice() };
+    if(_idbAvailable()){
+      _gsIdbPut(STORE_ANEXOS, GS_PEND_KEY, pend).then(function(ok){
+        if(!ok) _gsSetItemSeguro(GS_PEND_LS, JSON.stringify(pend), 'pendentes do modo protegido');
+      });
+    } else {
+      _gsSetItemSeguro(GS_PEND_LS, JSON.stringify(pend), 'pendentes do modo protegido');
+    }
+  }catch(e){ console.warn('[PROTEGIDO] pendentes não gravados:', e && e.message); }
+}
+
+// ── Entrada e saída do modo protegido ───────────────────────────────────────
+function _gsEntrarProtegido(motivo, detalhe, base, rem){
+  if(_GS_PROT) return;
+  _GS_PROT = { motivo:String(motivo || ''), detalhe:String(detalhe || ''), desde:Date.now(),
+               base: base || null, rem: rem || { baldes:[], itens:[], vist:[] } };
+  _gsBackupPausadoMotivo = 'possível perda de dados';
+  try{ if(_gsBackupTimer){ clearTimeout(_gsBackupTimer); _gsBackupTimer = null; } }catch(e){}
+  console.warn('[PROTEGIDO] modo protegido ATIVADO —', motivo, detalhe || '');
+  try{ addLogSistema('MODO PROTEGIDO ativado — ' + motivo + (detalhe ? ' (' + detalhe + ')' : '') +
+    '. Backups, envio à nuvem e limpezas PAUSADOS; nada existente será sobrescrito.',
+    { aud:true, acao:'modo_protegido_entrou', alvo:String(motivo), origem:'automatico' }); }catch(e){}
+  // Entrou no meio do uso (gravação suspeita): a base é o que o BANCO tem — ele
+  // não foi tocado. Carregada de forma assíncrona; os pendentes saem depois dela.
+  if(!_GS_PROT.base){
+    (async function(){
+      let a, v;
+      try{ a = await _gsIdbGet(STORE_ANEXOS, 'all'); v = await _gsIdbGet(STORE_VISTORIAS, 'all'); }catch(e){}
+      const sigs = {}, vist = {};
+      Object.keys(a || {}).forEach(function(k){ (Array.isArray(a[k]) ? a[k] : []).forEach(function(x){ sigs[k + '|' + _gsAssinaturaAnexo(x)] = true; }); });
+      Object.keys(v || {}).forEach(function(id){ if(v[id]) vist[id] = _gsSigVist(v[id]); });
+      if(_GS_PROT && !_GS_PROT.base){ _GS_PROT.base = { sigs:sigs, vist:vist }; _gsProtegidoSalvarPendentes(); }
+    })();
+  }
+  try{ _gsRenderFaixaProtegido(); }catch(e){}
+  try{ if(typeof atualizarRodapeNuvem === 'function') atualizarRodapeNuvem(); }catch(e){}
+}
+function _gsSairProtegido(motivo){
+  if(!_GS_PROT) return;
+  const desde = _GS_PROT.desde;
+  _GS_PROT = null;
+  _gsBackupPausadoMotivo = '';
+  try{ addLogSistema('MODO PROTEGIDO encerrado — ' + (motivo || '') + ' (ativo desde ' + _dtLocal(desde) + '). Backups retomados.',
+    { aud:true, acao:'modo_protegido_saiu', alvo:String(motivo || ''), origem:'automatico' }); }catch(e){}
+  try{ const f = document.getElementById('gs-faixa-protegido'); if(f) f.remove(); }catch(e){}
+}
+// Ponto ÚNICO das suspensões: backup automático, nuvem, podas, Hospedados Hoje.
+function _gsSuspenso(oque){
+  if(!_GS_PROT) return false;
+  if(!_gsSuspensoAvisado[oque]){
+    _gsSuspensoAvisado[oque] = true;
+    console.warn('[PROTEGIDO] suspenso:', oque);
+  }
+  return true;
+}
+function _gsRenderFaixaProtegido(){
+  if(!_GS_PROT) return;
+  let f = document.getElementById('gs-faixa-protegido');
+  const pg = document.querySelector('.page');
+  if(!f){
+    f = document.createElement('div');
+    f.id = 'gs-faixa-protegido';
+    f.setAttribute('role', 'alert');
+    f.style.cssText = 'flex-shrink:0;background:#FCEBEB;border:1px solid #C53030;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:12px;color:#A32D2D;font-weight:600';
+    f.innerHTML = '<span style="flex:1;min-width:0">⚠️ Fotos e vistorias podem ter sido perdidas neste aparelho. Os backups estão pausados para proteger a última cópia boa.</span>' +
+      '<button id="gs-faixa-recuperar" class="bsv" style="padding:5px 10px;font-size:11px;white-space:nowrap">Recuperar do último backup bom</button>';
+    if(pg) pg.insertBefore(f, pg.firstChild); else document.body.insertBefore(f, document.body.firstChild);
+  }
+  const b = document.getElementById('gs-faixa-recuperar');
+  if(b) b.onclick = function(){ _gsRecuperarUltimoBom(); };
+}
+
+// ── Avaliação na abertura (dentro de `_migrarParaIndexedDB`, ANTES de gravar) ──
+// Devolve true se o modo protegido foi ativado.
+async function _gsAvaliarBanco(){
+  const sent = _gsSentLer();
+  let motivo = '', detalhe = '', marca = null, marcaEstado = '';
+  if(!_idbAvailable()){
+    motivo = 'banco_nao_abriu';
+    detalhe = (_gsAbertura.erro || 'erro desconhecido') + ' após ' + _gsAbertura.tentativas + ' tentativa(s)';
+    marcaEstado = 'sem banco';
+  } else {
+    marca = await _gsIdbGet(DB_STORE, GS_MARCA_KEY);
+    if(!marca || !marca.id){
+      marca = null;
+      if(sent && sent.marca){ motivo = 'marca_sumiu'; detalhe = 'o banco foi apagado por fora (a sentinela tem a marca ' + sent.marca + ')'; marcaEstado = 'SUMIU'; }
+      else marcaEstado = 'ausente (será criada)';
+    } else if(sent && sent.marca && sent.marca !== marca.id){
+      motivo = 'marca_diferente'; detalhe = 'banco recriado (marca ' + marca.id + ' × sentinela ' + sent.marca + ')'; marcaEstado = 'DIFERENTE';
+    } else marcaEstado = 'ok';
+  }
+  const faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
+  if(!motivo && faltas.length){ motivo = 'contagem_menor'; detalhe = faltas.slice(0, 8).join(', '); }
+  const banco = { anexos:_gsSentContarAnexos(ANEXOS).total, vistorias:_gsSentContarVistorias(VISTORIAS).total };
+  const pend = await _gsLerPendentes();
+  _gsUltimaAvaliacao = { motivo:motivo, detalhe:detalhe, marca:marcaEstado, banco:banco,
+    sentinela: sent ? { anexos:(sent.anexos||{}).total||0, vistorias:(sent.vistorias||{}).total||0 } : null,
+    pendentes: _gsPendentesTem(pend) };
+  if(motivo){
+    const base = _gsBaseDaMemoria();   // o que o banco tinha AGORA, antes dos pendentes
+    _gsMesclarPendentesNaMemoria(pend);
+    _gsEntrarProtegido(motivo, detalhe, base, { baldes:pend.rem_baldes.slice(), itens:pend.rem_itens.slice(), vist:pend.rem_vist.slice() });
+    _gsSentPronta = true;
+    if(_gsPendentesTem(pend)) _gsProtegidoSalvarPendentes();
+    return true;
+  }
+  // Banco íntegro. Pendentes de uma sessão protegida anterior: somar e aplicar
+  // as remoções anotadas — e só então a coleção é regravada (logo abaixo, pelo
+  // próprio `_migrarParaIndexedDB`).
+  if(_gsPendentesTem(pend)){
+    _gsMesclarPendentesNaMemoria(pend);
+    _gsAplicarRemocoesAnotadas({ baldes:pend.rem_baldes, itens:pend.rem_itens, vist:pend.rem_vist });
+    _gsPendentesParaLimpar = true;
+    try{ addLogSistema('Pendentes do modo protegido somados ao banco (' + pend.fontes.join(' + ') + ')',
+      { aud:true, acao:'pendentes_somados', origem:'automatico' }); }catch(e){}
+  }
+  if(!marca){
+    marca = { id:_gsIdAleatorio(), criada_ts:Date.now() };
+    await _gsIdbPut(DB_STORE, GS_MARCA_KEY, marca);
+  }
+  _gsSentDeMemoria(marca.id);
+  _gsSentPronta = true;
+  return false;
+}
+let _gsUltimaAvaliacao = null;
+let _gsPendentesParaLimpar = false;
+
+// Registro de diagnóstico na trilha, a cada abertura (Bloco F).
+async function _gsRegistrarAberturaArmazenamento(persistP){
+  let persist = 'indisponível', est = null;
+  try{ persist = await Promise.race([persistP, new Promise(function(r){ setTimeout(function(){ r('sem resposta'); }, 2000); })]); }catch(e){ persist = 'erro'; }
+  try{
+    if(navigator.storage && typeof navigator.storage.estimate === 'function'){
+      est = await Promise.race([navigator.storage.estimate(), new Promise(function(r){ setTimeout(function(){ r(null); }, 2000); })]);
+    }
+  }catch(e){}
+  const a = _gsUltimaAvaliacao || {};
+  const mb = function(x){ return (x == null) ? '?' : (Math.round(x / 1048576 * 10) / 10) + ' MB'; };
+  const msg = 'Abertura do armazenamento — banco: ' + (_gsAbertura.ok ? 'aberto' : 'NÃO ABRIU') +
+    ' (' + _gsAbertura.tentativas + ' tentativa(s), ' + _gsAbertura.ms + ' ms' + (_gsAbertura.erro ? ', ' + _gsAbertura.erro : '') + ')' +
+    ' · marca: ' + (a.marca || '?') +
+    ' · persist: ' + persist +
+    ' · uso: ' + (est ? mb(est.usage) + ' de ' + mb(est.quota) : 'indisponível') +
+    ' · banco: ' + (a.banco ? a.banco.anexos + ' anexos / ' + a.banco.vistorias + ' vistorias' : '?') +
+    ' · sentinela: ' + (a.sentinela ? a.sentinela.anexos + ' / ' + a.sentinela.vistorias : 'nova') +
+    (a.pendentes ? ' · havia pendentes do modo protegido' : '') +
+    (a.motivo ? ' · MODO PROTEGIDO: ' + a.motivo : '');
+  console.log('[ARMAZENAMENTO]', msg);
+  try{ addLogSistema(msg, { aud:true, acao:'abertura_armazenamento', alvo:(a.motivo || 'ok'), origem:'automatico' }); }catch(e){}
+}
+// `persist()` a cada abertura enquanto não for concedido.
+function _gsPedirPersistencia(){
+  try{
+    if(!(navigator.storage && typeof navigator.storage.persist === 'function')) return Promise.resolve('API indisponível');
+    const jaP = (typeof navigator.storage.persisted === 'function') ? navigator.storage.persisted() : Promise.resolve(false);
+    return jaP.then(function(ja){
+      if(ja) return 'já concedido';
+      return navigator.storage.persist().then(function(ok){ return ok ? 'CONCEDIDO agora' : 'negado'; });
+    }).catch(function(e){ return 'erro: ' + (e && e.message); });
+  }catch(e){ return Promise.resolve('erro: ' + (e && e.message)); }
+}
+
+// ── Recuperação: soma o(s) último(s) backup(s) bom(ns) (Bloco D) ─────────────
+async function _gsFontesDeBackup(){
+  const fontes = [];
+  // 1) arquivos completos do aparelho (Documentos/GarageSpot/Dados), do mais novo
+  try{
+    const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+    const reg = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]')
+      .filter(function(b){ return b && b.arquivo && /^backup_completo_/.test(String(b.nome || '')); })
+      .sort(function(a, b){ return (b.ts || 0) - (a.ts || 0); }).slice(0, 8);
+    if(F) reg.forEach(function(b){
+      fontes.push({ origem:'aparelho', nome:b.nome, ler: async function(){
+        const r = await F.readFile({ path:'GarageSpot/Dados/' + b.nome, directory:'DOCUMENTS', encoding:'utf8' });
+        return JSON.parse(String((r && r.data) || ''));
+      } });
+    });
+  }catch(e){ console.warn('[RECUPERAR] lista do aparelho falhou:', e && e.message); }
+  // 2) a cópia de restauração em um toque (some junto com o banco, mas vale tentar)
+  fontes.push({ origem:'cópia rápida do aparelho', nome:'ultimo_completo', ler: function(){ return _gsLerSnapshotIDB(); } });
+  // 3) o Drive
+  try{
+    if(_gdDisponivel() && _gdConectado()){
+      const arq = await _gdComToken(async function(token){
+        const pasta = await _gdGarantirPasta(token);
+        return await _gdListarArquivos(token, pasta);
+      }, false);
+      (arq || []).filter(function(f){ return /^backup_completo_/.test(String(f.name || '')); }).slice(0, 8).forEach(function(f){
+        fontes.push({ origem:'nuvem', nome:f.name, ler: async function(){
+          const txt = await _gdComToken(function(token){ return _gdBaixarArquivo(token, f.id); }, false);
+          return JSON.parse(String(txt || ''));
+        } });
+      });
+    }
+  }catch(e){ console.warn('[RECUPERAR] lista da nuvem falhou:', e && e.message); }
+  return fontes;
+}
+function _gsRecuperarUltimoBom(){
+  showEntrarPIN(function(){
+    showM('<div class="mt">♻ Recuperar do último backup bom</div>' +
+      '<div class="ms" id="gs-rec-ms">Procurando o último backup bom — primeiro no aparelho, depois na nuvem…</div>' +
+      '<div style="font-size:11px;color:#888;margin-top:6px">Nada do que está no aparelho será apagado: a recuperação SOMA.</div>');
+    _gsExecutarRecuperacao().then(function(r){
+      const ms = document.getElementById('gs-rec-ms');
+      const txt = r.ok
+        ? '✅ Recuperado: as contagens batem com o que este aparelho tinha. Backups retomados.' + (r.usados.length ? '<br><small>De: ' + r.usados.map(_vtEsc).join(', ') + '</small>' : '')
+        : '⚠️ ' + _vtEsc(r.erro || 'A recuperação não completou.') + (r.faltas && r.faltas.length ? '<br><small>Ainda falta: ' + r.faltas.slice(0, 6).map(_vtEsc).join(' · ') + '</small>' : '') +
+          '<br><small>O modo protegido continua — nada foi perdido do que entrou depois.</small>';
+      showM('<div class="mt">♻ Recuperar do último backup bom</div><div class="ms">' + txt + '</div>' +
+        '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
+    });
+  });
+}
+async function _gsExecutarRecuperacao(){
+  const res = { ok:false, erro:'', usados:[], faltas:[] };
+  if(!_GS_PROT){ res.ok = true; return res; }
+  const sent = _gsSentLer();
+  let fontes = [];
+  _gsRecuperando = true;
+  try{
+    fontes = await _gsFontesDeBackup();
+    for(let i = 0; i < fontes.length; i++){
+      if(sent && !_gsSentFaltas(sent, ANEXOS, VISTORIAS).length) break;   // já cobre tudo
+      let obj = null;
+      try{ obj = await fontes[i].ler(); }catch(e){ console.warn('[RECUPERAR] não leu', fontes[i].nome, e && e.message); continue; }
+      if(!obj || !obj.indexeddb) continue;   // só backup COMPLETO serve
+      await _gsAplicarBackup(obj, 'recuperação (' + fontes[i].origem + ': ' + fontes[i].nome + ')');
+      res.usados.push(fontes[i].origem + ': ' + fontes[i].nome);
+    }
+  }catch(e){ res.erro = (e && e.message) || String(e); }
+  finally{ _gsRecuperando = false; }
+  try{ renderPainelDia(); }catch(e){}
+  res.faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
+  if(res.faltas.length){
+    res.erro = res.erro || (fontes.length ? 'Os backups encontrados não cobrem tudo o que este aparelho tinha.' : 'Nenhum backup encontrado.');
+    _gsProtegidoSalvarPendentes();   // o que foi somado fica GRAVADO como pendente
+    try{ addLogSistema('Recuperação incompleta — modo protegido mantido. Falta: ' + res.faltas.slice(0, 8).join(', '),
+      { aud:true, acao:'recuperacao_incompleta', origem:'usuario' }); }catch(e){}
+    return res;
+  }
+  if(!_idbAvailable()){
+    res.erro = 'O banco do aparelho continua sem abrir — os dados foram recuperados na tela, mas só podem ser gravados quando ele abrir.';
+    _gsProtegidoSalvarPendentes();
+    return res;
+  }
+  // Tudo coberto: aplica as remoções legítimas anotadas, grava a coleção inteira,
+  // confere, refaz marca e sentinela, sai do modo e faz um backup completo.
+  _gsAplicarRemocoesAnotadas(_GS_PROT.rem);
+  const okA = await saveAnexosIDB(), okV = await saveVistoriasIDB();
+  const confA = await _gsConfirmarNoIDB(STORE_ANEXOS, ANEXOS), confV = await _gsConfirmarNoIDB(STORE_VISTORIAS, VISTORIAS);
+  if(!(okA && okV && confA && confV)){
+    res.erro = 'A gravação no banco não pôde ser confirmada — modo protegido mantido.';
+    _gsProtegidoSalvarPendentes();
+    return res;
+  }
+  let marca = await _gsIdbGet(DB_STORE, GS_MARCA_KEY);
+  if(!marca || !marca.id){ marca = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsIdbPut(DB_STORE, GS_MARCA_KEY, marca); }
+  _gsSentDeMemoria(marca.id);
+  await _gsLimparPendentes();
+  _gsSairProtegido('recuperação somando ' + res.usados.length + ' backup(s)');
+  try{ _atualizarContadores(); }catch(e){}
+  try{ addLogSistema('Recuperação concluída: ' + res.usados.join(', '), { aud:true, acao:'recuperacao_concluida', origem:'usuario' }); }catch(e){}
+  try{ await fazerBackupLocal('recuperação', { comFotos:true }); }catch(e){}
+  res.ok = true;
+  return res;
 }
 
 // Monta o objeto de estado para salvar
@@ -22015,15 +22693,10 @@ checkLicense().then(async (ativo)=>{
   // Reduz a chance de o SO descartar o IndexedDB em aparelho cheio. Totalmente
   // fail-safe: em WebView antigo a API não existe (ou devolve false) e o app segue
   // igual — a proteção de verdade são as guardas + o backup em arquivo.
-  try {
-    if(navigator.storage && typeof navigator.storage.persist === 'function'){
-      navigator.storage.persist()
-        .then(function(ok){ console.log('[PERSIST] armazenamento persistente:', ok ? 'CONCEDIDO' : 'negado'); })
-        .catch(function(e){ console.log('[PERSIST] indisponível:', e && e.message); });
-    } else {
-      console.log('[PERSIST] API indisponível neste WebView — seguindo sem ela');
-    }
-  } catch(e){ console.log('[PERSIST] chamada falhou (ignorada):', e && e.message); }
+  // v1.9.9.4 (Bloco C/F): pedido a CADA abertura enquanto não for concedido, e o
+  // resultado vai para a trilha (antes ia só para o console).
+  const _gsPersistP = _gsPedirPersistencia();
+  _gsPersistP.then(function(r){ console.log('[PERSIST] armazenamento persistente:', r); });
   // Licença OK — inicializa normalmente
   openDB()
     .catch((err)=>{ db=null; console.warn('[IDB] openDB falhou, modo localStorage:', err); })
@@ -22089,6 +22762,9 @@ checkLicense().then(async (ativo)=>{
       // estar carregado — por isso aqui, e não antes.
       try { _nciLimparRascunhoOrfao(); } catch(e){ console.warn('[NCI] rascunho órfão:', e); }
       try { _atualizarContadores(); } catch(e){ console.warn('[BUG A] contadores pós-init:', e); }
+      // v1.9.9.4 (Bloco F): diagnóstico do armazenamento na trilha, a cada abertura.
+      try { _gsRegistrarAberturaArmazenamento(_gsPersistP); } catch(e){}
+      try { if(_GS_PROT) _gsRenderFaixaProtegido(); } catch(e){}
       console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
       // v1.9.4.16: o hotel opera 24h — o rótulo "check-out" passa a virar sozinho
       // à meia-noite local, sem depender de interação.
