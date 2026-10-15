@@ -1350,10 +1350,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v1.9.9.4';
+const GS_VERSION = 'v1.9.9.5';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 29;
-const GS_BUILD_TS = '2026-10-15';
+const GS_BUILD_TS = '2026-10-15';   // v1.9.9.5
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -2610,13 +2610,20 @@ function dropDrag(x, y){
   if(!dragState) return;
   const ms = {...dragState};
 
+  // v1.9.9.5 — O DESTINO É A CÉLULA DO TRACEJADO, E SÓ ELA.
+  // Antes havia DOIS cálculos: o tracejado (`moveDrag`) e um segundo
+  // `elementFromPoint` aqui, feito DEPOIS de `forceCleanDrag()`. Só que a limpeza
+  // esconde o `#move-banner`, que fica ACIMA do mapa e está no fluxo da página: o
+  // mapa sobe e cresce, e o mesmo ponto da tela passa a cair na célula de BAIXO
+  // (caso real: tracejado na 4C, carro no CORREDOR 02). Agora o destino é lido
+  // da marcação `.drag-over` ANTES de qualquer limpeza — o que o operador vê é o
+  // que acontece. Sem tracejado no momento de soltar, o arrasto é cancelado.
+  // (`x`/`y` ficam na assinatura por compatibilidade; não decidem mais nada.)
+  const marcado = document.querySelector('.drag-over[data-id]');
+  const destId = marcado ? marcado.dataset.id : '';
+
   // Limpa TUDO antes de processar o drop
   forceCleanDrag();
-
-  // Descobre a célula de destino
-  const el = document.elementFromPoint(x, y);
-  const td = el && el.closest ? el.closest('[data-id]') : null;
-  const destId = td && td.dataset.id;
 
   // Se não caiu em vaga livre válida, cancela sem mover
   if(!destId || !S[destId] || S[destId].status!=='free' || destId===ms.id) return;
@@ -3825,7 +3832,16 @@ function _gsDocumentoDeFechamento(ctx){
     };
     let _coConteudo=null, _salvo=null, _coNuvem='';
     try{
-      const doc=await buildRegistroDocAsync(aptKey,dvChk,histChk,_snapshotAnexosCheckout,function(feitos,total){
+      // v1.9.9.5: as fotos estão nos arquivos; lidas agora, e o retrato é refeito
+      // com elas (o balde ainda existe — o apagamento só vem depois do PDF salvo).
+      let _snapDoc = _snapshotAnexosCheckout;
+      try{
+        const _bs = ['h_' + (hospNum || ''), id ? ('v_' + id) : ''].filter(Boolean);
+        await _gsArqHidratar(_bs);
+        const _s2 = _gsSnapshotAnexosCheckout(id, hospNum);
+        if(_s2.todos.length >= _snapDoc.todos.length) _snapDoc = _s2;
+      }catch(eH){ console.warn('[ARQ] fotos do fechamento não lidas:', eH && eH.message); }
+      const doc=await buildRegistroDocAsync(aptKey,dvChk,histChk,_snapDoc,function(feitos,total){
         const el=_st(); if(el) el.textContent='📄 Preparando imagens… ('+feitos+' de '+total+')';
         _prog(total?(feitos/total)*90:90);
       });
@@ -7064,6 +7080,13 @@ function saveVistorias(opts){
   // v1.9.4.10 (Bug A): idem anexos — a corrida zerava o store.
   // opts.permitirVazio = exclusão intencional da última vistoria.
   if(_gsRecuperando) return;                                    // v1.9.9.4
+  if(_gsArqModoArquivos()){   // v1.9.9.5: uma vistoria por arquivo
+    if(_GS_PROT){ _gsArqAgendarSyncVist({ somenteAdicionar:true }); return; }
+    if(!_gsGuardaSave('vistorias', VISTORIAS, opts)) return;
+    if(!_gsSentConferir('vistorias', opts)){ _gsArqAgendarSyncVist({ somenteAdicionar:true }); return; }
+    _gsArqAgendarSyncVist({});
+    return;
+  }
   if(_GS_PROT){ _gsProtegidoSalvarPendentes(); return; }        // v1.9.9.4
   if(!_gsGuardaSave('vistorias', VISTORIAS, opts)) return;
   if(!_gsSentConferir('vistorias', opts)){ _gsProtegidoSalvarPendentes(); return; }   // v1.9.9.4
@@ -7827,7 +7850,14 @@ function _vstTrocasDeApto(v){
 }
 
 // ── PDF de vistoria ────────────────────────────────────────────────────────
-function gerarPDFVistoria(id){
+function gerarPDFVistoria(id, _jaLido){
+  // v1.9.9.5: as fotos da hospedagem estão nos arquivos — lidas antes, uma vez.
+  if(!_jaLido && _gsArqModoArquivos()){
+    const _v = VISTORIAS[id]; const _gs = _v ? (_v.hospedagem || _v.hospedagem_gs || '') : '';
+    const _vg = _gs ? Object.keys(S).find(function(k){ return S[k] && S[k].hospedagem === _gs && S[k].status === 'occupied'; }) : null;
+    _gsArqHidratar([_gs ? 'h_' + _gs : '', _vg ? 'v_' + _vg : ''].filter(Boolean)).then(function(){ gerarPDFVistoria(id, true); }, function(){ gerarPDFVistoria(id, true); });
+    return;
+  }
   const v=VISTORIAS[id]; if(!v) return;
   const nd=(v.danos||[]).length;
   // Bug N v1.9.4.1.5: gerar PDF de verdade (jsPDF), com fotos da hospedagem juntas
@@ -10907,6 +10937,15 @@ function _gsCeder(){
 // roda numa tarefa só e o heap sobe monotonicamente até o fim.
 async function _gsEmitirJSON(v, prof, emit){
   const soltar = function(s){ const p = emit(s); return p && typeof p.then === 'function' ? p : null; };
+  // v1.9.9.5: item de anexo que está SÓ no arquivo (metadados em memória): o
+  // conteúdo é lido agora, escrito, e solto — o formato do backup não muda.
+  if(v && typeof v === 'object' && !Array.isArray(v) && v.data === undefined && v._arq && v._arq.ok){
+    let dado;
+    try{ dado = await _gsArqLerDado(v); }catch(e){ throw new Error('backup: não leu o anexo ' + v.id + ' do arquivo (' + (e && e.message) + ')'); }
+    const pr = soltar(JSON.stringify(Object.assign({}, v, { data:dado })));
+    if(pr) await pr;
+    return;
+  }
   if(prof <= 0 || v === null || typeof v !== 'object' || typeof v.toJSON === 'function'){
     const p = soltar(JSON.stringify(v));
     if(p) await p;
@@ -11227,7 +11266,9 @@ async function fazerBackupLocal(motivo, opts){
     // segundo arquivo SOBRESCREVERIA o primeiro. Sobrescrever é destruir, e esta
     // rodada é explicitamente não destrutiva. O COMPLETO usa o formato da nuvem sem
     // segundos porque o freio abaixo garante minutos de distância entre eles.
-    if(!comFotos) ds += 'm'+p2(hoje.getSeconds());
+    // v1.9.9.5: o COMPLETO também leva os segundos — dois no mesmo minuto regravavam
+    // o mesmo arquivo (achado 2 da v1.9.9.4).
+    ds += 'm'+p2(hoje.getSeconds());
     const nome='backup_'+(comFotos?'completo':'leve')+'_'+ds+'.json';
     // v1.9.9.1 — UM PASSE SÓ: o COMPLETO é montado e gravado ao mesmo tempo, lote
     // a lote. O arquivo nunca existe inteiro como string, nem aqui nem no disco
@@ -11245,7 +11286,7 @@ async function fazerBackupLocal(motivo, opts){
       gravouArquivo = true;
     }
     // Cópia de restauração em um toque (e rede de segurança no navegador)
-    if(comFotos) await _gsGuardarSnapshotIDB(snap);
+    if(comFotos && !_gsArqModoArquivos()) await _gsGuardarSnapshotIDB(snap);   // v1.9.9.5: nos arquivos ela teria só metadados
     // Registro das cópias — v1.9.4.11: MANTÉM TODAS (sem poda; exclusão só manual)
     try{
       let bkps=JSON.parse(localStorage.getItem('garagespot_backups_local')||'[]');
@@ -12804,8 +12845,13 @@ async function _gsEscreverVerbatim(n){
   _gsSubstEsvaziar(ANEXOS);
   if(n.anexos && typeof n.anexos === 'object') Object.assign(ANEXOS, n.anexos);
   VISTORIAS = (n.vistorias && typeof n.vistorias === 'object') ? n.vistorias : {};
+  if(_gsArqModoArquivos()){   // v1.9.9.5: um arquivo por item, índices refeitos
+    const ra = await _gsArqAgendarSync({}), rv = await _gsArqAgendarSyncVist({});
+    if(!(ra && ra.ok && rv && rv.ok)) throw new Error('gravação nos arquivos falhou');
+  } else {
   try{ await saveAnexosIDB(); }catch(e){ console.warn('[SUBSTITUIR] anexos no IDB:', e); }
   try{ await saveVistoriasIDB(); }catch(e){ console.warn('[SUBSTITUIR] vistorias no IDB:', e); }
+  }
 }
 
 // Relê para a memória tudo o que acabou de ser escrito e redesenha a tela, para o
@@ -12879,6 +12925,7 @@ async function _gsSubstituirPorBackup(obj, origem){
                 historico:0, mapaVagas:0 };
 
   let salvaVidas = null;
+  try{ if(_gsArqModoArquivos()) await _gsArqHidratarTudo(); }catch(eH){}   // v1.9.9.5: a cópia de segurança precisa do conteúdo
   try{ salvaVidas = _gsNormalizarBackup(_gsMontarSnapshot(true)); }
   catch(e){
     // Sem rede de segurança não se derruba nada. Abortar aqui é o comportamento
@@ -12900,14 +12947,19 @@ async function _gsSubstituirPorBackup(obj, origem){
     // o "idêntico ao backup" não pode custar uma foto tirada depois.
     try{
       const _pend = await _gsLerPendentes();
-      if(_gsPendentesTem(_pend)){
+      if(_gsPendentesTem(_pend) && !_gsArqModoArquivos()){
         _gsMesclarPendentesNaMemoria(_pend);
         await saveAnexosIDB(); await saveVistoriasIDB();
       }
       let _mc = await _gsIdbGet(DB_STORE, GS_MARCA_KEY);
       if(!_mc || !_mc.id){ _mc = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsIdbPut(DB_STORE, GS_MARCA_KEY, _mc); }
       _gsSentDeMemoria(_idbAvailable() ? _mc.id : '');
-      if(_idbAvailable()){ await _gsLimparPendentes(); _gsSairProtegido('restauração (substituir) pelo gestor'); }
+      if(_gsArqModoArquivos()){
+        let _ma = await _gsArqLerJSON(GSARQ_MARCA);
+        if(!_ma || !_ma.id){ _ma = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsArqGravarSeguro(GSARQ_MARCA, JSON.stringify(_ma), false); }
+        const _sn = _gsSentLer() || {}; _sn.marca_arq = _ma.id; _gsSentGravar(_sn);
+        _gsSairProtegido('restauração (substituir) pelo gestor');
+      } else if(_idbAvailable()){ await _gsLimparPendentes(); _gsSairProtegido('restauração (substituir) pelo gestor'); }
     }catch(eS){ console.warn('[SUBSTITUIR] sentinela:', eS && eS.message); }
     res.ok = true;
   }catch(e){
@@ -13429,7 +13481,7 @@ function _gdEscQ(s){ return String(s == null ? '' : s).replace(/\\/g, '\\\\').re
 function _gdNomeBackup(ts){
   const d = new Date(ts || Date.now());
   const p = function(n){ return String(n).padStart(2, '0'); };
-  return 'backup_completo_' + _localISO(d) + '_' + p(d.getHours()) + 'h' + p(d.getMinutes()) + '.json';
+  return 'backup_completo_' + _localISO(d) + '_' + p(d.getHours()) + 'h' + p(d.getMinutes()) + 'm' + p(d.getSeconds()) + '.json';   // v1.9.9.5: com segundos
 }
 
 // Acha (ou cria) a pasta do app. O id é lembrado, mas SEMPRE revalidado — a pasta
@@ -14398,6 +14450,7 @@ function _hhjMaterial(gs){
 }
 
 async function _hhjGerarDoc(gs){
+  await _gsArqHidratar(['h_' + gs]);   // v1.9.9.5: fotos sob demanda
   const m = _hhjMaterial(gs);
   // Mesmo gerador do fechamento. O único ajuste é o RÓTULO: chamar de "Comprovante
   // de Check-out" um hóspede que não saiu seria dizer no documento uma coisa que os
@@ -20577,6 +20630,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
 // falhar, cai na montagem antiga, com as imagens originais.
 async function buildRegistroDocAsync(apt, dv, hist, snapshotCheckout, onProgresso, opts){
   let cache = null;
+  try{ await _gsArqHidratar(['h_' + ((dv && dv.hospedagem) || '')]); }catch(e){}   // v1.9.9.5: fotos sob demanda
   try{
     const itens = [];
     const push = function(arr){ (arr||[]).forEach(function(a){ if(a) itens.push(a); }); };
@@ -20705,6 +20759,7 @@ function buildRelTurnoDoc(evts, deVal, ateVal, turnosSel){
 
 async function compartilharPDF(apt,dv,hist,anexos,snapshotCheckout){
   const hospNum=dv.hospedagem||((hist||[]).find(e=>e.tipo==='checkin')?.hospedagem)||'';
+  try{ await _gsArqHidratar(['h_'+hospNum, dv.vaga?('v_'+dv.vaga):'']); }catch(e){}   // v1.9.9.5
   const nome=fmtNomeArquivo(apt,dv.guest,
     (hist||[]).find(e=>e.tipo==='checkin')?.ts,
     (hist||[]).slice().reverse().find(e=>e.tipo==='checkout')?.ts,
@@ -20819,7 +20874,9 @@ const MIGR_VINC_REG_LS = 'garagespot_migr_vinc_reg_v1980';
 function _gsAssinaturaAnexo(a){
   if(!a) return '';
   const d=a.data || a.base64Original || '';
-  return [a.name||'', a.tipo||'', a.vistoria||'', a.recarga_ts||'', String(d).length].join('|');
+  // v1.9.9.5: item só no arquivo → o tamanho vem do metadado (`_arq.tam`).
+  const tam = d ? String(d).length : ((a._arq && a._arq.tam) || 0);
+  return [a.name||'', a.tipo||'', a.vistoria||'', a.recarga_ts||'', tam].join('|');
 }
 
 // O GS que ESTE anexo declara por si só (vistoria vence tudo: a VISTORIA sabe
@@ -21053,6 +21110,14 @@ function saveAnexos(opts){
   if(_gsRecuperando) return;
   // v1.9.9.4: modo protegido — o `all` do banco NÃO é regravado; o que é novo
   // vai para o registro separado de pendentes.
+  if(_gsArqModoArquivos()){
+    // v1.9.9.5: um arquivo por item. Modo protegido: SÓ acrescenta (nada é removido do disco).
+    if(_GS_PROT){ _gsArqAgendarSync({ somenteAdicionar:true }); return; }
+    if(!_gsGuardaSave('anexos', ANEXOS, opts)) return;
+    if(!_gsSentConferir('anexos', opts)){ _gsArqAgendarSync({ somenteAdicionar:true }); return; }
+    _gsArqAgendarSync({});
+    return;
+  }
   if(_GS_PROT){ _gsProtegidoSalvarPendentes(); return; }
   if(!_gsGuardaSave('anexos', ANEXOS, opts)) return;
   if(!_gsSentConferir('anexos', opts)){ _gsProtegidoSalvarPendentes(); return; }
@@ -21080,6 +21145,15 @@ function renderAnexosArea(id, fromPasseio, containerId){
   const container = document.getElementById(containerId);
   if(!container) return;
   const lista = getAnexos(id, fromPasseio);
+  // v1.9.9.5: as fotos estão nos arquivos — lidas ao abrir a hospedagem, e a área
+  // é redesenhada quando chegam (a abertura do app não carrega nenhuma foto).
+  const _semConteudo = lista.filter(function(a){ return a && a.data === undefined && a._arq && a._arq.ok; });
+  if(_semConteudo.length){
+    const _bs = _semConteudo.map(function(a){ return a._arq.balde; }).filter(function(b, i, arr){ return arr.indexOf(b) === i; });
+    container.innerHTML = '<div class="attach-area"><div style="font-size:12px;color:#888;padding:8px">📎 Carregando ' + lista.length + ' anexo(s)…</div></div>';
+    _gsArqHidratar(_bs).then(function(){ renderAnexosArea(id, fromPasseio, containerId); }, function(){});
+    return;
+  }
   const restante = MAX_ANEXOS - lista.length;
 
   container.innerHTML=`
@@ -21820,6 +21894,21 @@ function _limparBackupsLegados(){
 
 // === Migração para IndexedDB na inicialização (não-destrutiva) ===
 async function _migrarParaIndexedDB(){
+  // v1.9.9.5: depois da migração conferida, fotos e vistorias vêm dos ARQUIVOS
+  // (só metadados das fotos). O IndexedDB nem é lido para isso — e pode até ter
+  // sido apagado pelo sistema sem consequência.
+  if(_gsArqModoArquivos()){
+    try{
+      const rc = await _gsArqCarregar();
+      console.log('[ARQ] carregado dos arquivos:', rc.itens, 'anexo(s) em', rc.baldes, 'balde(s),', rc.vistorias, 'vistoria(s)');
+      await _gsAvaliarArquivos();
+    }catch(e){
+      console.warn('[ARQ] leitura dos arquivos falhou:', e && e.message);
+      _gsEntrarProtegido('arquivos_nao_leram', (e && e.message) || String(e), { sigs:{}, vist:{} });
+      _gsSentPronta = true;
+    }
+    return;
+  }
   console.log('[MIGRAÇÃO] iniciando verificação de migração');
 
   // 1. Carrega do IndexedDB (fallback automático para localStorage se IDB vazio)
@@ -21871,6 +21960,590 @@ async function _migrarParaIndexedDB(){
   console.log('[MIGRAÇÃO] completa. ANEXOS:', Object.keys(ANEXOS).length, 'VISTORIAS:', Object.keys(VISTORIAS).length);
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.9.9.5 — CAMADA ÚNICA DE ARQUIVOS (fotos, documentos, assinaturas, vistorias)
+// ════════════════════════════════════════════════════════════════════════════
+// CAUSA (provada na v1.9.9.3): o navegador embutido do Android apaga o IndexedDB
+// de sites pouco usados quando falta espaço (o `persist()` é negado em WebView),
+// e limpadores também. A área de DADOS PRIVADA do app (`Directory.Data`) não é
+// limpa por falta de espaço nem por "limpar cache" — só some se o app for
+// desinstalado ou se alguém apagar os dados do app de propósito.
+//
+// TUDO o que lê, grava, lista ou remove anexo e vistoria passa por AQUI.
+//
+// LAYOUT (relativo à área privada):
+//   garagespot/anexos/<balde>/<id>.<ext>         conteúdo (binário)
+//   garagespot/anexos/<balde>/<id>.meta.json     metadados do item (a "verdade")
+//   garagespot/anexos/<balde>/_indice.json       atalho: todos os metas do balde
+//   garagespot/vistorias/<uuid>.json             uma vistoria por arquivo
+//   garagespot/marca.json                        marca dos ARQUIVOS (sentinela)
+// O ARQUIVO é a verdade; o índice é atalho — faltou ou divergiu, é reconstruído
+// pelos `.meta.json` da pasta.
+//
+// GRAVAÇÃO SEGURA: escreve `<arquivo>.tmp` inteiro, remove o definitivo e só
+// então renomeia. Um corte no meio deixa no máximo um `.tmp` incompleto — o
+// definitivo antigo continua lá. Se o corte cair entre remover e renomear, o
+// `.tmp` já está COMPLETO e a leitura o usa. Nunca existe definitivo pela metade.
+// Os arquivos de CONTEÚDO são imutáveis (um id = um conteúdo): um item alterado
+// ganha id novo, nunca é regravado por cima.
+//
+// BACKEND: nativo = @capacitor/filesystem (Directory.Data); navegador (testes,
+// notebook) = um IndexedDB SEPARADO (`GarageSpotArquivos`), com a mesma interface.
+const GSARQ_RAIZ    = 'garagespot';
+const GSARQ_ANEXOS  = 'garagespot/anexos';
+const GSARQ_VIST    = 'garagespot/vistorias';
+const GSARQ_MARCA   = 'garagespot/marca.json';
+const GSARQ_MIG_LS  = 'garagespot_arq_migracao';   // {estado, feitos:{id:1}, vist:{uuid:1}, inicio, fim, falhas}
+const GSARQ_ADIAR_LS = 'garagespot_arq_adiar';     // diagnóstico/testes do modo legado: '1' adia a migração
+const GSARQ_LRU_MAX = 4;                           // baldes com fotos em memória ao mesmo tempo
+
+let _gsArqBack = null;            // backend escolhido
+let _gsArqConhecidos = {};        // id → {balde, ext} (estado do disco)
+let _gsArqVistConhecidas = {};    // uuid → assinatura gravada
+let _gsArqFila = Promise.resolve();
+let _gsArqMigrando = false;
+const _gsArqHidLRU = [];          // baldes hidratados, mais recente no fim
+const _gsArqPinos = {};           // balde → nº de usos em andamento (não liberar)
+
+function _gsArqMig(){ try{ return JSON.parse(localStorage.getItem(GSARQ_MIG_LS) || 'null') || { estado:'pendente', feitos:{}, vist:{} }; }catch(e){ return { estado:'pendente', feitos:{}, vist:{} }; } }
+function _gsArqMigGravar(m){ try{ localStorage.setItem(GSARQ_MIG_LS, JSON.stringify(m)); }catch(e){ console.warn('[ARQ] estado da migração não gravado:', e && e.message); } }
+// O app só LÊ e GRAVA nos arquivos depois da migração INTEIRA conferida.
+function _gsArqModoArquivos(){ return !!_gsArqBackend() && _gsArqMig().estado === 'concluida'; }
+
+// ── hash e ids ──────────────────────────────────────────────────────────────
+function _gsArqHash(s){
+  s = String(s == null ? '' : s);
+  let h = 0x811c9dc5;
+  for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+function _gsArqSanear(s){ return String(s || '').replace(/[^A-Za-z0-9_.-]+/g, '_').slice(0, 80) || '_'; }
+// Id DETERMINÍSTICO: a migração interrompida e retomada dá o MESMO id ao mesmo
+// item — é isso que impede duplicata. `ordem` separa itens idênticos no balde.
+function _gsArqIdDeterministico(balde, item, ordem){
+  return 'a' + _gsArqHash(balde + '|' + _gsAssinaturaAnexo(item) + '|' + (ordem || 0)) +
+         _gsArqHash(String((item && (item.name || '')) + '|' + (item && (item.timestamp || item.ts || item.recarga_ts || '')))).slice(0, 4);
+}
+function _gsArqNovoId(){ return 'a' + _gsArqHash(Date.now() + '|' + Math.random()) + _gsArqHash(String(Math.random())).slice(0, 4); }
+
+// ── backends ────────────────────────────────────────────────────────────────
+function _gsArqFalhaTeste(op){
+  try{
+    const f = window.__gsArqFalhar;
+    if(!f || (f.op && f.op !== op)) return;
+    f.contador = (f.contador || 0) + 1;
+    if(f.contador > (f.apos || 0)) throw new Error('falha simulada em ' + op);
+  }catch(e){ if(String(e && e.message).indexOf('falha simulada') === 0) throw e; }
+}
+function _gsArqBackendNativo(){
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  if(!F || typeof F.rename !== 'function') return null;
+  const D = 'DATA';
+  return {
+    tipo: 'nativo (Directory.Data)',
+    async escrever(p, dados, bin){ _gsArqFalhaTeste('escrever'); const o = { path:p, data:dados, directory:D, recursive:true }; if(!bin) o.encoding = 'utf8'; await F.writeFile(o); },
+    async ler(p, bin){ const o = { path:p, directory:D }; if(!bin) o.encoding = 'utf8'; const r = await F.readFile(o); return String((r && r.data) || ''); },
+    async apagar(p){ try{ await F.deleteFile({ path:p, directory:D }); }catch(e){} },
+    async renomear(de, para){ _gsArqFalhaTeste('renomear'); await F.rename({ from:de, to:para, directory:D, toDirectory:D }); },
+    async listar(p){
+      try{ const r = await F.readdir({ path:p, directory:D });
+        return ((r && r.files) || []).map(function(f){ return typeof f === 'string' ? f : f.name; }).filter(Boolean); }
+      catch(e){ return []; }
+    },
+  };
+}
+function _gsArqBackendNavegador(){
+  if(typeof indexedDB === 'undefined') return null;
+  let dbp = null;
+  const abrir = function(){
+    if(dbp) return dbp;
+    dbp = new Promise(function(res, rej){
+      const rq = indexedDB.open('GarageSpotArquivos', 1);
+      rq.onupgradeneeded = function(){ if(!rq.result.objectStoreNames.contains('f')) rq.result.createObjectStore('f'); };
+      rq.onsuccess = function(){ res(rq.result); };
+      rq.onerror = function(){ dbp = null; rej(rq.error); };
+    });
+    return dbp;
+  };
+  const tx = async function(modo, fn){
+    const d = await abrir();
+    return new Promise(function(res, rej){
+      const t = d.transaction('f', modo); const st = t.objectStore('f'); let out;
+      try{ out = fn(st); }catch(e){ rej(e); return; }
+      // uma requisição (get/getAllKeys) devolve o RESULTADO — inclusive `undefined`
+      // para caminho inexistente (antes devolvia o próprio objeto da requisição).
+      t.oncomplete = function(){ res((typeof IDBRequest !== 'undefined' && out instanceof IDBRequest) ? out.result : out); };
+      t.onerror = function(){ rej(t.error); }; t.onabort = function(){ rej(t.error); };
+    });
+  };
+  return {
+    tipo: 'navegador (IndexedDB GarageSpotArquivos)',
+    async escrever(p, dados){ _gsArqFalhaTeste('escrever'); await tx('readwrite', function(st){ st.put(String(dados), p); }); },
+    async ler(p){
+      const v = await tx('readonly', function(st){ return st.get(p); });
+      if(v === undefined) throw new Error('arquivo não existe: ' + p);
+      return String(v);
+    },
+    async apagar(p){ try{ await tx('readwrite', function(st){ st.delete(p); }); }catch(e){} },
+    async renomear(de, para){
+      _gsArqFalhaTeste('renomear');
+      const v = await tx('readonly', function(st){ return st.get(de); });
+      if(v === undefined) throw new Error('origem não existe: ' + de);
+      await tx('readwrite', function(st){ st.put(v, para); st.delete(de); });
+    },
+    async listar(p){
+      const base = String(p).replace(/\/+$/, '') + '/';
+      const ks = await tx('readonly', function(st){ return st.getAllKeys(); });
+      const nomes = {};
+      (ks || []).forEach(function(k){ k = String(k); if(k.indexOf(base) !== 0) return; const r = k.slice(base.length); const n = r.split('/')[0]; if(n) nomes[n] = true; });
+      return Object.keys(nomes);
+    },
+  };
+}
+// Nativo de verdade (APK) → área privada. Qualquer outro caso → navegador.
+function _gsArqBackend(){
+  if(_gsArqBack) return _gsArqBack;
+  try{
+    const nativo = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+    _gsArqBack = (nativo ? _gsArqBackendNativo() : null) || (nativo ? null : _gsArqBackendNavegador());
+  }catch(e){ _gsArqBack = null; }
+  return _gsArqBack;
+}
+
+// ── gravação segura e leitura tolerante ─────────────────────────────────────
+async function _gsArqGravarSeguro(p, dados, bin){
+  const B = _gsArqBackend(); if(!B) throw new Error('sem armazenamento de arquivos');
+  const tmp = p + '.tmp';
+  await B.escrever(tmp, dados, bin);   // 1) o temporário INTEIRO
+  await B.apagar(p);                   // 2) sai o antigo (o novo já está completo no .tmp)
+  await B.renomear(tmp, p);            // 3) promove
+}
+async function _gsArqLer(p, bin){
+  const B = _gsArqBackend(); if(!B) throw new Error('sem armazenamento de arquivos');
+  try{ return await B.ler(p, bin); }
+  catch(e){
+    // corte entre "remover o antigo" e "renomear": o .tmp está completo
+    try{ const v = await B.ler(p + '.tmp', bin); try{ await B.renomear(p + '.tmp', p); }catch(_){} return v; }
+    catch(_){ throw e; }
+  }
+}
+async function _gsArqLerJSON(p){ try{ return JSON.parse(await _gsArqLer(p, false)); }catch(e){ return null; } }
+
+// ── conteúdo dos anexos ─────────────────────────────────────────────────────
+function _gsArqDecompor(dataStr){
+  const s = String(dataStr || '');
+  const m = /^data:([^;,]*)(;base64)?,/.exec(s);
+  if(m && m[2]){
+    const mime = m[1] || 'application/octet-stream';
+    const ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bin';
+    return { bin:true, mime:mime, ext:ext, conteudo:s.slice(m[0].length) };
+  }
+  return { bin:false, mime:'text/plain', ext:'txt', conteudo:s };
+}
+function _gsArqMarcar(item, arq){
+  try{ Object.defineProperty(item, '_arq', { value:arq, writable:true, configurable:true, enumerable:false }); }catch(e){}
+}
+function _gsArqMetaDo(balde, item, d){
+  const copia = {};
+  Object.keys(item).forEach(function(k){ if(k !== 'data') copia[k] = item[k]; });
+  return { v:1, id:item.id, balde:balde, ext:d.ext, mime:d.mime, bin:d.bin, tam:String(item.data || '').length,
+           hash:_gsArqHash(d.conteudo), gravado_ts:Date.now(), item:copia };
+}
+// Grava UM item (conteúdo + meta) e, se pedido, CONFERE relendo.
+async function _gsArqGravarItem(balde, item, conferir){
+  const dados = item.data;
+  if(dados == null) throw new Error('item sem conteúdo em memória: ' + item.id);
+  const d = _gsArqDecompor(dados);
+  const pasta = GSARQ_ANEXOS + '/' + _gsArqSanear(balde);
+  const pConteudo = pasta + '/' + item.id + '.' + d.ext;
+  const meta = _gsArqMetaDo(balde, item, d);
+  await _gsArqGravarSeguro(pConteudo, d.conteudo, d.bin);
+  await _gsArqGravarSeguro(pasta + '/' + item.id + '.meta.json', JSON.stringify(meta), false);
+  if(conferir){
+    const volta = await _gsArqLer(pConteudo, d.bin);
+    if(volta.length !== d.conteudo.length || _gsArqHash(volta) !== meta.hash)
+      throw new Error('conferência falhou em ' + item.id + ' (' + volta.length + ' × ' + d.conteudo.length + ')');
+    const mv = await _gsArqLerJSON(pasta + '/' + item.id + '.meta.json');
+    if(!mv || mv.id !== item.id) throw new Error('meta não confere em ' + item.id);
+  }
+  _gsArqMarcar(item, { ok:true, balde:balde, ext:d.ext, mime:d.mime, bin:d.bin, tam:meta.tam, hash:meta.hash });
+  _gsArqConhecidos[item.id] = { balde:balde, ext:d.ext };
+  return meta;
+}
+async function _gsArqLerDado(item){
+  const a = item && item._arq;
+  if(!a || !a.ok) return item ? item.data : undefined;
+  const p = GSARQ_ANEXOS + '/' + _gsArqSanear(a.balde) + '/' + item.id + '.' + a.ext;
+  const c = await _gsArqLer(p, a.bin);
+  return a.bin ? ('data:' + a.mime + ';base64,' + c) : c;
+}
+async function _gsArqApagarItem(id, info){
+  const B = _gsArqBackend(); if(!B || !info) return;
+  const pasta = GSARQ_ANEXOS + '/' + _gsArqSanear(info.balde);
+  await B.apagar(pasta + '/' + id + '.' + info.ext);
+  await B.apagar(pasta + '/' + id + '.meta.json');
+  delete _gsArqConhecidos[id];
+}
+async function _gsArqGravarIndice(balde){
+  const itens = (Array.isArray(ANEXOS[balde]) ? ANEXOS[balde] : []).filter(function(a){ return a && a._arq && a._arq.ok; });
+  const pasta = GSARQ_ANEXOS + '/' + _gsArqSanear(balde);
+  if(!itens.length){ const B = _gsArqBackend(); if(B) await B.apagar(pasta + '/_indice.json'); return; }
+  const metas = itens.map(function(a){
+    const c = {}; Object.keys(a).forEach(function(k){ if(k !== 'data') c[k] = a[k]; });
+    return { v:1, id:a.id, balde:balde, ext:a._arq.ext, mime:a._arq.mime, bin:a._arq.bin, tam:a._arq.tam, hash:a._arq.hash, item:c };
+  });
+  await _gsArqGravarSeguro(pasta + '/_indice.json', JSON.stringify({ v:1, balde:balde, ts:Date.now(), itens:metas }), false);
+}
+
+// ── hidratação sob demanda (Bloco G) ────────────────────────────────────────
+// A abertura carrega SÓ os metadados. O conteúdo de um balde é lido quando a
+// hospedagem é aberta, quando um PDF é gerado ou quando o backup passa por ele —
+// e os baldes mais antigos são soltos da memória (no máximo GSARQ_LRU_MAX).
+async function _gsArqHidratar(baldes){
+  if(!_gsArqModoArquivos()) return;
+  const lista = (Array.isArray(baldes) ? baldes : [baldes]).filter(function(b){ return b && Array.isArray(ANEXOS[b]); });
+  for(let i = 0; i < lista.length; i++){
+    const b = lista[i];
+    const itens = ANEXOS[b];
+    for(let j = 0; j < itens.length; j++){
+      const a = itens[j];
+      if(a && a.data === undefined && a._arq && a._arq.ok){
+        try{ a.data = await _gsArqLerDado(a); }
+        catch(e){ console.warn('[ARQ] não leu o conteúdo de', a.id, e && e.message); }
+      }
+    }
+    const ix = _gsArqHidLRU.indexOf(b); if(ix >= 0) _gsArqHidLRU.splice(ix, 1);
+    _gsArqHidLRU.push(b);
+  }
+  _gsArqLiberarExcesso();
+}
+function _gsArqLiberarExcesso(){
+  while(_gsArqHidLRU.length > GSARQ_LRU_MAX){
+    const idx = _gsArqHidLRU.findIndex(function(b){ return !_gsArqPinos[b]; });
+    if(idx < 0) break;
+    const b = _gsArqHidLRU.splice(idx, 1)[0];
+    (Array.isArray(ANEXOS[b]) ? ANEXOS[b] : []).forEach(function(a){
+      if(a && a._arq && a._arq.ok && a.data !== undefined) delete a.data;   // só o que está GRAVADO
+    });
+  }
+}
+async function _gsArqUsando(baldes, fn){
+  const lista = (Array.isArray(baldes) ? baldes : [baldes]).filter(Boolean);
+  lista.forEach(function(b){ _gsArqPinos[b] = (_gsArqPinos[b] || 0) + 1; });
+  try{ await _gsArqHidratar(lista); return await fn(); }
+  finally{ lista.forEach(function(b){ _gsArqPinos[b] = Math.max(0, (_gsArqPinos[b] || 0) - 1); if(!_gsArqPinos[b]) delete _gsArqPinos[b]; }); }
+}
+async function _gsArqHidratarTudo(){ await _gsArqHidratar(Object.keys(ANEXOS || {})); }
+
+// ── sincronização memória → arquivos ────────────────────────────────────────
+// Grava o que é novo, move o que mudou de balde, e (fora do modo protegido)
+// remove do disco o que saiu da memória pelos caminhos legítimos — a sentinela
+// já conferiu ANTES de chegar aqui.
+function _gsArqAgendarSync(opts){
+  _gsArqFila = _gsArqFila.then(function(){ return _gsArqSincronizar(opts || {}); })
+    .catch(function(e){ console.warn('[ARQ] sincronização falhou:', e && e.message); });
+  return _gsArqFila;
+}
+async function _gsArqSincronizar(opts){
+  opts = opts || {};
+  if(!_gsArqBackend()) return { ok:false };
+  const vivos = {}, sujos = {};
+  let gravados = 0, removidos = 0, falhas = 0;
+  const baldes = Object.keys(ANEXOS || {});
+  for(let i = 0; i < baldes.length; i++){
+    const b = baldes[i];
+    const itens = Array.isArray(ANEXOS[b]) ? ANEXOS[b] : [];
+    for(let j = 0; j < itens.length; j++){
+      const a = itens[j]; if(!a || typeof a !== 'object') continue;
+      if(!a.id || vivos[a.id]) a.id = _gsArqNovoId();
+      vivos[a.id] = b;
+      const arq = a._arq;
+      if(arq && arq.ok && arq.balde === b) continue;            // já gravado, no lugar
+      try{
+        if(a.data === undefined && arq && arq.ok) a.data = await _gsArqLerDado(a);   // mudou de balde
+        const antigo = (arq && arq.ok && arq.balde !== b) ? { balde:arq.balde, ext:arq.ext } : null;
+        await _gsArqGravarItem(b, a, false);
+        gravados++; sujos[b] = true;
+        if(antigo && !opts.somenteAdicionar){ await _gsArqApagarItem(a.id, antigo); _gsArqConhecidos[a.id] = { balde:b, ext:a._arq.ext }; sujos[antigo.balde] = true; }
+      }catch(e){ falhas++; console.warn('[ARQ] não gravou', a.id, e && e.message); }
+    }
+  }
+  if(!opts.somenteAdicionar){
+    const ids = Object.keys(_gsArqConhecidos);
+    for(let i = 0; i < ids.length; i++){
+      const id = ids[i];
+      if(vivos[id]) continue;
+      const info = _gsArqConhecidos[id];
+      sujos[info.balde] = true;
+      await _gsArqApagarItem(id, info); removidos++;
+    }
+  }
+  const ks = Object.keys(sujos);
+  for(let i = 0; i < ks.length; i++){ try{ await _gsArqGravarIndice(ks[i]); }catch(e){ falhas++; } }
+  return { ok:!falhas, gravados:gravados, removidos:removidos, falhas:falhas };
+}
+// Vistorias: uma por arquivo, pelo `uuid` (id próprio); a chave de memória e o
+// número de exibição (`VISTnnn`) continuam os mesmos.
+function _gsArqSigVistCompleta(v){
+  try{
+    const leve = {};
+    Object.keys(v).forEach(function(k){
+      const x = v[k];
+      leve[k] = (typeof x === 'string' && x.length > 200) ? ('#' + x.length + ':' + x.slice(-48)) : x;
+    });
+    return _gsArqHash(JSON.stringify(leve));
+  }catch(e){ return String(Date.now()); }
+}
+function _gsArqVistUuid(v){
+  if(!v.uuid){ v.uuid = (typeof _vtUUID === 'function') ? _vtUUID() : ('vist-' + _gsArqNovoId()); }
+  return _gsArqSanear(v.uuid);
+}
+function _gsArqAgendarSyncVist(opts){
+  _gsArqFila = _gsArqFila.then(function(){ return _gsArqSincronizarVist(opts || {}); })
+    .catch(function(e){ console.warn('[ARQ] sincronização de vistorias falhou:', e && e.message); });
+  return _gsArqFila;
+}
+async function _gsArqSincronizarVist(opts){
+  opts = opts || {};
+  if(!_gsArqBackend()) return { ok:false };
+  const vivos = {}; let falhas = 0;
+  const ks = Object.keys(VISTORIAS || {});
+  for(let i = 0; i < ks.length; i++){
+    const v = VISTORIAS[ks[i]]; if(!v || typeof v !== 'object') continue;
+    const u = _gsArqVistUuid(v);
+    vivos[u] = true;
+    const sig = _gsArqSigVistCompleta(v) + '|' + ks[i];
+    if(_gsArqVistConhecidas[u] === sig) continue;
+    try{
+      await _gsArqGravarSeguro(GSARQ_VIST + '/' + u + '.json', JSON.stringify({ v:1, chave:ks[i], vistoria:v }), false);
+      _gsArqVistConhecidas[u] = sig;
+    }catch(e){ falhas++; console.warn('[ARQ] vistoria não gravada', ks[i], e && e.message); }
+  }
+  if(!opts.somenteAdicionar){
+    const B = _gsArqBackend();
+    const us = Object.keys(_gsArqVistConhecidas);
+    for(let i = 0; i < us.length; i++){
+      if(vivos[us[i]]) continue;
+      await B.apagar(GSARQ_VIST + '/' + us[i] + '.json');
+      delete _gsArqVistConhecidas[us[i]];
+    }
+  }
+  return { ok:!falhas, falhas:falhas };
+}
+
+// ── abertura em modo arquivos ───────────────────────────────────────────────
+// Carrega SÓ metadados. Índice que falta ou diverge da pasta é RECONSTRUÍDO
+// pelos `.meta.json` (o arquivo é a verdade). Item cujo conteúdo sumiu NÃO entra
+// na memória — e a sentinela, comparando, acusa a falta.
+async function _gsArqCarregar(){
+  const B = _gsArqBackend();
+  const res = { baldes:0, itens:0, reconstruidos:[], vistorias:0, semConteudo:0 };
+  Object.keys(ANEXOS).forEach(function(k){ delete ANEXOS[k]; });
+  _gsArqConhecidos = {}; _gsArqVistConhecidas = {};
+  const baldes = await B.listar(GSARQ_ANEXOS);
+  for(let i = 0; i < baldes.length; i++){
+    const nomePasta = baldes[i];
+    const pasta = GSARQ_ANEXOS + '/' + nomePasta;
+    const nomes = await B.listar(pasta);
+    const conteudos = {}, metas = {};
+    nomes.forEach(function(n){
+      if(/\.tmp$/.test(n)) return;
+      if(/\.meta\.json$/.test(n)){ metas[n.replace(/\.meta\.json$/, '')] = true; return; }
+      if(n === '_indice.json') return;
+      const m = /^(.+)\.([A-Za-z0-9]+)$/.exec(n); if(m) conteudos[m[1]] = m[2];
+    });
+    // um .tmp sem definitivo (corte entre remover e renomear) conta como presente
+    nomes.forEach(function(n){
+      const m = /^(.+)\.([A-Za-z0-9]+)\.tmp$/.exec(n);
+      if(m && m[2] !== 'json' && !conteudos[m[1]]) conteudos[m[1]] = m[2];
+      const mm = /^(.+)\.meta\.json\.tmp$/.exec(n);
+      if(mm && !metas[mm[1]]) metas[mm[1]] = true;
+    });
+    const idsPasta = Object.keys(conteudos).filter(function(id){ return metas[id]; }).sort();
+    let idx = await _gsArqLerJSON(pasta + '/_indice.json');
+    const idsIdx = (idx && Array.isArray(idx.itens)) ? idx.itens.map(function(m){ return m.id; }).sort() : null;
+    let lista = null;
+    if(idsIdx && idsIdx.join('|') === idsPasta.join('|')) lista = idx.itens;
+    else {
+      lista = [];
+      for(let j = 0; j < idsPasta.length; j++){
+        const m = await _gsArqLerJSON(pasta + '/' + idsPasta[j] + '.meta.json');
+        if(m && m.id) lista.push(m);
+      }
+      // ordem estável: a do índice antigo para o que ele conhecia, depois por data de gravação
+      const ordemAnt = {}; (idx && idx.itens || []).forEach(function(m, k){ ordemAnt[m.id] = k; });
+      lista.sort(function(a, b){
+        const oa = ordemAnt[a.id], ob = ordemAnt[b.id];
+        if(oa !== undefined && ob !== undefined) return oa - ob;
+        if(oa !== undefined) return -1; if(ob !== undefined) return 1;
+        return (a.gravado_ts || 0) - (b.gravado_ts || 0);
+      });
+      res.reconstruidos.push(nomePasta + ' (' + (idsIdx ? idsIdx.length : 'sem índice') + ' → ' + lista.length + ')');
+    }
+    const semConteudo = (idsIdx || []).filter(function(id){ return !conteudos[id]; }).length;
+    res.semConteudo += semConteudo;
+    if(!lista.length) continue;
+    const balde = lista[0].balde || nomePasta;
+    ANEXOS[balde] = lista.map(function(m){
+      const it = Object.assign({}, m.item || {}, { id:m.id });
+      delete it.data;
+      _gsArqMarcar(it, { ok:true, balde:balde, ext:m.ext, mime:m.mime, bin:m.bin !== false, tam:m.tam, hash:m.hash });
+      _gsArqConhecidos[m.id] = { balde:balde, ext:m.ext };
+      return it;
+    });
+    res.baldes++; res.itens += lista.length;
+    if(res.reconstruidos.length && res.reconstruidos[res.reconstruidos.length - 1].indexOf(nomePasta) === 0){
+      try{ await _gsArqGravarIndice(balde); }catch(e){}
+    }
+  }
+  // vistorias
+  const vs = await B.listar(GSARQ_VIST);
+  const novo = {};
+  for(let i = 0; i < vs.length; i++){
+    const n = vs[i];
+    let u = null;
+    if(/\.json$/.test(n)) u = n.replace(/\.json$/, '');
+    else if(/\.json\.tmp$/.test(n) && vs.indexOf(n.replace(/\.tmp$/, '')) < 0) u = n.replace(/\.json\.tmp$/, '');
+    if(!u) continue;
+    const o = await _gsArqLerJSON(GSARQ_VIST + '/' + u + '.json');
+    if(!o || !o.vistoria || !o.chave) continue;
+    novo[o.chave] = o.vistoria;
+    _gsArqVistConhecidas[u] = _gsArqSigVistCompleta(o.vistoria) + '|' + o.chave;
+  }
+  VISTORIAS = novo;
+  res.vistorias = Object.keys(novo).length;
+  _contadorAnterior.anexos = Object.keys(ANEXOS).length;
+  _contadorAnterior.vistorias = res.vistorias;
+  if(res.reconstruidos.length){
+    try{ addLogSistema('Índice de anexos reconstruído pela pasta: ' + res.reconstruidos.join(', '),
+      { aud:true, acao:'arquivos_indice_reconstruido', origem:'automatico' }); }catch(e){}
+  }
+  return res;
+}
+// Sentinela e marca NO MODO ARQUIVOS: a marca é um arquivo da pasta do app; o
+// IndexedDB pode até ter sido apagado — não importa mais.
+async function _gsAvaliarArquivos(){
+  const sent = _gsSentLer();
+  let motivo = '', detalhe = '', marcaEstado = '';
+  let marca = await _gsArqLerJSON(GSARQ_MARCA);
+  if(!marca || !marca.id){
+    marca = null;
+    if(sent && sent.marca_arq){ motivo = 'marca_arquivos_sumiu'; detalhe = 'a pasta do app foi apagada por fora (a sentinela tem a marca ' + sent.marca_arq + ')'; marcaEstado = 'SUMIU'; }
+    else marcaEstado = 'ausente (será criada)';
+  } else if(sent && sent.marca_arq && sent.marca_arq !== marca.id){
+    motivo = 'marca_arquivos_diferente'; detalhe = marca.id + ' × ' + sent.marca_arq; marcaEstado = 'DIFERENTE';
+  } else marcaEstado = 'ok';
+  const faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
+  if(!motivo && faltas.length){ motivo = 'contagem_menor'; detalhe = faltas.slice(0, 8).join(', '); }
+  _gsUltimaAvaliacao = { motivo:motivo, detalhe:detalhe, marca:'arquivos ' + marcaEstado,
+    banco:{ anexos:_gsSentContarAnexos(ANEXOS).total, vistorias:_gsSentContarVistorias(VISTORIAS).total },
+    sentinela: sent ? { anexos:(sent.anexos || {}).total || 0, vistorias:(sent.vistorias || {}).total || 0 } : null, pendentes:false };
+  if(motivo){
+    _gsEntrarProtegido(motivo, detalhe, { sigs:{}, vist:{} });
+    _gsSentPronta = true;
+    return true;
+  }
+  if(!marca){ marca = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsArqGravarSeguro(GSARQ_MARCA, JSON.stringify(marca), false); }
+  const s = _gsSentDeMemoria('');
+  s.marca_arq = marca.id; _gsSentGravar(s);
+  _gsSentPronta = true;
+  return false;
+}
+
+// ── migração NÃO destrutiva (Bloco F) ───────────────────────────────────────
+// Roda em SEGUNDO PLANO depois de o app abrir (a operação nunca espera por ela).
+// Para cada item: grava, CONFERE (tamanho e integridade) e marca como migrado —
+// pode ser interrompida e retomada. O IndexedDB NÃO é apagado. O app só passa a
+// ler dos arquivos depois da migração INTEIRA conferida.
+async function _gsArqMigrar(){
+  if(_gsArqMigrando || _gsArqModoArquivos()) return { ok:true, motivo:'nada a fazer' };
+  if(!_gsArqBackend()) return { ok:false, motivo:'sem armazenamento de arquivos' };
+  try{ if(localStorage.getItem(GSARQ_ADIAR_LS) === '1') return { ok:false, motivo:'adiada (diagnóstico)' }; }catch(e){}
+  if(_GS_PROT) return { ok:false, motivo:'modo protegido — migração adiada' };   // não migra o que pode estar faltando
+  _gsArqMigrando = true;
+  const m = _gsArqMig();
+  m.feitos = m.feitos || {}; m.vist = m.vist || {};
+  const retomada = m.estado === 'em_andamento';
+  if(!retomada){ m.estado = 'em_andamento'; m.inicio = Date.now(); m.falhas = 0; _gsArqMigGravar(m); }
+  const totI = _gsContarItens(ANEXOS), totV = Object.keys(VISTORIAS || {}).length;
+  try{ addLogSistema('Migração para arquivos ' + (retomada ? 'RETOMADA' : 'iniciada') + ': ' + totI + ' anexo(s), ' + totV + ' vistoria(s) · ' + _gsArqBackend().tipo,
+    { aud:true, acao:'migracao_arquivos_inicio', origem:'automatico' }); }catch(e){}
+  let migrados = 0, pulados = 0, falhas = 0;
+  try{
+    // 1) anexos: ids determinísticos, um a um, conferindo
+    const baldes = Object.keys(ANEXOS);
+    for(let i = 0; i < baldes.length; i++){
+      const b = baldes[i];
+      const itens = Array.isArray(ANEXOS[b]) ? ANEXOS[b] : [];
+      const ordem = {};
+      for(let j = 0; j < itens.length; j++){
+        const a = itens[j]; if(!a || typeof a !== 'object') continue;
+        if(!a.id){ const sig = _gsAssinaturaAnexo(a); ordem[sig] = (ordem[sig] || 0) + 1; a.id = _gsArqIdDeterministico(b, a, ordem[sig]); }
+        if(m.feitos[a.id] && a._arq && a._arq.ok) { pulados++; continue; }
+        if(a.data == null){ pulados++; continue; }
+        await _gsArqGravarItem(b, a, true);   // grava + confere
+        m.feitos[a.id] = 1; migrados++;
+        if(migrados % 5 === 0) _gsArqMigGravar(m);
+        await _gsCeder();
+      }
+      await _gsArqGravarIndice(b);
+    }
+    // 2) vistorias
+    const ks = Object.keys(VISTORIAS || {});
+    for(let i = 0; i < ks.length; i++){
+      const v = VISTORIAS[ks[i]]; if(!v) continue;
+      const u = _gsArqVistUuid(v);
+      const txt = JSON.stringify({ v:1, chave:ks[i], vistoria:v });
+      await _gsArqGravarSeguro(GSARQ_VIST + '/' + u + '.json', txt, false);
+      const volta = await _gsArqLer(GSARQ_VIST + '/' + u + '.json', false);
+      if(volta.length !== txt.length || _gsArqHash(volta) !== _gsArqHash(txt)) throw new Error('conferência da vistoria ' + ks[i] + ' falhou');
+      _gsArqVistConhecidas[u] = _gsArqSigVistCompleta(v) + '|' + ks[i];
+      m.vist[u] = 1;
+      await _gsCeder();
+    }
+    // 3) o que mudou DURANTE a migração (o app continuou operando)
+    const s1 = await _gsArqSincronizar({});
+    const s2 = await _gsArqSincronizarVist({});
+    if(!s1.ok || !s2.ok) throw new Error('sincronização final com falhas');
+    // 4) conferência final: o que está nos arquivos é o que está na memória
+    const conf = await _gsArqConferirContagens();
+    if(!conf.ok) throw new Error('conferência final: ' + conf.motivo);
+    // 5) marca dos arquivos + sentinela
+    let marca = await _gsArqLerJSON(GSARQ_MARCA);
+    if(!marca || !marca.id){ marca = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsArqGravarSeguro(GSARQ_MARCA, JSON.stringify(marca), false); }
+    const s = _gsSentDeMemoria(''); s.marca_arq = marca.id; _gsSentGravar(s);
+    m.estado = 'concluida'; m.fim = Date.now(); _gsArqMigGravar(m);
+    try{ addLogSistema('Migração para arquivos CONCLUÍDA: ' + migrados + ' anexo(s) migrados e conferidos (' + pulados + ' já estavam), ' +
+      ks.length + ' vistoria(s). O IndexedDB foi MANTIDO como reserva.', { aud:true, acao:'migracao_arquivos_concluida', origem:'automatico' }); }catch(e){}
+    return { ok:true, migrados:migrados, pulados:pulados };
+  }catch(e){
+    falhas++; m.falhas = (m.falhas || 0) + 1; _gsArqMigGravar(m);
+    console.warn('[ARQ] migração interrompida (será retomada):', e && e.message);
+    try{ addLogSistema('Migração para arquivos INTERROMPIDA após ' + migrados + ' item(ns): ' + ((e && e.message) || e) +
+      '. Nada foi apagado; o app segue no IndexedDB e retoma na próxima abertura.', { aud:true, acao:'migracao_arquivos_falha', origem:'automatico' }); }catch(_){}
+    return { ok:false, erro:(e && e.message) || String(e), migrados:migrados };
+  }finally{ _gsArqMigrando = false; }
+}
+// Relê a pasta e confere: os mesmos ids e as mesmas vistorias que a memória tem.
+async function _gsArqConferirContagens(){
+  const B = _gsArqBackend();
+  let ok = true, motivo = '';
+  const baldes = Object.keys(ANEXOS);
+  for(let i = 0; i < baldes.length; i++){
+    const b = baldes[i];
+    const nomes = await B.listar(GSARQ_ANEXOS + '/' + _gsArqSanear(b));
+    const temMeta = {};
+    nomes.forEach(function(n){ if(/\.meta\.json$/.test(n)) temMeta[n.replace(/\.meta\.json$/, '')] = true; });
+    (ANEXOS[b] || []).forEach(function(a){ if(a && !temMeta[a.id]){ ok = false; motivo = 'falta ' + a.id + ' em ' + b; } });
+  }
+  const vs = await B.listar(GSARQ_VIST);
+  const nV = vs.filter(function(n){ return /\.json$/.test(n); }).length;
+  if(nV < Object.keys(VISTORIAS || {}).length){ ok = false; motivo = motivo || ('vistorias ' + nV + ' de ' + Object.keys(VISTORIAS).length); }
+  return { ok:ok, motivo:motivo };
+}
+// Para testes e diagnóstico: espera a fila de gravação esvaziar.
+function _gsArqAguardar(){ return _gsArqFila; }
 
 // ════════════════════════════════════════════════════════════════════════════
 // v1.9.9.4 — BLINDAGEM DE DADOS: NENHUMA PERDA SILENCIOSA
@@ -22114,6 +22787,8 @@ async function _gsLimparPendentes(){
 }
 // Grava SÓ o que é novo em relação ao banco (nunca o `all`).
 function _gsProtegidoSalvarPendentes(){
+  // v1.9.9.5: nos arquivos, o novo já é um arquivo NOVO — nada antigo é tocado.
+  if(_gsArqModoArquivos()){ _gsArqAgendarSync({ somenteAdicionar:true }); _gsArqAgendarSyncVist({ somenteAdicionar:true }); return; }
   try{
     if(!_GS_PROT || !_GS_PROT.base) return;
     const b = _GS_PROT.base, pa = {}, pv = {};
@@ -22151,6 +22826,7 @@ function _gsEntrarProtegido(motivo, detalhe, base, rem){
     { aud:true, acao:'modo_protegido_entrou', alvo:String(motivo), origem:'automatico' }); }catch(e){}
   // Entrou no meio do uso (gravação suspeita): a base é o que o BANCO tem — ele
   // não foi tocado. Carregada de forma assíncrona; os pendentes saem depois dela.
+  if(!_GS_PROT.base && _gsArqModoArquivos()) _GS_PROT.base = { sigs:{}, vist:{} };   // v1.9.9.5
   if(!_GS_PROT.base){
     (async function(){
       let a, v;
@@ -22273,6 +22949,19 @@ async function _gsRegistrarAberturaArmazenamento(persistP){
     ' · banco: ' + (a.banco ? a.banco.anexos + ' anexos / ' + a.banco.vistorias + ' vistorias' : '?') +
     ' · sentinela: ' + (a.sentinela ? a.sentinela.anexos + ' / ' + a.sentinela.vistorias : 'nova') +
     (a.pendentes ? ' · havia pendentes do modo protegido' : '') +
+    // v1.9.9.5: tamanho do localStorage — base da decisão de mover hospedagens e
+    // histórico (limite MEDIDO no Chromium: 5.242.459 caracteres por origem).
+    (function(){
+      try{
+        let t = 0, h = 0;
+        for(let i = 0; i < localStorage.length; i++){
+          const k = localStorage.key(i); const n = k.length + (localStorage.getItem(k) || '').length;
+          t += n; if(/^garagespot_(hospedagens|historico)/.test(k)) h += n;
+        }
+        return ' · localStorage: ' + Math.round(t / 1000) + ' mil caracteres (' + Math.round(t / 52424.59) + '% do limite; hospedagens+histórico ' + Math.round(h / 1000) + ' mil)';
+      }catch(e){ return ''; }
+    })() +
+    ' · fotos/vistorias: ' + (_gsArqModoArquivos() ? 'ARQUIVOS (' + (_gsArqBackend() || {}).tipo + ')' : 'IndexedDB (migração ' + _gsArqMig().estado + ')') +
     (a.motivo ? ' · MODO PROTEGIDO: ' + a.motivo : '');
   console.log('[ARMAZENAMENTO]', msg);
   try{ addLogSistema(msg, { aud:true, acao:'abertura_armazenamento', alvo:(a.motivo || 'ok'), origem:'automatico' }); }catch(e){}
@@ -22365,6 +23054,24 @@ async function _gsExecutarRecuperacao(){
     _gsProtegidoSalvarPendentes();   // o que foi somado fica GRAVADO como pendente
     try{ addLogSistema('Recuperação incompleta — modo protegido mantido. Falta: ' + res.faltas.slice(0, 8).join(', '),
       { aud:true, acao:'recuperacao_incompleta', origem:'usuario' }); }catch(e){}
+    return res;
+  }
+  if(_gsArqModoArquivos()){
+    _gsAplicarRemocoesAnotadas(_GS_PROT.rem);
+    const sa = await _gsArqAgendarSync({}), sv = await _gsArqAgendarSyncVist({});
+    const conf = await _gsArqConferirContagens();
+    if(!(sa && sa.ok && sv && sv.ok && conf.ok)){
+      res.erro = 'A gravação nos arquivos não pôde ser confirmada — modo protegido mantido.' + (conf.motivo ? ' (' + conf.motivo + ')' : '');
+      return res;
+    }
+    let mca = await _gsArqLerJSON(GSARQ_MARCA);
+    if(!mca || !mca.id){ mca = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsArqGravarSeguro(GSARQ_MARCA, JSON.stringify(mca), false); }
+    const sn = _gsSentDeMemoria(''); sn.marca_arq = mca.id; _gsSentGravar(sn);
+    _gsSairProtegido('recuperação somando ' + res.usados.length + ' backup(s)');
+    try{ _atualizarContadores(); }catch(e){}
+    try{ addLogSistema('Recuperação concluída: ' + res.usados.join(', '), { aud:true, acao:'recuperacao_concluida', origem:'usuario' }); }catch(e){}
+    try{ await fazerBackupLocal('recuperação', { comFotos:true }); }catch(e){}
+    res.ok = true;
     return res;
   }
   if(!_idbAvailable()){
@@ -22765,6 +23472,9 @@ checkLicense().then(async (ativo)=>{
       // v1.9.9.4 (Bloco F): diagnóstico do armazenamento na trilha, a cada abertura.
       try { _gsRegistrarAberturaArmazenamento(_gsPersistP); } catch(e){}
       try { if(_GS_PROT) _gsRenderFaixaProtegido(); } catch(e){}
+      // v1.9.9.5 (Bloco F): migração para arquivos EM SEGUNDO PLANO — a abertura
+      // nunca espera por ela. Interrompida, é retomada na próxima abertura.
+      try { setTimeout(function(){ if(!_gsArqModoArquivos()) _gsArqMigrar().catch(function(){}); }, 1500); } catch(e){}
       console.log('[BUG A] app PRONTO — saves liberados |', JSON.stringify(_contadorAnterior));
       // v1.9.4.16: o hotel opera 24h — o rótulo "check-out" passa a virar sozinho
       // à meia-noite local, sem depender de interação.
