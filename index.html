@@ -1365,7 +1365,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.3.0.0';
+const GS_VERSION = 'v2.3.1.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 29;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
@@ -5992,7 +5992,7 @@ function renderAgrupadoresPainel(){
   let hospTotal=0, hospNaGaragem=0, hospPasseio=0;
 
   for(const gs in HOSPEDAGENS){
-    const h=HOSPEDAGENS[gs]; if(!h) continue;
+    const h=HOSPEDAGENS[gs]; if(!h || gsSrvForaHosp(gs)) continue;
     // Check-ins do dia (independente de ainda estar ativo)
     if(h.checkin_ts && h.checkin_ts >= startDay) checkinsHoje++;
     const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
@@ -6024,14 +6024,14 @@ function renderAgrupadoresPainel(){
   for(const id in VISTORIAS){
     const v=VISTORIAS[id]; if(!v||!v.assinatura_pendente) continue;
     const gs=v.hospedagem||v.hospedagem_gs;
-    const h=gs?HOSPEDAGENS[gs]:null;
+    const h=(gs && !gsSrvForaHosp(gs))?HOSPEDAGENS[gs]:null;
     if(h && (h.checkout_ts==null||h.checkout_ts===undefined)) semAssin++;
   }
 
   // Movimentações totais hoje (a partir do HISTORICO completo)
   for(const apt in HISTORICO){
     const evts=HISTORICO[apt]||[];
-    for(const e of evts){ if(e&&e.ts>=startDay) movtotaisHoje++; }
+    for(const e of evts){ if(e&&e.ts>=startDay&&!gsSrvForaEvento(e)) movtotaisHoje++; }
   }
 
   // Recarga: contadores
@@ -6164,7 +6164,7 @@ function renderExpansaoHoje(filtro){
   const hojeISO=_hojeLocalISO();   // v1.9.4.14: dia LOCAL, não UTC
   const checkins=[], checkoutsHoje=[], checkoutsAtrasados=[];
   for(const gs in HOSPEDAGENS){
-    const h=HOSPEDAGENS[gs]; if(!h) continue;
+    const h=HOSPEDAGENS[gs]; if(!h || gsSrvForaHosp(gs)) continue;
     if(h.checkin_ts && h.checkin_ts >= startDay) checkins.push(Object.assign({_gs:gs},h));
     const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
     if(ativa){
@@ -6178,7 +6178,7 @@ function renderExpansaoHoje(filtro){
   for(const apt in HISTORICO){
     const evts=HISTORICO[apt]||[];
     for(const e of evts){
-      if(!e||e.ts<startDay) continue;
+      if(!e||e.ts<startDay||gsSrvForaEvento(e)) continue;
       const tipo=e.tipo;
       if(tipo==='checkin'||tipo==='checkout') continue;
       outras.push(Object.assign({_apt:apt},e));
@@ -6365,7 +6365,7 @@ function renderExpansaoPendencias(){
   // v1.9.4.1.5 Melhoria 3: atrasados removidos daqui (movidos para agrupador Hoje)
   const semVaga=[], semAssin=[];
   for(const gs in HOSPEDAGENS){
-    const h=HOSPEDAGENS[gs]; if(!h) continue;
+    const h=HOSPEDAGENS[gs]; if(!h || gsSrvForaHosp(gs)) continue;
     const ativa=(h.checkout_ts==null||h.checkout_ts===undefined);
     if(!ativa) continue;
     if(h.status==='aguardando_designacao') semVaga.push(Object.assign({_gs:gs},h));
@@ -6373,7 +6373,7 @@ function renderExpansaoPendencias(){
   for(const id in VISTORIAS){
     const v=VISTORIAS[id]; if(!v||!v.assinatura_pendente) continue;
     const gs=v.hospedagem||v.hospedagem_gs;
-    const h=gs?HOSPEDAGENS[gs]:null;
+    const h=(gs && !gsSrvForaHosp(gs))?HOSPEDAGENS[gs]:null;
     if(h && (h.checkout_ts==null||h.checkout_ts===undefined)) semAssin.push({vistoria:v, hospedagem:Object.assign({_gs:gs},h)});
   }
 
@@ -6467,7 +6467,7 @@ function bindHandlersPendencias(){
 
 function renderExpansaoHospedados(filtro){
   filtro=filtro||'tudo';
-  const ativas=Object.values(HOSPEDAGENS||{}).filter(function(h){
+  const ativas=Object.keys(HOSPEDAGENS||{}).filter(function(gs){ return !gsSrvForaHosp(gs); }).map(function(gs){ return HOSPEDAGENS[gs]; }).filter(function(h){
     if(!h) return false;
     if(h.checkout_ts) return false;
     if(h.status==='ativa') return true;
@@ -22216,6 +22216,7 @@ function _gsSrvAtualizarRodape(){
 }
 
 // ── sinal (não bloqueia nada) ───────────────────────────────────────────────
+const GS_SINAL_OUTROS_MS = 60 * 1000, GS_SINAL_RESP_MS = 4 * 60 * 1000;   // v2.3.1.0 (Bloco D)
 async function _gsSrvSinal(){
   if(!_gsSrvLigado() || _gsSrvLer().transferido) return;
   _gsSrvUltimoSinal = Date.now();
@@ -22243,7 +22244,13 @@ function _gsSrvIniciar(){
       await _gsSrvSinal();
     }catch(e){ _gsSrvMudarEstado('sem_conexao'); }
   })();
-  try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); _gsSrvTimerSinal = setInterval(function(){ _gsSrvSinal(); }, 4 * 60 * 1000); }catch(e){}
+  // v2.3.1.0 (Bloco D): o servidor só troca o responsável quando OUTRO aparelho manda sinal. Com
+  // todos a cada 4 min, a troca saía até limite + 4 min depois do último sinal do responsável (9 min
+  // no dev, medido no teste). Agora quem NÃO é o responsável manda a cada 1 min → troca em até
+  // limite + 1 min. O responsável continua a cada 4 min (o sinal dele só precisa caber no limite).
+  try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); _gsSrvTimerSinal = setInterval(function(){
+    if(!gsSouResponsavel() || Date.now() - (_gsSrvUltimoSinal || 0) >= GS_SINAL_RESP_MS - 5000) _gsSrvSinal();
+  }, GS_SINAL_OUTROS_MS); }catch(e){}
   // v2.1.0.0: sincronização (fila, recebimento) e conferência de versão publicada — em segundo plano
   try{ _gsSyncIniciar(); }catch(e){ console.warn('[SYNC] início:', e && e.message); }
   try{ _gsVersaoIniciar(); }catch(e){}
@@ -22759,20 +22766,25 @@ function _gsSyncLocalEspelho(tab){
 // Linhas das tabelas só de inclusão, com as MESMAS chaves da carga inicial
 // (o que a carga já levou não sobe de novo). O que veio do servidor carrega a
 // própria chave (`_sid`/`sid`).
+// v2.3.1.0: a chave de cada evento no servidor — UMA função, usada pelo detector e pela conferência
+function _gsSyncCadaEvento(fn){
+  const vistos = {};
+  Object.keys(HISTORICO || {}).forEach(function(apt){
+    (HISTORICO[apt] || []).forEach(function(e){
+      if(!e) return;
+      const b = 'e' + _gsSrvHash([e.hospedagem || '', e.tipo || '', e.ts || 0, e.vaga || '', e.extra || '', e.usuario || ''].join('|'));
+      vistos[b] = (vistos[b] || 0) + 1;
+      fn(apt, e, e._sid || (b + '-' + vistos[b]));
+    });
+  });
+}
 function _gsSyncLocalInclusao(tab){
   const o = {};
   try{
     if(tab === 'eventos'){
-      const vistos = {};
-      Object.keys(HISTORICO || {}).forEach(function(apt){
-        (HISTORICO[apt] || []).forEach(function(e){
-          if(!e) return;
-          const b = 'e' + _gsSrvHash([e.hospedagem || '', e.tipo || '', e.ts || 0, e.vaga || '', e.extra || '', e.usuario || ''].join('|'));
-          vistos[b] = (vistos[b] || 0) + 1;
-          const k = e._sid || (b + '-' + vistos[b]);
-          o[k] = { gs:e.hospedagem || '', apt:apt, tipo:e.tipo || '', vaga:e.vaga || '', extra:String(e.extra || ''),
-                   usuario:e.usuario || '', acao_em:_gsSrvIso(e.ts), d:_gsSyncSem(e, '_sid') };
-        });
+      _gsSyncCadaEvento(function(apt, e, k){
+        o[k] = { gs:e.hospedagem || '', apt:apt, tipo:e.tipo || '', vaga:e.vaga || '', extra:String(e.extra || ''),
+                 usuario:e.usuario || '', acao_em:_gsSrvIso(e.ts), d:_gsSyncSem(_gsSyncSem(e, '_sid'), '_fora_srv') };
       });
     } else if(tab === 'trilha'){
       const vistos = {};
@@ -23516,6 +23528,7 @@ function _gsSyncAtivar(){
   _gsSyncAssinarTempoReal();
   _gsSyncAtualizarRodape();
   _gsPesadaIniciar();   // v2.3.0.0: fotos, documentos e PDFs (fila PESADA, separada da leve)
+  _gsConfIniciar();     // v2.3.1.0 (Bloco C): conferência com o servidor
 }
 function _gsSyncAplicarGuardados(){
   if(!_gsSync.guardados.length) return;
@@ -23543,6 +23556,7 @@ function _gsSyncParar(){
   try{ const cli = _gsSrvCli; if(cli && _gsSync.canal) cli.removeChannel(_gsSync.canal); }catch(e){}
   _gsSync.canal = null;
   _gsPesadaParar();   // v2.3.0.0
+  _gsConfParar();     // v2.3.1.0
   // os ARQUIVOS ficam (fila, base, ponto): religar continua de onde parou
   _gsSync.base = {}; _gsSync.sombra = {}; _gsSync.raw = {}; _gsSync.fila = [];
   _gsSyncAtualizarRodape();
@@ -23576,7 +23590,9 @@ function _gsSyncInstalarGanchos(){
     // v2.2.0.0: o autor de cada evento leva também o ID do funcionário
     if(p[0] === 'addHistorico' || p[0] === 'iniciarHistorico') _gsEventoAutorId(a[0]);
     p[1].forEach(_gsSyncMarcarSuja);
+    if(p[0] === 'saveVistorias') gsPesadaVarrerLogo();   // v2.3.1.0 (Bloco A)
   }); });
+  _gsSyncEnvolver('saveAnexos', null, function(){ gsPesadaVarrerLogo(); });   // v2.3.1.0 (Bloco A): fotos do check-in e anexos
   _gsSyncEnvolver('addLogSistema', null, function(a){ if(a[1] && a[1].aud) _gsSyncMarcarSuja('trilha'); });
   // v2.2.0.0: o autor de cada evento leva também o ID do funcionário
   _gsSyncEnvolver('saveUsuarios', null, function(){ _gsSyncMarcarSuja('funcionarios'); });
@@ -23794,7 +23810,21 @@ function _gsSenhaEmergenciaLigar(aoAceitar){
 
 // ── FILA PESADA (fotos, documentos, assinaturas, PDFs) ──────────────────────
 const _gsPesada = { fila:[], n:0, conhecidos:{}, srv:{}, complementados:{}, baixando:false, enviando:false, falhas:0, prox:0, timer:null,
-                    ativo:false, carregado:false, gravacao:Promise.resolve(), drive:{} };
+                    ativo:false, carregado:false, gravacao:Promise.resolve(), drive:{}, esperaDesde:0, varrerLogoTimer:null, hashMemo:{} };
+// v2.3.1.0 (Bloco A) — TEMPOS DA FILA PESADA, medidos no teste do Douglas (16/10/2026): a 3ª foto
+// da GS078 ficou 165 s parada no celular porque a fila só andava com a tela OCIOSA e o operador
+// seguiu usando o app; não havia teto. Agora:
+//  • a PREFERÊNCIA continua sendo a tela ociosa (sem modal e sem toque há 3 s) — é ela que protege
+//    o toque no tablet lento;
+//  • TETO de 60 s: havendo arquivo para enviar ou receber há 60 s sem a tela ficar ociosa, a fila
+//    anda mesmo assim — 60 s é o maior atraso que ainda se percebe como "chegou logo" do outro lado
+//    e é longo o bastante para não competir com um check-in em andamento (que leva de 30 s a 2 min);
+//  • nesse modo ela anda UM arquivo a cada 2 s: o trabalho no fio da interface por arquivo é a
+//    conversão base64 + SHA-256 (~10–30 ms numa foto de 500 KB no tablet), o resto é rede assíncrona
+//    — 2 s de intervalo mantém isso abaixo de ~1,5% do tempo e a tela não trava;
+//  • nunca durante um ARRASTO (o recebimento redesenha a vaga);
+//  • foto, documento e assinatura entram na fila 1,5 s depois de gravados (antes: até 30 s).
+const GS_PESADA_TOQUE_MS = 3000, GS_PESADA_TETO_MS = 60000, GS_PESADA_PASSO_FORCADO_MS = 2000, GS_PESADA_ENTRADA_MS = 1500;
 function _gsPesadaDir(){ return _gsSyncDir() + '/pesada'; }
 function _gsB64DeData(d){ const s = String(d || ''); const i = s.indexOf(','); return i >= 0 ? s.slice(i + 1) : s; }
 function _gsMimeDeData(d){ const m = /^data:([^;,]+)/.exec(String(d || '')); return m ? m[1] : 'application/octet-stream'; }
@@ -23874,12 +23904,30 @@ async function _gsPesadaVarrer(){
     for(const [campo, tipo] of [['documento_final_b64', 'vistoria_documento'], ['assinatura', 'vistoria_assinatura']]){
       const d = v[campo] || (campo === 'assinatura' ? v.assinatura_b64 : null);
       if(!d || typeof d !== 'string' || d.indexOf('data:') !== 0) continue;
-      const id = (tipo === 'vistoria_documento' ? 'vd-' : 'va-') + _gsArqSanear(ch) + '-' + _gsArqHash(d);
+      const id = (tipo === 'vistoria_documento' ? 'vd-' : 'va-') + _gsArqSanear(ch) + '-' + _gsPesadaHashMemo(vs[i] + '|' + campo, d);
       if(_gsPesadaJaTem(id)) continue;
       if(await _gsPesadaEnfileirar({ id:id, tipo:tipo, gs:v.hospedagem || v.hospedagem_gs || '', vistoria_uuid:ch, nome:vs[i] + '_' + tipo, meta:{ chave:vs[i], campo:campo }, precisa_aparelhos:true }, d)) n++;
     }
   }
   return n;
+}
+// v2.3.1.0: a varredura roda logo depois de cada gravação — o hash de uma imagem de 600 KB só é
+// refeito quando ela muda (tamanho, começo ou fim diferentes), senão o custo cresceria com o acervo.
+function _gsPesadaHashMemo(chave, d){
+  const m = _gsPesada.hashMemo[chave], ini = d.slice(0, 64), fim = d.slice(-64);
+  if(m && m.len === d.length && m.ini === ini && m.fim === fim) return m.h;
+  const h = _gsArqHash(d);
+  _gsPesada.hashMemo[chave] = { len:d.length, ini:ini, fim:fim, h:h };
+  return h;
+}
+// v2.3.1.0 (Bloco A): foto, documento ou assinatura gravados → entram na fila em 1,5 s
+function gsPesadaVarrerLogo(){
+  if(!_gsPesada.ativo) return;
+  clearTimeout(_gsPesada.varrerLogoTimer);
+  _gsPesada.varrerLogoTimer = setTimeout(function(){
+    _gsPesada.varrerLogoTimer = null;
+    _gsPesadaVarrer().then(function(n){ if(n) _gsPesadaAgendar(400); }).catch(function(){});
+  }, GS_PESADA_ENTRADA_MS);
 }
 // PDF gerado num aparelho que NÃO é o responsável: vai ao Drive pelo servidor
 function gsPesadaPdf(nome, b64, tipo, extra){
@@ -23914,8 +23962,14 @@ function _gsPesadaOciosa(){
   const on = function(id){ const el = document.getElementById(id); return !!(el && el.classList.contains('on')); };
   if(on('ov') || on('nci-overlay') || document.getElementById('vst-modal-aux') || on('expansao-overlay')) return false;
   if((typeof dragState !== 'undefined' && dragState) || on('move-banner')) return false;
-  if(Date.now() - _gsUltimoToque < 3000) return false;
+  if(Date.now() - _gsUltimoToque < GS_PESADA_TOQUE_MS) return false;
   return true;
+}
+function _gsPesadaArrastando(){
+  try{ const mb = document.getElementById('move-banner'); return !!((typeof dragState !== 'undefined' && dragState) || (mb && mb.classList.contains('on'))); }catch(e){ return false; }
+}
+function _gsPesadaTemTrabalho(){
+  try{ return _gsPesada.fila.length > 0 || _gsPesadaPendentesBaixa().length > 0; }catch(e){ return _gsPesada.fila.length > 0; }
 }
 function _gsPesadaAgendar(ms){
   if(!_gsPesada.ativo) return;
@@ -23925,7 +23979,14 @@ function _gsPesadaAgendar(ms){
 // Um passo por vez, só com a tela ociosa: envia, recebe, leva ao Drive (responsável), limpa o servidor.
 async function _gsPesadaRodar(){
   if(!_gsPesada.ativo || _gsSync.estado !== 'ativo') return;
-  if(!_gsPesadaOciosa()){ _gsPesadaAgendar(2500); return; }
+  let forcado = false;
+  if(!_gsPesadaOciosa()){
+    // v2.3.1.0 (Bloco A): sem trabalho, só espera; com trabalho há mais de 60 s, anda mesmo assim
+    if(!_gsPesadaTemTrabalho()){ _gsPesada.esperaDesde = 0; _gsPesadaAgendar(2500); return; }
+    if(!_gsPesada.esperaDesde) _gsPesada.esperaDesde = Date.now();
+    if(_gsPesadaArrastando() || Date.now() - _gsPesada.esperaDesde < GS_PESADA_TETO_MS){ _gsPesadaAgendar(2500); return; }
+    forcado = true;
+  } else _gsPesada.esperaDesde = 0;
   if(_gsPesada.enviando) return;
   _gsPesada.enviando = true;
   let mais = false;
@@ -23938,7 +23999,7 @@ async function _gsPesadaRodar(){
     }
   }catch(e){ console.warn('[PESADA] passo falhou (tenta de novo):', e && e.message); _gsPesadaFalhou(); }
   finally{ _gsPesada.enviando = false; _gsSyncAtualizarRodape(); }
-  _gsPesadaAgendar(mais ? 150 : (_gsPesada.prox > Date.now() ? _gsPesada.prox - Date.now() : 15000));
+  _gsPesadaAgendar(mais ? (forcado ? GS_PESADA_PASSO_FORCADO_MS : 150) : (_gsPesada.prox > Date.now() ? _gsPesada.prox - Date.now() : 15000));
 }
 function _gsPesadaFalhou(){
   _gsPesada.falhas++;
@@ -24056,7 +24117,7 @@ async function _gsPesadaDriveUm(){
     return true;
   }finally{ delete _gsPesada.drive[x.id]; }
 }
-function _gsLetraDoDv(dv){ return dv === _gsSync.dv ? _gsSyncLetra() : '?'; }
+function _gsLetraDoDv(dv){ if(dv === _gsSync.dv) return _gsSyncLetra(); const d = _gsConf.disp[dv]; return d ? d.letra : '?'; }
 // as fotos/documentos de um GS vão ao Drive DENTRO do PDF de fechamento: confirmadas junto
 async function _gsPesadaConfirmarDriveDoGs(gs){
   if(!gs || !gsSouResponsavel()) return 0;
@@ -24174,6 +24235,130 @@ async function _gsPesadaIniciar(){
   _gsPesada.varreduraTimer = setInterval(function(){ if(_gsPesada.ativo) _gsPesadaVarrer().catch(function(){}); }, 30000);
   _gsPesadaAgendar(1000);
 }
+// ── v2.3.1.0 (Bloco C): CONFERÊNCIA COM O SERVIDOR ─────────────────────────
+// O painel tem de mostrar os MESMOS números em todos os aparelhos da empresa. O que os fez divergir
+// no teste do Douglas (16/10/2026), MEDIDO no servidor: o notebook tinha 39 eventos de "hoje" que o
+// servidor não tem — os testes reais da sessão C rodaram na empresa dev à 00:10 de 16/10, o notebook
+// estava aberto e RECEBEU tudo, e a limpeza do teste APAGOU do servidor. Para o aparelho eram
+// registros "confirmados", e nada mais os corrigia. A conferência compara as CHAVES (só leitura):
+//  • o que o servidor tem e o aparelho não (ou em versão mais nova) → aplicado pelo MESMO caminho do
+//    recebimento (_gsSyncAplicarLinhas: respeita a alteração local que ainda está na fila);
+//  • o que o aparelho tinha como confirmado e o servidor não tem mais → fica FORA dos números do
+//    painel. NADA é apagado do aparelho (documentos são sagrados); a lista de pendências mostra
+//    quantos são, "só neste aparelho".
+const GS_CONF_INTERVALO_MS = 10 * 60 * 1000, GS_CONF_JANELA_DIAS = 3, GS_CONF_LOTE = 100;
+const GS_CONF_ESPELHO = ['hospedagens', 'vagas', 'passeio', 'vistorias', 'recargas_ativas', 'fila_recarga'];
+const _gsConf = { timer:null, inicio:null, rodando:false, ultima:0, fora:null, stats:null, disp:{}, autorVist:{} };
+function _gsConfEmp(){ return String(_gsSync.emp || (_gsSrvLer() || {}).empresa_id || (_gsSrvLer() || {}).empresa || ''); }
+function _gsConfChave(){ return 'garagespot_srv_fora_' + _gsConfEmp(); }
+function _gsConfFora(){
+  const emp = _gsConfEmp();
+  if(_gsConf.fora && _gsConf.fora._emp === emp) return _gsConf.fora;
+  let f = null; try{ f = JSON.parse(localStorage.getItem(_gsConfChave()) || 'null'); }catch(e){}
+  _gsConf.fora = { h:(f && f.h) || {}, _emp:emp };
+  return _gsConf.fora;
+}
+function gsSrvForaHosp(gs){ try{ return !!(gsSrvAtivo() && _gsConfFora().h[gs]); }catch(e){ return false; } }
+function gsSrvForaEvento(e){ return !!(e && e._fora_srv && gsSrvAtivo()); }
+function gsSrvForaLista(){ try{ return gsSrvAtivo() ? Object.keys(_gsConfFora().h).filter(function(gs){ return !!HOSPEDAGENS[gs]; }) : []; }catch(e){ return []; } }
+function gsSrvForaEventosQtd(){
+  if(!gsSrvAtivo()) return 0;
+  let n = 0; Object.keys(HISTORICO || {}).forEach(function(a){ (HISTORICO[a] || []).forEach(function(e){ if(e && e._fora_srv) n++; }); });
+  return n;
+}
+async function _gsConfPaginas(tab, colunas, ordem, filtro){
+  const cli = _gsSrvCliente(); if(!cli) throw new Error('sem cliente do servidor');
+  const out = [];
+  for(let i = 0; i < 200; i++){
+    let q = cli.from(tab).select(colunas);
+    if(filtro) q = filtro(q);
+    const r = await q.order(ordem).range(i * 1000, i * 1000 + 999);
+    if(r.error) throw new Error(tab + ': ' + r.error.message);
+    (r.data || []).forEach(function(x){ out.push(x); });
+    if(!r.data || r.data.length < 1000) break;
+  }
+  return out;
+}
+async function _gsConfBuscar(tab, colunas, campo, chaves){
+  const cli = _gsSrvCliente(), out = [];
+  for(let i = 0; i < chaves.length; i += GS_CONF_LOTE){
+    const r = await cli.from(tab).select(colunas).in(campo, chaves.slice(i, i + GS_CONF_LOTE));
+    if(r.error) throw new Error(tab + ': ' + r.error.message);
+    (r.data || []).forEach(function(x){ out.push(x); });
+  }
+  return out;
+}
+async function gsConferirServidor(opts){
+  opts = opts || {};
+  if(_gsConf.rodando || _gsSync.estado !== 'ativo' || !gsSrvAtivo()) return null;
+  if(navigator.onLine === false) return null;
+  if(!opts.forcar && Date.now() - _gsConf.ultima < 60000) return null;
+  _gsConf.rodando = true;
+  const st = { aplicadas:0, fora_hosp:0, fora_eventos:0, voltaram:0 };
+  try{
+    _gsSyncDetectar({ todas:true });          // o local ainda não capturado entra na fila ANTES (nunca é confundido com removido)
+    const fora = _gsConfFora(), linhas = [];
+    // aparelhos da empresa (letra e versão: rodapé e trilha dizem DE QUEM algo depende)
+    try{ const ds = await _gsConfPaginas('dispositivos', 'id,letra,versao_app,ultimo_sinal', 'letra');
+         _gsConf.disp = {}; ds.forEach(function(d){ _gsConf.disp[d.id] = { letra:d.letra, versao:d.versao_app || '', sinal:d.ultimo_sinal }; }); }catch(e){}
+    for(const tab of GS_CONF_ESPELHO){
+      const base = _gsSyncTab(_gsSync.base, tab), som = _gsSyncTab(_gsSync.sombra, tab);
+      const srv = await _gsConfPaginas(tab, 'chave,versao,excluido', 'chave');
+      const noSrv = {}, buscar = [];
+      srv.forEach(function(r){ noSrv[r.chave] = r; const b = base[r.chave]; if(!b || Number(r.versao) > Number(b.v)) buscar.push(r.chave); });
+      (await _gsConfBuscar(tab, 'chave,versao,schema,excluido,seq,carga_id,updated_by,dados', 'chave', buscar)).forEach(function(x){
+        linhas.push({ t:tab, k:x.chave, v:x.versao, s:x.schema, x:!!x.excluido, q:x.seq, u:x.updated_by, c:x.carga_id, d:x.dados });
+      });
+      if(tab === 'hospedagens'){
+        Object.keys(HOSPEDAGENS).forEach(function(gs){
+          if(noSrv[gs]){ if(fora.h[gs]){ delete fora.h[gs]; st.voltaram++; } return; }
+          if(base[gs] && !som[gs] && !fora.h[gs]){ fora.h[gs] = Date.now(); st.fora_hosp++; }
+        });
+      }
+    }
+    // eventos dos últimos dias (os que o painel conta)
+    const ini = new Date(); ini.setHours(0, 0, 0, 0); ini.setDate(ini.getDate() - GS_CONF_JANELA_DIAS);
+    const evSrv = await _gsConfPaginas('eventos', 'id', 'id', function(q){ return q.gte('acao_em', _gsSrvIso(ini.getTime())); });
+    const ids = {}; evSrv.forEach(function(r){ ids[r.id] = 1; });
+    const bE = _gsSyncTab(_gsSync.base, 'eventos'), sE = _gsSyncTab(_gsSync.sombra, 'eventos');
+    let marcou = false;
+    _gsSyncCadaEvento(function(apt, e, k){
+      if(!(Number(e.ts) >= ini.getTime())) return;
+      if(ids[k]){ if(e._fora_srv){ delete e._fora_srv; marcou = true; st.voltaram++; } return; }
+      if(bE[k] && !sE[k] && !e._fora_srv){ e._fora_srv = Date.now(); marcou = true; st.fora_eventos++; }
+    });
+    const faltam = Object.keys(ids).filter(function(id){ return !bE[id] && !sE[id]; });
+    (await _gsConfBuscar('eventos', 'id,apt,gs,seq,carga_id,dispositivo_id,dados', 'id', faltam)).forEach(function(x){
+      linhas.push({ t:'eventos', k:x.id, v:1, s:1, x:false, q:x.seq, u:x.dispositivo_id, c:x.carga_id, d:{ apt:x.apt, gs:x.gs, e:x.dados } });
+    });
+    // autor das vistorias cujo documento ainda não chegou (Bloco B)
+    try{
+      const presas = gsVistoriasPresas().map(function(x){ return x.uuid; }).filter(function(u){ return !_gsConf.autorVist[u]; });
+      (await _gsConfBuscar('vistorias', 'chave,updated_by', 'chave', presas)).forEach(function(x){ const d = _gsConf.disp[x.updated_by]; if(d) _gsConf.autorVist[x.chave] = d; });
+    }catch(e){}
+    if(linhas.length){ _gsSyncAplicarLinhas(linhas); st.aplicadas = linhas.length; }
+    if(marcou){ try{ saveHistorico(); }catch(e){} }
+    try{ localStorage.setItem(_gsConfChave(), JSON.stringify({ h:fora.h })); }catch(e){}
+    _gsConf.ultima = Date.now(); _gsConf.stats = st;
+    if(st.fora_hosp || st.fora_eventos){
+      try{ addLogSistema('Conferência com o servidor: ' + st.fora_hosp + ' hospedagem(ns) e ' + st.fora_eventos + ' evento(s) deste aparelho não existem mais no servidor — ficam fora dos números do painel (nada foi apagado do aparelho)',
+                         { aud:true, acao:'conferencia_servidor', alvo:Object.keys(fora.h).join(','), origem:'automatico' }); }catch(e){}
+    }
+    try{
+      upd(); _gsSyncAtualizarRodape();
+      const pw = document.getElementById('painel-wrap'); if(pw && pw.style.display !== 'none') renderPainelDia();
+      _gsPendAtualizarPainel();
+    }catch(e){}
+    return st;
+  }catch(e){ console.warn('[CONFERÊNCIA] não concluída (tenta de novo depois):', e && e.message); return null; }
+  finally{ _gsConf.rodando = false; }
+}
+function _gsConfIniciar(){
+  clearInterval(_gsConf.timer); clearTimeout(_gsConf.inicio);
+  _gsConf.inicio = setTimeout(function(){ gsConferirServidor({ forcar:true }); }, 15000);
+  _gsConf.timer = setInterval(function(){ gsConferirServidor(); }, GS_CONF_INTERVALO_MS);
+}
+function _gsConfParar(){ clearInterval(_gsConf.timer); clearTimeout(_gsConf.inicio); _gsConf.timer = null; _gsConf.inicio = null; }
 function _gsPesadaParar(){
   _gsPesada.ativo = false; _gsPesada.srv = {}; _gsPesada.conhecidos = {}; _gsPesada.fila = [];
   clearTimeout(_gsPesada.timer); clearInterval(_gsPesada.varreduraTimer);
@@ -24186,7 +24371,40 @@ function gsFilasDoServidorPendentes(){
 function _gsPesadaRodapeExtra(){
   if(!_gsPesada.ativo) return '';
   const n = _gsPesada.fila.length;
-  return n ? ' · ' + n + (n === 1 ? ' arquivo aguardando envio' : ' arquivos aguardando envio') : '';
+  let s = n ? ' · ' + n + (n === 1 ? ' arquivo aguardando envio' : ' arquivos aguardando envio') : '';
+  // v2.3.1.0 (Bloco B): o que vem de outro aparelho também é dito — chegando, ou PRESO lá
+  let c = 0; try{ c = _gsPesadaPendentesBaixa().length; }catch(e){}
+  if(c) s += ' · ' + c + (c === 1 ? ' arquivo chegando' : ' arquivos chegando');
+  try{ s += gsVistoriasPresasTexto(); }catch(e){}
+  return s;
+}
+// v2.3.1.0 (Bloco B) — causa da GS076 sem documento no notebook: a vistoria foi feita no aparelho B
+// ainda na v2.2.0.0, que NÃO envia arquivos. O REGISTRO da vistoria chegou (fila leve, com as marcas
+// tem_documento_final_b64/tem_assinatura); a IMAGEM ficou no aparelho B, que não abriu mais o app.
+// Os outros aparelhos não tinham como saber — agora sabem e dizem de quem ela depende.
+function gsVistoriasPresas(){
+  if(!gsSrvAtivo() || !_gsPesada.ativo) return [];
+  const comArquivo = {};
+  Object.keys(_gsPesada.srv).forEach(function(k){ const x = _gsPesada.srv[k]; if(x && x.vistoria_uuid) comArquivo[x.vistoria_uuid + '|' + x.tipo] = 1; });
+  const out = [];
+  Object.keys(VISTORIAS || {}).forEach(function(k){
+    const v = VISTORIAS[k]; if(!v) return;
+    const ch = _gsSyncChaveVist(k, v);
+    const faltaDoc = v.tem_documento_final_b64 && !v.documento_final_b64 && !comArquivo[ch + '|vistoria_documento'];
+    const faltaAss = (v.tem_assinatura || v.tem_assinatura_b64) && !v.assinatura && !v.assinatura_b64 && !comArquivo[ch + '|vistoria_assinatura'];
+    if(faltaDoc || faltaAss) out.push({ chave:k, uuid:ch, gs:v.hospedagem || v.hospedagem_gs || '', aparelho:(_gsConf.autorVist[ch] || null) });
+  });
+  return out;
+}
+function gsVistoriasPresasTexto(){
+  const l = gsVistoriasPresas(); if(!l.length) return '';
+  const por = {};
+  l.forEach(function(x){ const a = x.aparelho ? x.aparelho.letra : '?'; (por[a] = por[a] || { n:0, versao:x.aparelho ? x.aparelho.versao : '' }).n++; });
+  return Object.keys(por).sort().map(function(a){
+    const p = por[a];
+    return ' · ' + p.n + (p.n === 1 ? ' vistoria com documento ainda no aparelho ' : ' vistorias com documento ainda no aparelho ') + a +
+      (p.versao && p.versao !== GS_VERSION ? ' (está na ' + p.versao + ' — abrir o app lá para enviar)' : '');
+  }).join('');
 }
 
 // ── FUNCIONÁRIOS: ativos primeiro, inativos abaixo, cada grupo em ordem alfabética
@@ -24773,7 +24991,7 @@ function gsOrfasAtuais(){
   const emPend = {}; gsPendenciasAbertas().forEach(function(p){ if(p.tipo === 'conflito_vaga' && p.dados){ emPend[p.dados.novo && p.dados.novo.gs] = 1; emPend[p.dados.atual && p.dados.atual.gs] = 1; } if(p.tipo === 'gs_dois_lugares') emPend[p.gs] = 1; });
   return Object.keys(HOSPEDAGENS).filter(function(gs){
     const h = HOSPEDAGENS[gs];
-    return h && !h.checkout_ts && h.status !== 'aguardando_designacao' && h.status !== 'duplicada' && !naVaga[gs] && !PASSEIO[gs] && !emPend[gs];
+    return h && !h.checkout_ts && h.status !== 'aguardando_designacao' && h.status !== 'duplicada' && !naVaga[gs] && !PASSEIO[gs] && !emPend[gs] && !gsSrvForaHosp(gs);
   });
 }
 function _gsOrfaDesde(gs){
@@ -25006,6 +25224,14 @@ function _gsPendExtrasHTML(){
       html += '<div class="gs-pend-card" data-orfa="' + _vtEsc(gs) + '"><div class="cav-titulo">🚗 ' + _vtEsc(gs) + ' · Apt ' + _vtEsc(String(h.apt || '?')) + '</div>' +
         '<div class="cav-subtitulo">sem vaga desde ' + _vtEsc(_dLocal(_gsOrfaDesde(gs))) + ' · toque para resolver</div></div>';
     });
+  }
+  // v2.3.1.0 (Bloco C): só INFORMA (não entra no selo — o selo é igual em todos os aparelhos)
+  const so = gsSrvForaLista().filter(function(gs){ return !(HOSPEDAGENS[gs] || {}).checkout_ts; }), soEv = gsSrvForaEventosQtd();
+  if(so.length || soEv){
+    html += '<div class="exp-secao-titulo" id="pend-so-aparelho-titulo">SÓ NESTE APARELHO</div>' +
+      '<div class="gs-pend-card" id="pend-so-aparelho" style="cursor:default"><div class="cav-titulo">ℹ️ Registros que o servidor não tem mais</div>' +
+      '<div class="cav-subtitulo">' + (so.length ? _vtEsc(so.join(', ')) + ' (hospedagem ativa só aqui)' + (soEv ? ' · ' : '') : '') +
+      (soEv ? soEv + ' evento(s) só aqui' : '') + ' — foram removidos do servidor (ex.: limpeza de teste). Não entram nos números do painel; nada foi apagado deste aparelho.</div></div>';
   }
   return html;
 }
