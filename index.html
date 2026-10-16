@@ -1365,7 +1365,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.1.0.0';
+const GS_VERSION = 'v2.2.0.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 29;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
@@ -4518,6 +4518,7 @@ function _gsHospedagensAtivas(){
 }
 
 window.confirmReset = function(){
+  if(gsSrvBloqueia('Limpar mapa')) return;   // v2.2.0.0 (Bloco I)
   // PIN primeiro: nada é mostrado nem calculado antes dele.
   showEntrarPIN(function(){
     const ativas=_gsHospedagensAtivas();
@@ -4561,6 +4562,7 @@ window.confirmReset = function(){
 };
 
 function executarReset(){
+  if(gsSrvBloqueia('Limpar mapa')) return;   // v2.2.0.0 (Bloco I)
   // v1.9.9.2 — GUARDA DURA, não só na tela. `confirmReset` já pede PIN e já
   // bloqueia, mas a verificação vive TAMBÉM aqui: é esta função que apaga, e um
   // atalho futuro (ou um caminho que ninguém previu) não pode passar por fora
@@ -4907,9 +4909,10 @@ function loadUsuarios(){
 function _usrPinDe(u){
   try{ return _gsPinNormalizar(u && u.pin); }catch(e){ return null; }
 }
-function _usrTemPin(u){ return !!_usrPinDe(u); }
+function _usrTemPin(u){ return !!(_usrPinDe(u) || (u && u.pin_hash)); }   // v2.2.0.0: PIN em hash também conta
 function _usrPinValido(u, digitado){
   try{
+    if(u && u.pin_hash) return _gsPinHashConfere(u.pin_hash, digitado);   // v2.2.0.0: conferido por HASH com sal
     const p=_usrPinDe(u);
     if(!p) return false;                       // sem PIN não valida nada
     return String(digitado||'').trim()===p;
@@ -4931,7 +4934,8 @@ function estaNoExpediente(u){
 
 // ── CONFIRMAR USUÁRIO ─────────────────────────────────────────────────────
 function confirmarUsuario(acao, callback){
-  if(!USUARIOS.length){ callback(null); return; }
+  const _usrLanc=_gsUsrAtivos();   // v2.2.0.0: inativo some dos NOVOS lançamentos (sem servidor, ninguém é inativo)
+  if(!_usrLanc.length){ callback(null); return; }
   // Parte 1 v1.9.4.8: o DESTAQUE ("em serviço") agora vem do PLANTÃO ATUAL EFETIVO —
   // mesma fonte do "Plantão" do dashboard: escala que converge com o horário ± overrides
   // temporários (plantaoIncluir/plantaoRemover). Assim, REMOVER alguém do plantão agora o
@@ -4947,8 +4951,8 @@ function confirmarUsuario(acao, callback){
       _emPlantao=function(u){ return estaNoExpediente(u); };
     }
   } catch(e){ console.error('[plantao] fonte do destaque falhou, usando expediente', e); _emPlantao=function(u){ return estaNoExpediente(u); }; }
-  const noExp=USUARIOS.filter(_emPlantao).sort((a,b)=>a.nome.localeCompare(b.nome));
-  const foraExp=USUARIOS.filter(u=>!_emPlantao(u)).sort((a,b)=>a.nome.localeCompare(b.nome));
+  const noExp=_usrLanc.filter(_emPlantao).sort((a,b)=>a.nome.localeCompare(b.nome));
+  const foraExp=_usrLanc.filter(u=>!_emPlantao(u)).sort((a,b)=>a.nome.localeCompare(b.nome));
   const todosForaOuSemExp=noExp.length===0;
 
   function renderItemUsr(u){
@@ -5088,7 +5092,7 @@ function _usrDefinirPin(u, onFim){
       let ok=false;
       try{
         const idx=USUARIOS.findIndex(function(x){ return x && x.id===u.id; });
-        if(idx>=0){ USUARIOS[idx]=Object.assign({},USUARIOS[idx],{pin:primeiro}); saveUsuarios(); ok=true; }
+        if(idx>=0){ USUARIOS[idx]=_gsUsrComPin(USUARIOS[idx], primeiro); saveUsuarios(); ok=true; }   // v2.2.0.0: com servidor, só o hash
       }catch(e){ console.error('[PIN usr] falha gravando:',e&&e.message); }
       if(!ok){
         etapa=1; primeiro='';
@@ -5118,7 +5122,7 @@ function showModalUsuarios(){
       :'<span style="font-size:10px;color:#0F6E56;margin-left:5px" title="PIN cadastrado">🔑</span>';
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #eee;border-radius:7px;margin-bottom:5px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:700;color:#111">${_vtEsc(u.nome||'')}${pinBadge}</div>
+          <div style="font-size:13px;font-weight:700;color:${u.ativo===false?'#aaa':'#111'}">${_vtEsc(u.nome||'')}${pinBadge}${u.ativo===false?'<span class="usr-inativo" style="font-size:10px;color:#777;background:#eee;border-radius:4px;padding:1px 5px;margin-left:5px">inativo</span>':''}</div>
           <div style="font-size:11px;color:#888">${_vtEsc(u.cargo||'')} · ${u.horaInicio||'—'}–${u.horaFim||'—'}</div>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
@@ -5160,7 +5164,12 @@ function showModalUsuarios(){
   }
   function mostrarForm(u){
     const mc=document.getElementById('mc'); const isNovo=!u;
-    const delBtn=!isNovo?`<button onclick="window._excluirUsr('${u.id}')" style="width:100%;background:none;border:1px solid #E24B4A;color:#A32D2D;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">🗑 Excluir usuário</button>`:'';
+    // v2.2.0.0: com o servidor ligado, funcionário NUNCA é excluído — é inativado (e pode ser reativado)
+    const delBtn=isNovo?'':(gsSrvAtivo()
+      ? (u.ativo===false
+          ? `<button id="uf-reativar" onclick="window._reativarUsr('${u.id}')" style="width:100%;background:none;border:1px solid #0F6E56;color:#0F6E56;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">↺ Reativar funcionário</button>`
+          : `<button id="uf-inativar" onclick="window._excluirUsr('${u.id}')" style="width:100%;background:none;border:1px solid #E24B4A;color:#A32D2D;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">🚫 Inativar funcionário</button>`)
+      : `<button onclick="window._excluirUsr('${u.id}')" style="width:100%;background:none;border:1px solid #E24B4A;color:#A32D2D;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">🗑 Excluir usuário</button>`);
     const esc=(u&&u.escala)||'padrao';
     const diaAB=(u&&u.diaAB)||'A';
     const turno12=(u&&u.turno12)||'dia';
@@ -5240,9 +5249,24 @@ function showModalUsuarios(){
     // v1.9.4.10: exclusão INTENCIONAL — pode zerar a lista (permitirVazio)
     window._excluirUsr=(uid)=>{
       const alvo=USUARIOS.find(x=>x&&x.id===uid);
+      // v2.2.0.0: com o servidor ligado vira INATIVAR — some dos novos lançamentos, fica nos PDFs e na trilha
+      if(gsSrvAtivo()){
+        const i=USUARIOS.findIndex(x=>x&&x.id===uid);
+        if(i>=0){ USUARIOS[i]=Object.assign({},USUARIOS[i],{ativo:false,inativado_em:Date.now()}); saveUsuarios(); }
+        try{ addLogSistema('Funcionário INATIVADO: '+((alvo&&alvo.nome)||uid), {aud:true, acao:'funcionario_inativado', alvo:((alvo&&alvo.nome)||String(uid))}); }catch(e){}
+        try{ _gsSyncAcao('funcionario_inativado', uid); }catch(e){}
+        renderLista(); return;
+      }
       USUARIOS=USUARIOS.filter(x=>x.id!==uid); saveUsuarios({permitirVazio:true});
       try{ addLogSistema('Funcionário removido: '+((alvo&&alvo.nome)||uid),
         {aud:true, acao:'funcionario_removido', alvo:((alvo&&alvo.nome)||String(uid))}); }catch(e){}
+      renderLista();
+    };
+    window._reativarUsr=(uid)=>{
+      const i=USUARIOS.findIndex(x=>x&&x.id===uid); if(i<0) return;
+      const c=Object.assign({},USUARIOS[i],{ativo:true}); delete c.inativado_em; USUARIOS[i]=c; saveUsuarios();
+      try{ addLogSistema('Funcionário REATIVADO: '+(c.nome||uid), {aud:true, acao:'funcionario_reativado', alvo:(c.nome||String(uid))}); }catch(e){}
+      try{ _gsSyncAcao('funcionario_reativado', uid); }catch(e){}
       renderLista();
     };
   }
@@ -5379,7 +5403,7 @@ function plantaoAtualUsuarios(now){
   const ids=new Set(inst.membros.map(function(u){return u.id;}));
   (ov.remover||[]).forEach(function(id){ ids.delete(id); });
   (ov.incluir||[]).forEach(function(id){ ids.add(id); });
-  return { instanteId:inst.instanteId, turnoLabel:inst.turnoLabel, membros:USUARIOS.filter(function(u){ return ids.has(u.id); }) };
+  return { instanteId:inst.instanteId, turnoLabel:inst.turnoLabel, membros:USUARIOS.filter(function(u){ return ids.has(u.id) && u.ativo !== false; }) };
 }
 function plantaoIncluir(id){
   const inst=_plantaoInstante();
@@ -6573,6 +6597,11 @@ function _gsPinGuardado(){
 
 // Escrita fail-safe: cota cheia NÃO remove o valor anterior (mesma regra da 4.11).
 function _gsPinGravar(pin){
+  // v2.2.0.0: com o servidor ligado, o PIN novo do gestor é gravado SÓ em hash (e sincroniza)
+  if(typeof gsSrvAtivo==='function' && gsSrvAtivo()){
+    try{ localStorage.setItem(GESTAO_PIN_HASH_LS, _gsPinHashNovo(pin)); try{ _gsSyncAcao('pin_gestor_alterado'); }catch(e){} return true; }
+    catch(e){ console.error('[PIN] hash do PIN do gestor não gravado:', e && e.message); return false; }
+  }
   try{ localStorage.setItem(GESTAO_PIN_KEY,String(pin)); return true; }
   catch(e){
     console.error('[PIN] não foi possível gravar o PIN do gestor:',e&&e.message);
@@ -6596,6 +6625,8 @@ function _gsPinValido(digitado){
   try{
     const d=String(digitado===undefined||digitado===null?'':digitado).trim();
     if(d===SENHA_DEV) return true;          // quebra-vidro: sempre passa
+    const hg=_gsPinHashGestor();             // v2.2.0.0: com hash, SÓ o hash vale (o texto antigo não)
+    if(hg) return _gsPinHashConfere(hg, d);
     const bruto=_gsPinLerBruto();
     if(bruto.erro) return false;            // armazenamento ilegível → só a senha dev
     const p=_gsPinNormalizar(bruto.valor);
@@ -6700,7 +6731,7 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showAuditoria')" style="color:#555">🛡 <span>Trilha de auditoria</span></div>
     <div class="gestao-menu-sep">Zona de risco</div>
-    <div class="gestao-menu-item" onclick="_gestaoAbrir('confirmReset')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>
+    ${gsSrvAtivo() ? '<div class="gestao-menu-item" id="gestao-limpar-bloqueado" aria-disabled="true" style="color:#aaa;border-color:#eee;background:#f4f4f4;cursor:not-allowed">🗑 <span>Limpar / Restaurar mapa <small style="display:block;font-size:10px;color:#999">' + GS_SRV_BLOQ_MSG + '</small></span></div>' : '<div class="gestao-menu-item" onclick="_gestaoAbrir(\'confirmReset\')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>'}
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
@@ -12971,6 +13002,8 @@ function _gsRecarregarTudoDoDisco(){
 // anterior. Concluiu ou voltou — e nos dois casos o gestor é avisado, na tela e na
 // trilha. Nunca fica no meio, e nunca fica calado.
 async function _gsSubstituirPorBackup(obj, origem){
+  // v2.2.0.0 (Bloco I): o modo SUBSTITUIR, por qualquer caminho, fica fechado com o servidor ligado
+  if(gsSrvBloqueia('Substituir pelos dados do backup')) return { modo:'substituir', ok:false, revertido:false, erro:GS_SRV_BLOQ_MSG, bloqueado:true };
   const n = _gsNormalizarBackup(obj);
   const res = { modo:'substituir', ok:false, revertido:false, erro:'',
                 hospedagens:0, usuarios:0, vistorias:0, anexosChaves:0, anexosItens:0,
@@ -13049,6 +13082,7 @@ async function _gsSubstituirPorBackup(obj, origem){
 
 // UI: escolher arquivo → conferir → PIN → aplicar
 function abrirImportarDados(){
+  if(gsSrvBloqueia('Importar arquivo')) return;   // v2.2.0.0 (Bloco I)
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = '.json,application/json';
@@ -15406,6 +15440,7 @@ async function fazerBackupNuvemAgora(){
 // ── Parte 5 — restaurar da nuvem ───────────────────────────────────────────
 // Mesma regra do Importar local: MESCLA, nunca substitui. O do aparelho vence.
 function abrirRestaurarNuvem(){
+  if(gsSrvBloqueia('Restaurar da nuvem')) return;   // v2.2.0.0 (Bloco I)
   if(!_gdDisponivel()){ showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000); return; }
   if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return; }
   showM(`<div class="mt">☁️ Restaurar da nuvem</div>
@@ -15679,8 +15714,8 @@ async function _gsChecarIntegridade(){
       <div style="background:#FCEBEB;border:1px solid #A32D2D;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7;color:#A32D2D">${lista}</div>
       <div class="ms" style="margin-top:10px;font-size:12px">Nada foi alterado. Você decide o que fazer.</div>
       <div class="ag" style="margin-top:10px">
-        ${podeUmToque ? '<button class="bsv" id="int-restaurar">♻ Restaurar do último backup</button>' : ''}
-        <button class="bcx" id="int-importar">📥 Importar de um arquivo</button>
+        ${gsSrvAtivo() ? _gsBotaoBloqueado('int-restaurar', '♻ Restaurar do último backup') + _gsBotaoBloqueado('int-importar', '📥 Importar de um arquivo')
+          : (podeUmToque ? '<button class="bsv" id="int-restaurar">♻ Restaurar do último backup</button>' : '') + '<button class="bcx" id="int-importar">📥 Importar de um arquivo</button>'}
         <button class="bcx" onclick="closeOv()" style="margin-top:4px">Agora não</button>
       </div>`);
     setTimeout(function(){
@@ -18660,7 +18695,7 @@ function _renderNuvemStatus(){
     ${_gdPdfsPendentesHTML()}
     ${_gdHistProgressoHTML()}
     ${_gsDriveSoA('') ? '<button class="bsv" id="btn-nuvem-agora" disabled aria-disabled="true" style="width:100%;margin-top:8px;background:#bdbdbd;border-color:#bdbdbd;color:#fff;cursor:not-allowed">☁️ Fazer backup na nuvem agora</button><div id="drive-so-a" style="font-size:11px;color:#777;margin-top:4px;text-align:center">' + GS_DRIVE_SO_A_MSG + '</div>' : '<button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>'}
-    <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
+    ${gsSrvAtivo() ? _gsBotaoBloqueado('btn-nuvem-restaurar', '📥 Restaurar da nuvem') : '<button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>'}
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
     <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. <strong>Na nuvem, nenhum documento é apagado</strong>; no aparelho, PDFs saem só depois de confirmados na nuvem e de passados ${GS_PODA_DIAS_LOCAL} dias.</div>
   </div>`;
@@ -18712,7 +18747,7 @@ function showConexoes(){
     <button class="bsv" id="btn-backup-agora" onclick="fazerBackupAgora()" style="width:100%;margin-top:8px">💾 Fazer backup agora</button>
     <button class="bcx" id="btn-exportar-completo" onclick="exportarBackupCompleto()" style="width:100%;margin-top:6px">📦 Exportar backup completo</button>
     <button class="bcx" id="btn-exportar-sem-fotos" onclick="exportarBackupSemFotos()" style="width:100%;margin-top:6px">📄 Exportar sem fotos (emergência)</button>
-    <button class="bcx" id="btn-importar-dados" onclick="abrirImportarDados()" style="width:100%;margin-top:6px">📥 Importar / Restaurar dados</button>
+    ${gsSrvAtivo() ? _gsBotaoBloqueado('btn-importar-dados', '📥 Importar / Restaurar dados') : '<button class="bcx" id="btn-importar-dados" onclick="abrirImportarDados()" style="width:100%;margin-top:6px">📥 Importar / Restaurar dados</button>'}
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:8px 11px;font-size:11px;color:#0F6E56;margin-top:8px;line-height:1.5">
       O backup completo inclui <strong>fotos, vistorias, funcionários</strong> e todo o resto. A importação <strong>soma</strong> — nunca apaga o que está no aparelho.
     </div>
@@ -22059,7 +22094,8 @@ function _gsSrvAmbiente(){ try{ return _isDevEnv() ? 'dev' : 'prod'; }catch(e){ 
 function _gsSrvLer(){ try{ return JSON.parse(localStorage.getItem(GS_SRV_LS) || 'null') || {}; }catch(e){ return {}; } }
 function _gsSrvGravar(o){ try{ localStorage.setItem(GS_SRV_LS, JSON.stringify(o)); }catch(e){} }
 function _gsSrvLigado(){ const s = _gsSrvLer(); return !!(s.ligado && s.ambiente === _gsSrvAmbiente()); }
-function gsSrvAtivo(){ const s = _gsSrvLer(); return _gsSrvLigado() && /^[A-Z]$/.test(String(s.letra || '')); }
+function gsSrvAtivo(){ const s = _gsSrvLer(); return _gsSrvLigado() && /^[A-Z]$/.test(String(s.letra || '')) && !s.transferido; }   // v2.2.0.0: conta transferida = parado
+let _gsSrvUltimoSinal = 0;
 function _gsSrvAtivo(){ return gsSrvAtivo(); }
 
 function _gsSrvCliente(){
@@ -22106,6 +22142,7 @@ function _gsSrvRodapeTexto(){
   if(!_gsSrvLigado()) return '';
   const s = _gsSrvLer();
   const ap = s.letra ? ' · aparelho ' + s.letra : '';
+  if(s.transferido) return 'Servidor: esta conta foi transferida para outro aparelho' + ap;   // v2.2.0.0 (Bloco J)
   const sx = (typeof _gsSyncRodapeExtra === 'function') ? _gsSyncRodapeExtra() : '';   // v2.1.0.0
   if(_gsSrvEstado === 'conectado') return 'Servidor: conectado' + ap + sx;
   if(_gsSrvEstado === 'reconectar') return 'Servidor: reconectar ao servidor' + ap + sx;
@@ -22134,8 +22171,10 @@ function _gsSrvAtualizarRodape(){
 
 // ── sinal (não bloqueia nada) ───────────────────────────────────────────────
 async function _gsSrvSinal(){
-  if(!_gsSrvLigado()) return;
-  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:0, p_relogio_ms:Date.now() }, 8000);
+  if(!_gsSrvLigado() || _gsSrvLer().transferido) return;
+  _gsSrvUltimoSinal = Date.now();
+  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:0, p_relogio_ms:Date.now(), p_aparelho_id:await gsAparelhoId() }, 8000);
+  if(!r.error && r.data && r.data.transferido){ _gsSrvMarcarTransferido(r.data); return; }   // v2.2.0.0 (Bloco J)
   if(!r.error){
     _gsSrvMudarEstado('conectado');
     const s = _gsSrvLer();
@@ -22146,6 +22185,7 @@ async function _gsSrvSinal(){
 // Na abertura: NADA espera. Sem login, retorna na primeira linha.
 function _gsSrvIniciar(){
   if(!_gsSrvLigado()) return;
+  if(_gsSrvLer().transferido){ _gsSrvEstado = 'transferido'; try{ _gsSrvAtualizarRodape(); }catch(e){} return; }   // v2.2.0.0
   if(_gsSrvEstado !== 'conectado') _gsSrvMudarEstado('conectando');
   (async function(){
     try{
@@ -22174,7 +22214,28 @@ async function gsSrvEntrar(email, senha){
     _gsSrvMudarEstado('desligado');
     return { ok:false, erro:(r.error && r.error.message) || 'login recusado' };
   }
-  const d = await _gsSrvRpc('registrar_dispositivo', { p_nome:'GarageSpot ' + _gsSrvAmbiente(), p_versao:GS_VERSION }, 10000);
+  const apId = await gsAparelhoId();   // v2.2.0.0 (Bloco J): a conta fica ligada a UM aparelho
+  const d = await _gsSrvRpc('registrar_dispositivo', { p_nome:'GarageSpot ' + _gsSrvAmbiente(), p_versao:GS_VERSION, p_aparelho_id:apId }, 10000);
+  if(!d.error && d.data && d.data.em_uso){
+    _gsSrvMudarEstado('desligado');
+    return { ok:false, emUso:{ letra:d.data.letra, ultimo_sinal:d.data.ultimo_sinal, fila_leve:d.data.fila_leve || 0 }, email:String(email || '').trim(),
+             erro:'Esta conta já está em uso no aparelho ' + d.data.letra + ' (último sinal ' + (d.data.ultimo_sinal ? _dtLocal(Date.parse(d.data.ultimo_sinal)) : '—') + ')' };
+  }
+  return _gsSrvConcluirEntrada(email, d);
+}
+// v2.2.0.0 (Bloco J): a conta passa para ESTE aparelho (mesma letra; o antigo para no próximo sinal)
+async function gsSrvTransferir(email){
+  const d = await _gsSrvRpc('transferir_dispositivo', { p_aparelho_id:await gsAparelhoId(), p_nome:'GarageSpot ' + _gsSrvAmbiente(), p_versao:GS_VERSION }, 10000);
+  const r = await _gsSrvConcluirEntrada(email, d);
+  if(r.ok){ try{ addLogSistema('Conta do servidor TRANSFERIDA para este aparelho — letra ' + r.letra, { aud:true, acao:'servidor_conta_transferida_para_ca', alvo:r.letra, origem:'usuario' }); }catch(e){} }
+  return r;
+}
+async function gsSrvCancelarEntrada(){
+  try{ const cli = _gsSrvCliente(); if(cli) await cli.auth.signOut({ scope:'local' }); }catch(e){}
+  _gsSrvMudarEstado('desligado');
+}
+async function _gsSrvConcluirEntrada(email, d){
+  const cli = _gsSrvCliente();
   if(d.error || !d.data || !/^[A-Z]$/.test(String(d.data.letra || ''))){
     try{ await cli.auth.signOut({ scope:'local' }); }catch(e){}
     _gsSrvMudarEstado('desligado');
@@ -22182,6 +22243,7 @@ async function gsSrvEntrar(email, senha){
   }
   _gsSrvGravar({ ligado:true, email:String(email || '').trim(), letra:d.data.letra, dispositivo_id:d.data.id,
                  empresa:d.data.empresa, empresa_id:d.data.empresa_id, ambiente:_gsSrvAmbiente(), desde:Date.now() });
+  _gsSrvSerieAjustar(d.data.serie);   // v2.2.0.0: a série offline continua do maior que o servidor conhece
   _gsSrvMudarEstado('conectado');
   try{ addLogSistema('Servidor conectado neste aparelho — letra ' + d.data.letra + ' · empresa ' + d.data.empresa,
     { aud:true, acao:'servidor_conectado', alvo:d.data.letra, origem:'usuario' }); }catch(e){}
@@ -22191,7 +22253,7 @@ async function gsSrvEntrar(email, senha){
 async function gsSrvDesligar(){
   const s = _gsSrvLer();
   try{ const cli = _gsSrvCliente(); if(cli) await cli.auth.signOut({ scope:'local' }); }catch(e){}
-  s.ligado = false; s.desligado_em = Date.now();
+  s.ligado = false; s.desligado_em = Date.now(); delete s.transferido; delete s.transferido_em;   // v2.2.0.0
   _gsSrvGravar(s);
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); }catch(e){}
   _gsSrvTimerSinal = null;
@@ -22421,8 +22483,35 @@ async function gsSrvCargaInicial(aoProgresso){
 }
 
 // ── Gestão → Servidor ───────────────────────────────────────────────────────
+// v2.2.0.0 (Bloco J): a mesma conta já está noutro aparelho
+function _gsSrvTelaEmUso(r){
+  const u = r.emUso || {};
+  showM('<div class="mt">🛰 Conta em uso</div><div class="ms" id="srv-em-uso" style="margin-bottom:8px">Esta conta já está em uso no aparelho <strong>' + _vtEsc(u.letra || '?') + '</strong>' +
+    ' (último sinal ' + _vtEsc(u.ultimo_sinal ? _dtLocal(Date.parse(u.ultimo_sinal)) : '—') + ').</div>' +
+    (u.fila_leve ? '<div class="warn-box" style="font-size:12px">No último sinal, o aparelho ' + _vtEsc(u.letra || '?') + ' tinha <strong>' + u.fila_leve + ' ação(ões) sem enviar</strong>. Se possível, deixe-o enviar antes de transferir.</div>' : '') +
+    '<div class="ms" style="font-size:12px;margin-bottom:8px">Transferir faz este aparelho ficar com a letra ' + _vtEsc(u.letra || '?') + '. O aparelho antigo para de sincronizar no próximo sinal — os dados dele ficam intactos.</div>' +
+    '<div class="b2"><button class="bcx" id="srv-cancelar-uso">Cancelar</button><button class="bsv" id="srv-transferir">Transferir para este aparelho</button></div>');
+  document.getElementById('srv-cancelar-uso').onclick = async function(){ await gsSrvCancelarEntrada(); showServidor(); };
+  document.getElementById('srv-transferir').onclick = function(){
+    showEntrarPIN(async function(){
+      showM('<div class="mt">🛰 Transferindo…</div>');
+      const t = await gsSrvTransferir(r.email);
+      if(!t.ok){ showM('<div class="mt">⚠️ Não transferiu</div><div class="ms">' + _vtEsc(t.erro || '') + '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>'); return; }
+      showToast('✅ Conta transferida para este aparelho — letra ' + t.letra, 4000);
+      showServidor();
+    });
+  };
+}
 function showServidor(){
   const s = _gsSrvLer();
+  if(s.ligado && s.transferido){
+    showM('<div class="mt">🛰 Servidor</div><div class="ms" id="srv-transferido" style="margin-bottom:8px">Esta conta foi transferida para outro aparelho' + (s.transferido_em ? ' em ' + _vtEsc(_dtLocal(Date.parse(s.transferido_em))) : '') +
+      '. Este aparelho parou de sincronizar; os dados dele ficam intactos.</div>' +
+      '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
+      '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
+    document.getElementById('srv-desligar').onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
+    return;
+  }
   const cfg = GS_SRV_CONFIG[_gsSrvAmbiente()];
   const projeto = _gsSrvAmbiente() === 'dev' ? 'garagespot-dev' : 'garagespot-prod';
   if(!_gsSrvLigado()){
@@ -22440,6 +22529,7 @@ function showServidor(){
         b.disabled = true; if(msg){ msg.style.color = '#888'; msg.textContent = 'Entrando…'; }
         const r = await gsSrvEntrar(document.getElementById('srv-email').value, document.getElementById('srv-senha').value);
         b.disabled = false;
+        if(!r.ok && r.emUso){ _gsSrvTelaEmUso(r); return; }   // v2.2.0.0 (Bloco J)
         if(!r.ok){ if(msg){ msg.style.color = '#A32D2D'; msg.textContent = '⚠️ ' + r.erro; } return; }
         showServidor();
       };
@@ -22457,7 +22547,7 @@ function showServidor(){
     '</div>' +
     '<div style="font-size:12px;color:#555;margin-bottom:8px">' + cargaTxt + '</div>' +
     '<div id="srv-sync">' + _gsSyncPainelHTML() + '</div>' +
-    (carga.estado !== 'concluida' && ['ativo', 'adotando'].indexOf(_gsSync.estado) < 0 && ['baixar', 'misturaria'].indexOf(_gsSync.decisao) < 0 ? '<button class="bsv" id="srv-carga" style="width:100%;margin-bottom:6px">📤 Enviar dados deste aparelho para o servidor (carga inicial)</button>' : '') +
+
     '<div id="srv-carga-res" style="font-size:12px;margin:4px 0"></div>' +
     '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
@@ -22465,8 +22555,6 @@ function showServidor(){
   setTimeout(function(){
     const d = document.getElementById('srv-desligar');
     if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
-    const c = document.getElementById('srv-carga');
-    if(c) c.onclick = function(){ showEntrarPIN(function(){ _gsSrvExecutarCargaNaTela(); }); };
   }, 0);
 }
 async function _gsSrvExecutarCargaNaTela(){
@@ -22518,7 +22606,7 @@ async function _gsSrvExecutarCargaNaTela(){
 // fotos/PDFs (sessão D) — continuam só no aparelho.
 const GS_SCHEMA = 1;                                // formato dos registros que este app entende
 const GS_SYNC_RAIZ = 'garagespot/sync';
-const GS_SYNC_ESPELHO  = ['hospedagens', 'vagas', 'passeio', 'recargas_ativas', 'fila_recarga', 'vistorias'];
+const GS_SYNC_ESPELHO  = ['hospedagens', 'vagas', 'passeio', 'recargas_ativas', 'fila_recarga', 'vistorias', 'funcionarios', 'config'];   // v2.2.0.0: + funcionários e configuração
 const GS_SYNC_INCLUSAO = ['eventos', 'trilha', 'recargas_encerradas'];
 const GS_SYNC_TABS = GS_SYNC_ESPELHO.concat(GS_SYNC_INCLUSAO);
 const GS_SYNC_SHARDS = 8;                           // a base de cada tabela em 8 arquivos
@@ -22608,6 +22696,15 @@ function _gsSyncLocalEspelho(tab){
         o[ch] = Object.assign(_gsSrvSemImagens(v), { _chave:(ref && ref.d && ref.d._chave) || key });
       });
     }
+    else if(tab === 'funcionarios'){
+      // v2.2.0.0: o PIN em TEXTO nunca sai do aparelho — só o hash com sal
+      (USUARIOS || []).forEach(function(u){
+        if(!u || u.id == null) return;
+        const d = _gsSyncSem(u, 'pin'); d.tem_pin = !!(_usrPinDe(u) || u.pin_hash);
+        o[String(u.id)] = JSON.parse(JSON.stringify(d));
+      });
+    }
+    else if(tab === 'config') Object.assign(o, _gsCfgLocal());
   }catch(e){ console.warn('[SYNC] leitura de', tab, 'falhou:', e && e.message); }
   return o;
 }
@@ -22728,7 +22825,7 @@ function _gsSyncDetectar(opts){
   const it = _gsSync.intencao;
   _gsSync.intencao = null;
   const tipo = (it && Date.now() - it.ts < 5000) ? it.tipo : (opts.tipo || 'edicao');
-  _gsSyncEnfileirar(ops, tipo, it && it.alvo);
+  _gsSyncEnfileirar(ops, tipo, it && it.alvo, (it && Date.now() - it.ts < 5000) ? it.resolve : null);
   return ops.length;
 }
 function _gsSyncAgendarDeteccao(ms){
@@ -22761,7 +22858,8 @@ function _gsSyncOperador(ops){
     const u = (USUARIOS || []).find(function(x){ return x && x.nome === p[0] && (p.length < 2 || x.cargo === p[1]); });
     if(u) id = String(u.id);
   }catch(e){}
-  return { id:id, nome:String(nome) };
+  // v2.2.0.0: 'nome' é a PESSOA ("já resolvido por Fulano"); o texto completo segue em 'texto'
+  return { id:id, nome:String(nome).split(' · ')[0], texto:String(nome) };
 }
 
 // ── a fila (arquivos privados, um por ação) ─────────────────────────────────
@@ -22778,15 +22876,16 @@ function _gsSyncGravarItem(item){
           function(e){ console.warn('[SYNC] ação não gravada em arquivo (fica na memória e tenta de novo):', e && e.message); return false; });
   return item.gravado;
 }
-function _gsSyncEnfileirar(ops, tipo, alvo){
+function _gsSyncEnfileirar(ops, tipo, alvo, resolve){
   const marca = _gsSyncMarcaTeste();
-  for(let i = 0; i < ops.length; i += GS_SYNC_MAX_OPS){
+  for(let i = 0; i < Math.max(ops.length, resolve ? 1 : 0); i += GS_SYNC_MAX_OPS){
     const parte = ops.slice(i, i + GS_SYNC_MAX_OPS);
     const id = _gsSyncNovoId();
     const acao = { id:id, tipo:tipo || 'edicao', acao_em:new Date().toISOString(), aparelho:_gsSyncLetra(),
                    operador:_gsSyncOperador(parte), schema:GS_SCHEMA, ops:parte };
     if(alvo) acao.alvo = alvo;
     if(marca) acao.teste = marca;
+    if(resolve && i === 0) acao.resolve = resolve;   // v2.2.0.0: a resolução vai NA MESMA ação das mudanças
     _gsSync.n++;
     const item = { id:id, n:_gsSync.n, acao:acao, arquivo:_gsSyncDir() + '/fila/' + String(_gsSync.n).padStart(10, '0') + '-' + id + '.json' };
     _gsSyncGravarItem(item);
@@ -22827,6 +22926,8 @@ async function _gsSyncEnviar(){
   if(Date.now() < _gsSync.proxEnvio){ _gsSyncAgendarEnvio(_gsSync.proxEnvio - Date.now()); return; }
   _gsSync.enviando = true;
   try{
+    // v2.2.0.0 (Bloco J): antes de enviar, confere se a conta não foi transferida (sinal de no máx. 1 min)
+    if(Date.now() - (_gsSrvUltimoSinal || 0) > 60000){ await _gsSrvSinal(); if(_gsSync.estado !== 'ativo') return; }
     while(_gsSync.fila.length && _gsSync.estado === 'ativo'){
       const item = _gsSync.fila[0];
       if(!(await item.gravado)) await _gsSyncGravarItem(item);
@@ -22869,18 +22970,28 @@ async function _gsSyncRecusar(item, err){
 async function _gsSyncConfirmar(item, resp){
   _gsSyncDetectar();                    // o que mudou e ainda não foi capturado entra na fila ANTES
   const m = _gsSyncNovoMudou();
+  // v2.2.0.0: outra resolução chegou primeiro — nada desta foi aplicado; o aparelho volta ao servidor
+  if(resp.resolucao && resp.resolucao.estado === 'ja_resolvida') _gsSyncReverterAcao(item, resp.resolucao, m);
+  else if(resp.resolucao && resp.resolucao.estado === 'resolvida') _gsPendResolvidaAqui(item, resp.resolucao);
   (resp.resultados || []).forEach(function(r){
     const tab = r.tabela, k = r.chave;
     if(_gsSyncEhInclusao(tab)){
-      if(r.estado === 'inserido' || r.estado === 'ja_existia'){ _gsSyncTab(_gsSync.base, tab)[k] = 1; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
+      if(r.estado === 'ja_encerrada') _gsRecargaJaEncerrada(k, r, m);   // v2.2.0.0: nunca cobra em dobro
+      if(r.estado === 'inserido' || r.estado === 'ja_existia' || r.estado === 'ja_encerrada'){ _gsSyncTab(_gsSync.base, tab)[k] = 1; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
       delete _gsSyncTab(_gsSync.sombra, tab)[k];
       return;
     }
     if(!_gsSyncEhEspelho(tab)) return;
     const base = _gsSyncTab(_gsSync.base, tab), som = _gsSyncTab(_gsSync.sombra, tab), raw = _gsSyncTab(_gsSync.raw, tab);
     const outro = _gsSyncPendenteEm(tab, k, item);
-    if(r.versao == null){                // o servidor não tem o registro: a próxima captura o CRIA
-      if(!outro){ delete base[k]; delete som[k]; delete raw[k]; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
+    if(r.versao == null){
+      if(!outro){
+        delete base[k]; delete som[k]; delete raw[k]; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true;
+        // v2.2.0.0: a criação NÃO valeu (regra de conflito → pendência): o aparelho volta ao servidor,
+        // onde o registro não existe. O que foi pedido fica guardado na pendência.
+        if(r.estado === 'pendencia' || r.estado === 'mantida') _gsSyncAplicarRegistro(tab, k, { v:0, d:{}, x:true }, m);
+      }
+      // (recusada por inexistente: a próxima captura o CRIA)
       return;
     }
     if(!base[k] || r.versao >= base[k].v){ base[k] = { v:r.versao, d:r.dados, x:!!r.excluido }; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
@@ -22889,12 +23000,13 @@ async function _gsSyncConfirmar(item, resp){
   await _gsSyncGravarBase();
   await _gsSyncTirarDaFila(item);
   _gsSync.ultimoEnvio = Date.now(); _gsSync.stats.enviadas++;
+  if(m.pend) _gsPendDepoisDeMudar(m);
   if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
   _gsSyncAtualizarRodape();
 }
 
 // ── aplicar no aparelho o que o servidor diz ────────────────────────────────
-function _gsSyncNovoMudou(){ return { algo:false, tabs:{}, vagas:{}, recargas:{}, tokens:{}, rebuild:false, removidasVist:[], trilha:[] }; }
+function _gsSyncNovoMudou(){ return { algo:false, tabs:{}, vagas:{}, recargas:{}, tokens:{}, rebuild:false, removidasVist:[], trilha:[], pend:false, cfg:false }; }
 function _gsSyncLocalVistKey(ch){
   const ks = Object.keys(VISTORIAS || {});
   for(let i = 0; i < ks.length; i++){ const v = VISTORIAS[ks[i]]; if(v && _gsSyncChaveVist(ks[i], v) === ch) return ks[i]; }
@@ -22908,6 +23020,10 @@ function _gsSyncAplicarRegistro(tab, k, rec, m){
     if(tab === 'hospedagens'){
       if(x) return;                                            // hospedagem nunca some
       if(HOSPEDAGENS[k] && _gsSyncCanon(HOSPEDAGENS[k]) === _gsSyncCanon(d)){ raw[k] = JSON.stringify(HOSPEDAGENS[k]); return; }
+      // v2.2.0.0 (Bloco F): troca de apartamento — os eventos DESTA hospedagem mudam de
+      // lista, exatamente como no aparelho que fez a troca
+      const aptAntes = HOSPEDAGENS[k] ? String(HOSPEDAGENS[k].apt || '') : '';
+      if(aptAntes && d.apt != null && String(d.apt) !== aptAntes && _gsMoverEventosDeApt(k, aptAntes, String(d.apt))){ m.tabs.eventos = true; m.algo = true; }
       HOSPEDAGENS[k] = _gsSyncCopia(d);
       raw[k] = JSON.stringify(HOSPEDAGENS[k]);
       m.tokens[k] = 1; if(d.apt) m.tokens[String(d.apt)] = 1;
@@ -22965,6 +23081,17 @@ function _gsSyncAplicarRegistro(tab, k, rec, m){
         raw[k] = JSON.stringify(Object.assign(_gsSrvSemImagens(novo), { _chave:d._chave || key }));
       }
       m.tokens[d.hospedagem || d.hospedagem_gs || ''] = 1;
+    } else if(tab === 'funcionarios'){
+      if(x) return;                                            // funcionário nunca é excluído
+      const mudouU = _gsUsrAplicarRecebido(k, d);
+      raw[k] = JSON.stringify(_gsSyncLocalEspelho('funcionarios')[k] || null);
+      if(!mudouU) return;
+    } else if(tab === 'config'){
+      if(x) return;
+      const mudouC = _gsCfgAplicarRecebido(k, d);
+      raw[k] = JSON.stringify(_gsCfgLocal()[k] || null);
+      if(!mudouC) return;
+      m.cfg = true;
     } else return;
     m.algo = true; m.tabs[tab] = true;
   }catch(e){ console.warn('[SYNC] aplicar', tab, k, 'falhou:', e && e.message); }
@@ -22973,7 +23100,8 @@ function _gsSyncInserirLocal(tab, k, d, m){
   try{
     if(tab === 'eventos'){
       const e = Object.assign(_gsSyncCopia((d && d.e) || {}), { _sid:k });
-      const apt = String((d && d.apt) || e.apt || '?');
+      const hAtual = e.hospedagem && HOSPEDAGENS[e.hospedagem];
+      const apt = String((hAtual && hAtual.apt) || (d && d.apt) || e.apt || '?');   // v2.2.0.0 (Bloco F)
       if(!HISTORICO[apt]) HISTORICO[apt] = [];
       HISTORICO[apt].push(e);
       HISTORICO[apt].sort(function(a, b){ return (a.ts || 0) - (b.ts || 0); });
@@ -23002,6 +23130,8 @@ function _gsSyncPersistirLocal(m){
   try{ if(t.vistorias) saveVistorias(m.removidasVist.length ? { permitirVazio:true } : undefined); }catch(e){ console.warn('[SYNC] vistorias:', e && e.message); }
   try{ if(t.eventos) saveHistorico(); }catch(e){ console.warn('[SYNC] histórico:', e && e.message); }
   try{ if(t.recargas_encerradas) saveRecargaHist(); }catch(e){ console.warn('[SYNC] recargas encerradas:', e && e.message); }
+  try{ if(t.funcionarios) saveUsuarios({ permitirVazio:true }); }catch(e){ console.warn('[SYNC] funcionários:', e && e.message); }
+  try{ if(m.cfg && typeof atualizarPlantao === 'function') atualizarPlantao(); }catch(e){}
   if(m.trilha.length){
     try{ let log = _lerLog(); m.trilha.forEach(function(e){ log.push(e); }); log = _logPodar(log); localStorage.setItem(LOG_KEY, JSON.stringify(log)); }
     catch(e){ console.warn('[SYNC] trilha recebida não gravada:', e && e.message); }
@@ -23052,6 +23182,7 @@ function _gsSyncAplicarLinhas(linhas){
   let guardou = false;
   (linhas || []).forEach(function(l){
     if(!l || !l.t) return;
+    if(l.t === 'pendencias'){ _gsPendRecebida(l.d, m); return; }   // v2.2.0.0
     if((Number(l.s) || 1) > GS_SCHEMA){ _gsSync.guardados.push(l); guardou = true; return; }
     const tab = l.t, k = String(l.k);
     if(_gsSyncEhInclusao(tab)){
@@ -23069,6 +23200,7 @@ function _gsSyncAplicarLinhas(linhas){
     _gsSyncAplicarRegistro(tab, k, base[k], m);
   });
   _gsSync.stats.recebidas += (linhas || []).length;
+  if(m.pend) _gsPendDepoisDeMudar(m);
   if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
   if(guardou){ _gsSyncGravarGuardados(); _gsSyncAvisarAtualizar(); }
   return m;
@@ -23117,8 +23249,10 @@ function _gsSyncAssinarTempoReal(){
 
 // ── persistência do estado da sincronização (arquivos privados) ─────────────
 function _gsSyncGravarEstado(){
-  const est = { v:1, emp:_gsSync.emp, dv:_gsSync.dv, cursor:_gsSync.cursor, n:_gsSync.n, adotado:_gsSync.adotado,
+  const dvs = (_gsSync.dvs || []).slice(); if(_gsSync.dv && dvs.indexOf(_gsSync.dv) < 0) dvs.push(_gsSync.dv); _gsSync.dvs = dvs;
+  const est = { v:1, emp:_gsSync.emp, dv:_gsSync.dv, dvs:dvs, cursor:_gsSync.cursor, n:_gsSync.n, adotado:_gsSync.adotado,
                 modo:_gsSync.modo, recusadas:_gsSync.recusadas, ts:Date.now() };
+  if(_gsSync.adotado) _gsOrigemMarcar(_gsSync.emp, _gsSync.cursor, dvs);   // v2.2.0.0: "dados da empresa X, até o ponto N"
   _gsSync.gravacao = _gsSync.gravacao.then(function(){ return _gsArqGravarSeguro(_gsSyncDir() + '/estado.json', JSON.stringify(est), false); })
     .catch(function(e){ console.warn('[SYNC] estado não gravado:', e && e.message); });
   return _gsSync.gravacao;
@@ -23200,6 +23334,8 @@ async function _gsSyncCarregar(){
   }
   const g = await _gsArqLerJSON(dir + '/guardados.json');
   if(Array.isArray(g)) _gsSync.guardados = g;
+  _gsSync.dvs = (est && Array.isArray(est.dvs)) ? est.dvs : [];
+  await _gsPendCarregar();   // v2.2.0.0
 }
 
 // ── início, decisão e adoção ────────────────────────────────────────────────
@@ -23220,6 +23356,7 @@ async function _gsSyncIniciar(){
     const s3 = _gsSrvLer();
     if(!gsSrvAtivo()){ _gsSync.estado = 'parado'; return; }
     _gsSync.emp = String(s3.empresa_id); _gsSync.dv = String(s3.dispositivo_id); _gsSync.letra = String(s3.letra || '');
+    await _gsOrigemCarregar();   // v2.2.0.0
     await _gsSyncCarregar();
     if(!gsSrvAtivo()){ _gsSync.estado = 'parado'; return; }
     if(_gsSync.adotado){ _gsSyncAtivar(); return; }
@@ -23244,8 +23381,11 @@ async function _gsSyncDecidir(){
   const srvTem = GS_SYNC_TABS.some(function(t){ return (Number(cont[t]) || 0) > 0; });
   const locTem = _gsSyncAparelhoTemDados();
   if(origem) return _gsSyncAdotar('origem');
+  // v2.2.0.0: os dados deste aparelho VIERAM desta empresa (carga ou baixa) — sincroniza, mesmo com outra conta
+  const marcaOrig = _gsOrigemLer();
+  if(marcaOrig && marcaOrig.emp === _gsSync.emp && locTem){ _gsSync.dvs = (marcaOrig.dvs || []).slice(); return _gsSyncAdotar('origem'); }
   if(!srvTem && !locTem) return _gsSyncAdotar('vazio');
-  _gsSync.decisao = (carga.estado === 'em_andamento' || (!srvTem && locTem)) ? 'carga' : (!locTem ? 'baixar' : 'misturaria');
+  _gsSync.decisao = (!srvTem && (carga.estado === 'em_andamento' || locTem)) ? 'carga' : (!locTem ? 'baixar' : 'misturaria');
   _gsSync.estado = 'decisao';
   _gsSyncAtualizarRodape();
   try{ const el = document.getElementById('srv-sync'); if(el){ el.innerHTML = _gsSyncPainelHTML(); _gsSyncLigarPainel(); } }catch(e){}
@@ -23277,12 +23417,15 @@ async function _gsSyncAdotar(modo, aoProgresso){
   const m = _gsSyncNovoMudou();
   const locIncl = {};
   if(modo === 'origem') GS_SYNC_INCLUSAO.forEach(function(t){ locIncl[t] = _gsSyncLocalInclusao(t); });
+  _gsPendLimpar();
+  (linhas.pendencias || []).forEach(function(l){ _gsPendRecebida(l.d, m); });   // v2.2.0.0
   GS_SYNC_TABS.forEach(function(t){
     (linhas[t] || []).forEach(function(l){
       if((Number(l.s) || 1) > GS_SCHEMA){ _gsSync.guardados.push(l); return; }
       const k = String(l.k);
       // na ORIGEM, o que outro aparelho mudou depois da carga prevalece; o resto é deste aparelho
-      const doServidor = modo === 'baixar' || (modo === 'origem' && l.u && String(l.u) !== _gsSync.dv);
+      const meus = (_gsSync.dvs || []).concat([_gsSync.dv]);
+      const doServidor = modo === 'baixar' || (modo === 'origem' && l.u && meus.indexOf(String(l.u)) < 0);
       if(_gsSyncEhInclusao(t)){
         _gsSync.base[t][k] = 1;
         if(doServidor && !(locIncl[t] && locIncl[t][k])) _gsSyncInserirLocal(t, k, l.d, m);
@@ -23297,6 +23440,7 @@ async function _gsSyncAdotar(modo, aoProgresso){
   await _gsSyncGravarBase();
   await _gsSyncGravarEstado();
   if(_gsSync.guardados.length){ _gsSyncGravarGuardados(); _gsSyncAvisarAtualizar(); }
+  if(m.pend) _gsPendDepoisDeMudar(m);
   if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
   try{ addLogSistema('Sincronização com o servidor LIGADA (' + ({ origem:'aparelho da carga inicial', vazio:'servidor e aparelho vazios', baixar:'dados baixados do servidor' })[modo] +
     ') — ' + total + ' registro(s) do servidor, ponto ' + _gsSync.cursor, { aud:true, acao:'sync_iniciada', alvo:modo, origem:modo === 'baixar' ? 'usuario' : 'automatico' }); }catch(e){}
@@ -23305,6 +23449,7 @@ async function _gsSyncAdotar(modo, aoProgresso){
 }
 function _gsSyncAtivar(){
   _gsSync.estado = 'ativo'; _gsSync.motivo = ''; _gsSync.decisao = null;
+  try{ _gsPinsGarantirHash(); }catch(e){ console.warn('[SYNC] hash dos PINs:', e && e.message); }   // v2.2.0.0
   _gsSyncInstalarGanchos();
   _gsSyncAplicarGuardados();
   _gsSyncDetectar({ todas:true });
@@ -23364,6 +23509,9 @@ function _gsSyncEnvolver(nome, antes, depois){
   window[nome] = w;
   return true;
 }
+function _gsEventoAutorId(apt){
+  try{ (HISTORICO[apt] || []).slice(-3).forEach(function(e){ if(e && !e.usuario_id && e.usuario){ const pe = String(e.usuario).split(' · '); const u = (USUARIOS || []).find(function(x){ return x && x.nome === pe[0] && (pe.length < 2 || x.cargo === pe[1]); }); if(u) e.usuario_id = String(u.id); } }); }catch(x){}
+}
 function _gsSyncInstalarGanchos(){
   if(_gsSync.ganchos) return;
   _gsSync.ganchos = true;
@@ -23371,8 +23519,43 @@ function _gsSyncInstalarGanchos(){
   [['saveHospedagens', ['hospedagens']], ['saveData', ['vagas', 'passeio']], ['saveHistorico', ['eventos']],
    ['addHistorico', ['eventos']], ['iniciarHistorico', ['eventos']], ['saveRecargas', ['recargas_ativas']],
    ['saveRecargaHist', ['recargas_encerradas']], ['saveFilaRecarga', ['fila_recarga']], ['saveVistorias', ['vistorias']]
-  ].forEach(function(p){ _gsSyncEnvolver(p[0], null, function(){ p[1].forEach(_gsSyncMarcarSuja); }); });
+  ].forEach(function(p){ _gsSyncEnvolver(p[0], null, function(a){
+    // v2.2.0.0: o autor de cada evento leva também o ID do funcionário
+    if(p[0] === 'addHistorico' || p[0] === 'iniciarHistorico') _gsEventoAutorId(a[0]);
+    p[1].forEach(_gsSyncMarcarSuja);
+  }); });
   _gsSyncEnvolver('addLogSistema', null, function(a){ if(a[1] && a[1].aud) _gsSyncMarcarSuja('trilha'); });
+  // v2.2.0.0: o autor de cada evento leva também o ID do funcionário
+  _gsSyncEnvolver('saveUsuarios', null, function(){ _gsSyncMarcarSuja('funcionarios'); });
+  ['saveTurnos', 'saveEscala', 'saveRecargaCfg', 'saveConfigPontos', 'saveModulos', 'savePlantaoManual', 'savePlantaoOverride', 'saveTema', '_gsPodaSalvarConfig']
+    .forEach(function(n){ _gsSyncEnvolver(n, null, function(){ _gsSyncMarcarSuja('config'); }); });
+  // v2.2.0.0 (Blocos C/D): vaga com dois carros se divide; o toque nela abre a resolução
+  _gsSyncEnvolver('ref', null, function(a){ try{ if(_gsConflitoDaVaga(a[0])) _gsConflitoDesenhar(a[0]); else { const td = getTd(a[0]); if(td) td.classList.remove('vaga-conflito'); } }catch(e){} });
+  (function(){
+    const orig = window.clkV;
+    if(typeof orig === 'function' && !orig.__gsSync){
+      const w = function(id){
+        if(_gsPick){
+          if(S[id] && S[id].status === 'free' && !_gsConflitoDaVaga(id)){ const cb = _gsPick.cb; _gsPickCancelar(); cb(id); }
+          else showToast('Escolha uma vaga LIVRE para ' + (_gsPick.texto || ''), 2500);
+          return;
+        }
+        const c = _gsConflitoDaVaga(id);
+        if(c){ gsConflitoAbrir(c.id); return; }
+        return orig.apply(this, arguments);
+      };
+      w.__gsSync = true; w.__gsOrig = orig; window.clkV = w;
+    }
+    const oR = window.renderExpansaoPendencias;
+    if(typeof oR === 'function' && !oR.__gsSync){
+      const wR = function(){ const ex = _gsPendExtrasHTML(); const o = oR.apply(this, arguments); return ex ? (String(o).indexOf('exp-empty-success') >= 0 ? ex : ex + o) : o; };
+      wR.__gsSync = true; window.renderExpansaoPendencias = wR;
+    }
+  })();
+  _gsSyncEnvolver('bindHandlersPendencias', null, function(){ _gsPendLigarCards(document.getElementById('exp-corpo')); });
+  _gsSyncEnvolver('renderPainelDia', null, function(){ _gsPendAtualizarPainel(); });
+  _gsConflitoCSS();
+  try{ Object.keys(_gsPend.mapa).forEach(function(k){ const p = _gsPend.mapa[k]; const v = p && ((p.dados && p.dados.vaga) || p.vaga); if(v && S[v]) ref(v); }); }catch(e){}
   // ações explícitas (a intenção é anotada ANTES: a ação externa dá o nome)
   [['saveV', function(a){ return a[7] ? 'checkin' : 'retorno_passeio'; }, 0],
    ['_nciCommitCheckin', 'checkin_nci'], ['_aplicarDesignacaoExec', 'designar_vaga', 0], ['_aplicarDesignacaoAutomatica', 'designar_vaga', 0],
@@ -23449,7 +23632,8 @@ function _gsSyncPainelHTML(){
       'Para não misturar os dois, nada é sincronizado. Juntar os dados será decidido numa próxima etapa.<br>Neste aparelho, a única opção agora é <strong>desligar o servidor</strong> e seguir no modo local — nada é apagado.');
   }
   if(e === 'decisao' && _gsSync.decisao === 'carga'){
-    return caixa('#E8C77A', '#FFF8E8', '<strong>Envie os dados deste aparelho (carga inicial)</strong> para começar a sincronizar.');
+    return caixa('#E8C77A', '#FFF8E8', '<strong>Envie os dados deste aparelho (carga inicial)</strong> para começar a sincronizar.' +
+      (_gsSyncCargaLocal().estado !== 'concluida' ? '<button class="bsv" id="srv-carga" style="width:100%;margin-top:8px">📤 Enviar dados deste aparelho para o servidor (carga inicial)</button>' : ''));
   }
   if(e === 'preparando' || e === 'adotando') return caixa('#ddd', '#f7f7f7', '⏳ Preparando a sincronização…');
   return caixa('#ddd', '#f7f7f7', 'Sincronização parada' + (_gsSync.motivo ? ' — ' + _vtEsc(_gsSync.motivo) + ' (tenta de novo sozinha)' : '') + '.');
@@ -23457,6 +23641,9 @@ function _gsSyncPainelHTML(){
 function _gsSyncLigarPainel(){
   const b = document.getElementById('srv-baixar');
   if(b) b.onclick = function(){ showEntrarPIN(function(){ _gsSyncBaixarNaTela(); }); };
+  // v2.2.0.0: a carga inicial só aparece na decisão 'carga' (servidor VAZIO) e nasce aqui dentro
+  const c = document.getElementById('srv-carga');
+  if(c) c.onclick = function(){ showEntrarPIN(function(){ _gsSrvExecutarCargaNaTela(); }); };
 }
 async function _gsSyncBaixarNaTela(){
   showM('<div class="mt">⬇️ Baixar dados do servidor</div><div class="ms" id="srv-bx-ms">Baixando…</div>' +
@@ -23529,6 +23716,727 @@ function _gsVersaoIniciar(){
   _gsVersaoTimer = setInterval(function(){ if(gsSrvAtivo()) _gsVersaoConferir(); }, GS_VERSAO_MS);
 }
 function _gsVersaoParar(){ clearInterval(_gsVersaoTimer); _gsVersaoTimer = null; clearTimeout(_gsVersaoOciosoTimer); _gsVersaoNova = null; }
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2.2.0.0 — SERVIDOR C: CONFLITOS, PENDÊNCIAS, FUNCIONÁRIOS/PIN/CONFIGURAÇÃO,
+//            BLOQUEIOS COM O SERVIDOR LIGADO, UMA CONTA = UM APARELHO
+// ════════════════════════════════════════════════════════════════════════════
+// PRINCÍPIOS: nenhum conflito é resolvido em silêncio; nenhum conflito trava a
+// operação; a resolução manual é sempre possível pela tela; nada é apagado;
+// documentos e trilha registram cada resolução. SEM LOGIN, NADA DISTO APARECE.
+
+// ── SHA-256 síncrono (o PIN é conferido sem rede, por hash com sal) ─────────
+const _GS_SHA_K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+function _gsSha256Hex(msg){
+  const b = []; const u = unescape(encodeURIComponent(String(msg)));
+  for(let i = 0; i < u.length; i++) b.push(u.charCodeAt(i));
+  const l = b.length * 8; b.push(0x80); while((b.length % 64) !== 56) b.push(0);
+  for(let i = 7; i >= 0; i--) b.push(i >= 4 ? 0 : (l >>> (i * 8)) & 0xff);
+  let h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const w = new Array(64), r = function(x, n){ return (x >>> n) | (x << (32 - n)); };
+  for(let o = 0; o < b.length; o += 64){
+    for(let i = 0; i < 16; i++) w[i] = (b[o + 4 * i] << 24) | (b[o + 4 * i + 1] << 16) | (b[o + 4 * i + 2] << 8) | b[o + 4 * i + 3];
+    for(let i = 16; i < 64; i++){ const s0 = r(w[i-15], 7) ^ r(w[i-15], 18) ^ (w[i-15] >>> 3), s1 = r(w[i-2], 17) ^ r(w[i-2], 19) ^ (w[i-2] >>> 10); w[i] = (w[i-16] + s0 + w[i-7] + s1) | 0; }
+    let [a, bb, c, d, e, f, g, hh] = h;
+    for(let i = 0; i < 64; i++){
+      const t1 = (hh + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + _GS_SHA_K[i] + w[i]) | 0;
+      const t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;
+      hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+    }
+    h = [h[0]+a, h[1]+bb, h[2]+c, h[3]+d, h[4]+e, h[5]+f, h[6]+g, h[7]+hh].map(function(x){ return x | 0; });
+  }
+  return h.map(function(x){ return ('00000000' + (x >>> 0).toString(16)).slice(-8); }).join('');
+}
+// Formato igual ao da carga inicial: 'sha256$<sal hex>$<hex de sha256(sal + ":" + pin)>'
+function _gsPinHashNovo(pin){
+  let sal = '';
+  try{ sal = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(function(x){ return x.toString(16).padStart(2, '0'); }).join(''); }
+  catch(e){ sal = (Math.random().toString(16).slice(2) + Date.now().toString(16)).slice(0, 24); }
+  return 'sha256$' + sal + '$' + _gsSha256Hex(sal + ':' + String(pin).trim());
+}
+function _gsPinHashConfere(h, pin){
+  try{
+    const p = String(h || '').split('$');
+    if(p.length !== 3 || p[0] !== 'sha256') return false;
+    return _gsSha256Hex(p[1] + ':' + String(pin == null ? '' : pin).trim()) === p[2];
+  }catch(e){ return false; }
+}
+// PIN do GESTOR em hash (só existe depois de o servidor ser ligado; sem login, nada muda)
+const GESTAO_PIN_HASH_LS = 'garagespot_gestao_pin_hash';
+function _gsPinHashGestor(){ try{ return localStorage.getItem(GESTAO_PIN_HASH_LS) || ''; }catch(e){ return ''; } }
+// Ao ligar a sincronização: todo PIN passa a ter hash (o do servidor, se ele confere com o
+// do aparelho; senão um novo). O texto antigo que ainda existir fica para o corte.
+function _gsPinsGarantirHash(){
+  const baseF = (_gsSync.base && _gsSync.base.funcionarios) || {};
+  let mudou = false;
+  (USUARIOS || []).forEach(function(u, i){
+    if(!u || u.pin_hash) return;
+    const p = _usrPinDe(u); if(!p) return;
+    const srv = baseF[String(u.id)] && baseF[String(u.id)].d && baseF[String(u.id)].d.pin_hash;
+    USUARIOS[i] = Object.assign({}, u, { pin_hash:(srv && _gsPinHashConfere(srv, p)) ? srv : _gsPinHashNovo(p) });
+    mudou = true;
+  });
+  if(mudou) saveUsuarios();
+  if(!_gsPinHashGestor()){
+    const p = _gsPinGuardado() || '1200';   // sem PIN gravado, vale o de fábrica (mesma regra do _gsPinValido)
+    const bc = (_gsSync.base && _gsSync.base.config) || {};
+    const srv = bc.gestor_pin_hash && bc.gestor_pin_hash.d && bc.gestor_pin_hash.d.pin_hash;
+    if(srv && (!p || p === '1200' || _gsPinHashConfere(srv, p))) localStorage.setItem(GESTAO_PIN_HASH_LS, srv);
+    else if(p) localStorage.setItem(GESTAO_PIN_HASH_LS, _gsPinHashNovo(p));
+  }
+}
+function gsPinsEmTexto(){
+  let n = 0;
+  (USUARIOS || []).forEach(function(u){ if(u && _usrPinDe(u)) n++; });
+  return { funcionarios:n, gestor:_gsPinGuardado() ? 1 : 0 };
+}
+// funcionário recebido do servidor: o PIN em texto local só fica se o hash é o mesmo
+function _gsUsrAplicarRecebido(k, d){
+  const i = (USUARIOS || []).findIndex(function(u){ return u && String(u.id) === String(k); });
+  const atual = i >= 0 ? USUARIOS[i] : null;
+  const novo = _gsSyncSem(_gsSyncCopia(d || {}), 'tem_pin');
+  delete novo.pin;
+  if(atual && atual.pin && (!d.pin_hash || d.pin_hash === atual.pin_hash)) novo.pin = atual.pin;
+  if(atual && _gsSyncCanon(_gsSyncSem(atual, 'tem_pin')) === _gsSyncCanon(novo)) return false;
+  if(i >= 0) USUARIOS[i] = novo; else USUARIOS.push(novo);
+  return true;
+}
+function _gsUsrComPin(u, pin){
+  if(gsSrvAtivo()){ const c = Object.assign({}, u, { pin_hash:_gsPinHashNovo(pin) }); delete c.pin; return c; }   // com servidor: só hash
+  return Object.assign({}, u, { pin:pin });
+}
+function _gsUsrAtivos(){ return (USUARIOS || []).filter(function(u){ return u && u.ativo !== false; }); }
+
+// ── configuração da empresa (as MESMAS chaves da carga inicial) ─────────────
+function _gsCfgLocal(){
+  const o = {};
+  try{
+    o.turnos = { valor:TURNOS };
+    o.escala = { valor:ESCALA_CONFIG };
+    o.recarga_config = { valor:RECARGA_CONFIG };
+    o.recarga_pontos = { valor:_getConfigPontosAtual() };
+    o.modulos = { valor:MODULOS };
+    o.plantao_manual = { valor:PLANTAO_MANUAL };
+    o.plantao_override = { valor:PLANTAO_OVERRIDE };
+    o.tema = { valor:(function(){ try{ return localStorage.getItem('garagespot_tema') || ''; }catch(e){ return ''; } })() };
+    o.poda_config = { valor:_gsPodaConfig() };
+    const h = _gsPinHashGestor(); if(h) o.gestor_pin_hash = { pin_hash:h };
+    Object.keys(o).forEach(function(k){ o[k] = JSON.parse(JSON.stringify(o[k])); });
+  }catch(e){ console.warn('[SYNC] configuração local ilegível:', e && e.message); }
+  return o;
+}
+function _gsCfgAplicarRecebido(k, d){
+  const atual = _gsCfgLocal()[k];
+  if(atual && _gsSyncCanon(atual) === _gsSyncCanon(d)) return false;
+  const v = d ? _gsSyncCopia(d.valor) : undefined;
+  if(k === 'turnos' && Array.isArray(v)){ TURNOS = v; saveTurnos(); }
+  else if(k === 'escala' && v){ ESCALA_CONFIG = v; saveEscala(); }
+  else if(k === 'recarga_config' && v){ RECARGA_CONFIG = v; saveRecargaCfg(); }
+  else if(k === 'recarga_pontos' && Array.isArray(v)){ saveConfigPontos(v); _aplicarConfigPontos(v); try{ Object.keys(S).forEach(function(id){ refRecarga(id); }); }catch(e){} }
+  else if(k === 'modulos' && v){ MODULOS = v; saveModulos(); try{ applyModulos(); }catch(e){} }
+  else if(k === 'plantao_manual' && Array.isArray(v)){ PLANTAO_MANUAL = v; savePlantaoManual({ permitirVazio:true }); }
+  else if(k === 'plantao_override' && v){ PLANTAO_OVERRIDE = v; savePlantaoOverride(); }
+  else if(k === 'tema' && typeof v === 'string' && v){ try{ localStorage.setItem('garagespot_tema', v); applyTema(v); }catch(e){} }
+  else if(k === 'poda_config' && v){ _gsPodaSalvarConfig(v); }
+  else if(k === 'gestor_pin_hash' && d && d.pin_hash){ localStorage.setItem(GESTAO_PIN_HASH_LS, d.pin_hash); }
+  else return false;
+  return true;
+}
+
+// ── troca de apartamento (Bloco F): os eventos da hospedagem seguem o apto ──
+function _gsMoverEventosDeApt(gs, de, para){
+  if(!gs || !de || !para || de === para || !HISTORICO[de]) return false;
+  const movem = [], ficam = [];
+  HISTORICO[de].forEach(function(e){ ((e && e.hospedagem === gs) ? movem : ficam).push(e); });
+  if(!movem.length) return false;
+  HISTORICO[para] = (HISTORICO[para] || []).concat(movem).sort(function(a, b){ return (a.ts || 0) - (b.ts || 0); });
+  if(ficam.length) HISTORICO[de] = ficam; else delete HISTORICO[de];
+  return true;
+}
+
+// ── "dados da empresa X, até o ponto N" (marca de ORIGEM) ───────────────────
+const GS_ORIGEM_LS = 'gs-srv-origem';    // `gs-srv-*` nunca entra em backup
+function _gsOrigemLer(){ try{ return JSON.parse(localStorage.getItem(GS_ORIGEM_LS) || 'null'); }catch(e){ return null; } }
+function _gsOrigemMarcar(emp, cursor, dvs){
+  const m = { emp:emp, cursor:cursor || 0, dvs:dvs || [], ts:Date.now() };
+  try{ localStorage.setItem(GS_ORIGEM_LS, JSON.stringify(m)); }catch(e){}
+  try{ _gsArqGravarSeguro(GS_SYNC_RAIZ + '/origem.json', JSON.stringify(m), false).catch(function(){}); }catch(e){}
+}
+async function _gsOrigemCarregar(){
+  try{ const f = await _gsArqLerJSON(GS_SYNC_RAIZ + '/origem.json'); if(f && f.emp && !_gsOrigemLer()) localStorage.setItem(GS_ORIGEM_LS, JSON.stringify(f)); }catch(e){}
+}
+
+// ── PENDÊNCIAS do servidor (só leitura; a resolução é uma ação normal) ──────
+const _gsPend = { mapa:{} };
+function _gsPendArq(){ return _gsSyncDir() + '/pendencias.json'; }
+async function _gsPendCarregar(){
+  _gsPend.mapa = {};
+  try{ const o = await _gsArqLerJSON(_gsPendArq()); if(o && typeof o === 'object') _gsPend.mapa = o; }catch(e){}
+}
+function _gsPendLimpar(){ _gsPend.mapa = {}; }
+let _gsPendGravarT = null;
+function _gsPendGravar(){
+  clearTimeout(_gsPendGravarT);
+  _gsPendGravarT = setTimeout(function(){
+    // as resolvidas há mais de 7 dias saem do aparelho (o histórico fica no servidor)
+    const lim = Date.now() - 7 * 86400000;
+    Object.keys(_gsPend.mapa).forEach(function(id){ const p = _gsPend.mapa[id]; if(p && p.resolvida_em && Date.parse(p.resolvida_em) < lim) delete _gsPend.mapa[id]; });
+    _gsArqGravarSeguro(_gsPendArq(), JSON.stringify(_gsPend.mapa), false).catch(function(e){ console.warn('[PEND] não gravou:', e && e.message); });
+  }, 300);
+}
+function _gsPendRecebida(d, m){
+  if(!d || !d.id) return;
+  const ant = _gsPend.mapa[d.id];
+  _gsPend.mapa[d.id] = d;
+  if(m){ m.pend = true; if(d.vaga) m.vagas[d.vaga] = 1; if(d.tipo === 'conflito_vaga' && d.dados && d.dados.vaga) m.vagas[d.dados.vaga] = 1; m.algo = true; }
+  // resolvida no OUTRO aparelho com a janela aberta aqui: avisa e fecha mostrando o resultado
+  if(d.resolvida_em && ant && !ant.resolvida_em && _gsPendJanela === d.id) setTimeout(function(){ _gsPendAvisoJaResolvida(d); }, 0);
+}
+function _gsPendDepoisDeMudar(m){ _gsPendGravar(); try{ _gsPendAtualizarPainel(); }catch(e){} }
+function gsPendenciasAbertas(){
+  return Object.keys(_gsPend.mapa).map(function(k){ return _gsPend.mapa[k]; })
+    .filter(function(p){ return p && !p.resolvida_em && !p._resolvendo; })
+    .sort(function(a, b){ return String(a.criado_em || '').localeCompare(String(b.criado_em || '')); });
+}
+function _gsConflitoDaVaga(id){
+  if(!gsSrvAtivo()) return null;
+  const l = gsPendenciasAbertas().filter(function(p){ return p.tipo === 'conflito_vaga' && ((p.dados && p.dados.vaga) || p.vaga) === id; });
+  return l.length ? l[0] : null;
+}
+// a primeira resolução valeu NESTE aparelho
+function _gsPendResolvidaAqui(item, r){
+  const p = _gsPend.mapa[r.pendencia_id];
+  try{ addLogSistema('Pendência resolvida (' + ((p && p.tipo) || '?') + '): ' + ((p && (p.gs || p.vaga)) || r.pendencia_id) + ' — ' + JSON.stringify((item.acao.resolve && item.acao.resolve.decisao) || {}),
+    { aud:true, acao:'pendencia_resolvida', alvo:String((p && p.tipo) || ''), quem:(item.acao.operador && item.acao.operador.nome) || '', origem:'usuario' }); }catch(e){}
+}
+// outra resolução chegou ANTES: nada desta ação valeu → o aparelho volta ao estado do servidor
+function _gsSyncReverterAcao(item, r, m){
+  const pid = r.pendencia_id;
+  ((item.acao && item.acao.ops) || []).forEach(function(o){
+    const tab = o.tabela, k = o.chave;
+    if(_gsSyncEhInclusao(tab)){
+      delete _gsSyncTab(_gsSync.sombra, tab)[k];
+      if(tab === 'eventos'){ Object.keys(HISTORICO).forEach(function(a){ const ant = HISTORICO[a].length; HISTORICO[a] = HISTORICO[a].filter(function(e){ return !(e && e._res === pid); }); if(HISTORICO[a].length !== ant){ m.tabs.eventos = true; m.algo = true; } }); }
+      return;
+    }
+    if(!_gsSyncEhEspelho(tab) || _gsSyncPendenteEm(tab, k, item)) return;
+    delete _gsSyncTab(_gsSync.sombra, tab)[k];
+    delete _gsSyncTab(_gsSync.raw, tab)[k];
+    const b = _gsSyncTab(_gsSync.base, tab)[k];
+    _gsSyncAplicarRegistro(tab, k, b || { v:0, d:{}, x:true }, m);
+  });
+  const p = _gsPend.mapa[pid];
+  if(p){ delete p._resolvendo; p.resolvida_em = p.resolvida_em || r.em; p.resolvida_por = p.resolvida_por || r.por; p.resolvida_aparelho = p.resolvida_aparelho || r.aparelho; }
+  m.pend = true;
+  try{ addLogSistema('Resolução NÃO aplicada — a pendência já tinha sido resolvida por ' + (r.por || '?') + ' no aparelho ' + (r.aparelho || '?'),
+    { aud:true, acao:'pendencia_ja_resolvida', alvo:String(pid), origem:'servidor' }); }catch(e){}
+  try{ showToast('ℹ️ Já resolvido por ' + (r.por || '?') + ' no aparelho ' + (r.aparelho || '?') + ' — o resultado de lá vale.', 6000); }catch(e){}
+  setTimeout(function(){ _gsSyncReceber('pendência já resolvida'); }, 200);
+}
+// a mesma recarga encerrada antes no outro aparelho: a cobrança DESTE não conta
+function _gsRecargaJaEncerrada(k, r, m){
+  try{
+    const e = (HISTORICO_RECARGAS || []).find(function(x){ return x && !x._duplicada && (x._sid === k || _gsSyncRecargaChave(x) === k); });
+    if(e){ e._duplicada = true; e._duplicada_de = { por:r.por || '', aparelho:r.aparelho || '', em:r.em || null, chave:r.chave_valida || '' }; m.tabs.recargas_encerradas = true; m.algo = true; }
+    addLogSistema('Recarga da vaga ' + ((e && e.vagaId) || '?') + ' já tinha sido encerrada por ' + (r.por || '?') + ' (aparelho ' + (r.aparelho || '?') + ') — este encerramento NÃO conta (sem cobrança em dobro)',
+      { aud:true, acao:'recarga_ja_encerrada', alvo:String((e && e.vagaId) || ''), origem:'servidor' });
+    showToast('⚡ Esta recarga já foi encerrada por ' + (r.por || '?') + ' no aparelho ' + (r.aparelho || '?') + ' — cobrança única mantida.', 7000);
+  }catch(x){ console.warn('[SYNC] recarga já encerrada:', x && x.message); }
+}
+function _gsSyncRecargaChave(e){
+  const l = _gsSyncLocalInclusao('recargas_encerradas');
+  const ks = Object.keys(l);
+  for(let i = 0; i < ks.length; i++){ const d = l[ks[i]].d; if(d && d.vagaId === e.vagaId && d.inicio_ts === e.inicio_ts && d.ts === e.ts) return ks[i]; }
+  return null;
+}
+
+// ── RESOLVER: a resolução é uma AÇÃO normal (fila; funciona sem rede) ────────
+// `aplicar` faz as mudanças no aparelho (síncrono); a captura sai na mesma ação, com `resolve`.
+function _gsResolver(pid, decisao, tipo, aplicar){
+  const p = _gsPend.mapa[pid];
+  if(!p) return false;
+  if(p.resolvida_em){ _gsPendAvisoJaResolvida(p); return false; }
+  _gsSync.intencao = { tipo:tipo || 'resolver_pendencia', alvo:p.gs || p.vaga || null, ts:Date.now(), resolve:{ pendencia_id:pid, decisao:decisao || {} } };
+  try{ if(typeof aplicar === 'function') aplicar(); }
+  finally{
+    GS_SYNC_TABS.forEach(function(t){ _gsSync.sujas[t] = true; });
+    const antes = _gsSync.fila.length;
+    _gsSyncDetectar({ todas:true });
+    // sem nenhuma mudança local (ex.: "são carros diferentes"): a resolução vai sozinha
+    if(_gsSync.fila.length === antes){ const it = _gsSync.intencao || { tipo:tipo, resolve:{ pendencia_id:pid, decisao:decisao || {} } }; _gsSync.intencao = null; _gsSyncEnfileirar([], it.tipo || tipo || 'resolver_pendencia', p.gs || null, { pendencia_id:pid, decisao:decisao || {} }); }
+    _gsSync.intencao = null;
+  }
+  p._resolvendo = true;
+  _gsPendGravar();
+  try{ _gsPendAtualizarPainel(); }catch(e){}
+  try{ if(p.dados && p.dados.vaga && S[p.dados.vaga]) ref(p.dados.vaga); }catch(e){}
+  return true;
+}
+let _gsPendJanela = null;
+function _gsPendAvisoJaResolvida(p){
+  const quem = (p.resolvida_por || '?') + (p.resolvida_aparelho ? ' no aparelho ' + p.resolvida_aparelho : '');
+  showM('<div class="mt">ℹ️ Já resolvido</div><div class="ms" id="pend-ja-resolvida">Esta pendência já foi resolvida por <strong>' + _vtEsc(quem) + '</strong>' +
+    (p.resolvida_em ? ' em ' + _vtEsc(_dtLocal(Date.parse(p.resolvida_em))) : '') + '. O resultado de lá vale aqui também.</div>' +
+    '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
+  _gsPendJanela = null;
+}
+
+// ── colocar um carro (GS) numa vaga / no passeio, a partir da hospedagem ────
+function _gsCarroDe(gs, extra){
+  const h = HOSPEDAGENS[gs] || {};
+  const e = extra || {};
+  return { apt:String(h.apt || e.apt || ''), model:h.model || e.model || '', color:h.color || e.color || '', plate:h.plate || e.plate || '',
+           guest:h.guest || e.guest || '', obs:h.obs || e.obs || '', size:h.size || e.size || 'small', hospedagem:gs };
+}
+function _gsVagaColocar(id, gs, extra){
+  const s = S[id]; if(!s) return false;
+  const c = _gsCarroDe(gs, extra);
+  s.status = 'occupied'; s.apt = c.apt; s.model = c.model; s.color = c.color; s.plate = c.plate; s.guest = c.guest; s.obs = c.obs;
+  s.size = 'small'; s.mergedMaster = false; s.mergedSlave = false; s.hmergeWith = null; s.hospedagem = gs;
+  try{ ref(id); }catch(e){}
+  return true;
+}
+function _gsVagaLiberar(id){
+  const s = S[id]; if(!s) return;
+  s.status = 'free'; s.apt = ''; s.model = ''; s.color = ''; s.plate = ''; s.guest = ''; s.obs = ''; s.size = 'small';
+  s.mergedMaster = false; s.mergedSlave = false; s.hmergeWith = null; s.hospedagem = '';
+  try{ ref(id); }catch(e){}
+}
+function _gsPasseioColocar(gs, lastVaga, extra){
+  const c = _gsCarroDe(gs, extra);
+  PASSEIO[gs] = { apt:c.apt, model:c.model, color:c.color, plate:c.plate, guest:c.guest, obs:c.obs, lastVaga:lastVaga || '', size:c.size, hospedagem:gs, saida_ts:Date.now() };
+}
+function _gsOndeEsta(gs){
+  const v = Object.keys(S).find(function(k){ return S[k] && S[k].status === 'occupied' && S[k].hospedagem === gs && !S[k].mergedSlave; });
+  if(v) return { tipo:'vaga', vaga:v };
+  if(PASSEIO[gs]) return { tipo:'passeio' };
+  return null;
+}
+function _gsOndeTexto(o){ return !o ? 'sem lugar' : (o.tipo === 'vaga' ? 'vaga ' + o.vaga : 'a passeio'); }
+
+// ── ESCOLHA DE VAGA NO MAPA (para resolver um conflito / colocar órfã) ──────
+let _gsPick = null;
+function _gsEscolherVagaNoMapa(texto, aoEscolher){
+  _gsPick = { cb:aoEscolher, texto:texto };
+  closeOv();
+  try{ navTo('mapa'); }catch(e){}
+  let b = document.getElementById('gs-pick-banner');
+  if(!b){
+    b = document.createElement('div'); b.id = 'gs-pick-banner';
+    b.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:9000;background:#5C35B0;color:#fff;border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+    document.body.appendChild(b);
+  }
+  b.innerHTML = '<span style="flex:1">📍 ' + _vtEsc(texto) + '</span><button id="gs-pick-cancelar" style="background:#fff;color:#5C35B0;border:0;border-radius:6px;padding:5px 10px;font-weight:700;font-family:inherit">Cancelar</button>';
+  document.getElementById('gs-pick-cancelar').onclick = _gsPickCancelar;
+}
+function _gsPickCancelar(){ _gsPick = null; const b = document.getElementById('gs-pick-banner'); if(b) b.remove(); }
+
+// ── MAPA: vaga com dois carros se DIVIDE (nunca sobrepostos) ────────────────
+function _gsConflitoDesenhar(id){
+  const c = _gsConflitoDaVaga(id); const td = getTd(id);
+  if(!c || !td) return;
+  const a = c.dados && c.dados.atual, n = c.dados && c.dados.novo;
+  const aptA = (a && a.dados && a.dados.apt) || (HOSPEDAGENS[a && a.gs] || {}).apt || '?';
+  const aptN = (n && n.dados && n.dados.apt) || (HOSPEDAGENS[n && n.gs] || {}).apt || '?';
+  td.classList.add('vaga-conflito');
+  td.innerHTML = '<span class="id-lbl occ">' + _vtEsc(id) + '</span>' +
+    '<div class="vc-dividida"><div class="vc-metade" data-gs="' + _vtEsc((a && a.gs) || '') + '">' + _vtEsc(String(aptA)) + '</div>' +
+    '<div class="vc-metade" data-gs="' + _vtEsc((n && n.gs) || '') + '">' + _vtEsc(String(aptN)) + '</div></div><span class="vc-alerta">⚠</span>';
+}
+function _gsConflitoCSS(){
+  if(document.getElementById('gs-css-conflito')) return;
+  const st = document.createElement('style'); st.id = 'gs-css-conflito';
+  st.textContent = 'td.vaga-conflito{background:#FFF1E6 !important;outline:2px solid #D9480F;outline-offset:-2px;position:relative}' +
+    'td.vaga-conflito .vc-dividida{display:flex;gap:2px;width:100%;height:60%;margin-top:2px}' +
+    'td.vaga-conflito .vc-metade{flex:1;display:flex;align-items:center;justify-content:center;background:#FFD8A8;color:#7A2E0E;font-weight:800;font-size:.9vw;border-radius:3px;min-width:0;overflow:hidden}' +
+    'td.vaga-conflito .vc-alerta{position:absolute;right:2px;top:1px;font-size:.9vw;color:#D9480F;font-weight:900}' +
+    '.gs-card-carro{border:1px solid #E3D9C6;border-radius:10px;padding:10px;margin-bottom:8px;display:flex;gap:10px;background:#fff}' +
+    '.gs-card-foto{width:64px;height:64px;border-radius:8px;background:#F1EFE8;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;text-align:center;flex-shrink:0;overflow:hidden}' +
+    '.gs-card-foto img{width:100%;height:100%;object-fit:cover}' +
+    '.gs-pend-card{background:#fff;border:1.5px solid #F2C29B;border-left:4px solid #D9480F;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer}';
+  document.head.appendChild(st);
+}
+
+// ── JANELA "Vaga 3C com 2 carros" (Bloco C) ─────────────────────────────────
+function _gsFotoMiniatura(gs){
+  try{
+    const l = (ANEXOS['h_' + gs] || []).filter(function(x){ return x && x.isImg && typeof x.data === 'string' && x.data.indexOf('data:image') === 0; });
+    if(l.length) return '<img src="' + l[0].data + '" alt="foto">';
+  }catch(e){}
+  return '📷<br>foto ainda<br>não chegou';
+}
+function _gsCardCarro(lado, info, idx){
+  const gs = info.gs, h = HOSPEDAGENS[gs] || {}, d = info.dados || {};
+  const apt = h.apt || d.apt || '?', placa = h.plate || d.plate || '—', modelo = [h.model || d.model, h.color || d.color].filter(Boolean).join(' · ') || '—';
+  const autor = lado === 'atual' ? (info.autor || {}) : info;
+  const quem = autor.quem || '—', aparelho = autor.aparelho || info.aparelho || '?';
+  const em = autor.em || info.em; const hora = em ? _dtLocal(Date.parse(em)) : '—';
+  return '<div class="gs-card-carro" data-gs="' + _vtEsc(gs) + '"><div class="gs-card-foto">' + _gsFotoMiniatura(gs) + '</div>' +
+    '<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px">' + _vtEsc(gs) + ' · Apt ' + _vtEsc(String(apt)) + '</div>' +
+    '<div style="font-size:12px;color:#555">' + _vtEsc(placa) + ' · ' + _vtEsc(modelo) + '</div>' +
+    '<div style="font-size:11px;color:#888;margin:2px 0 6px">' + _vtEsc(quem) + ' · aparelho ' + _vtEsc(aparelho) + ' · ' + _vtEsc(hora) + '</div>' +
+    '<button class="bsv gs-este-na-vaga" data-idx="' + idx + '" style="width:100%">Este está na vaga</button></div></div>';
+}
+function gsConflitoAbrir(pid){
+  const p = _gsPend.mapa[pid];
+  if(!p) return;
+  if(p.resolvida_em){ _gsPendAvisoJaResolvida(p); return; }
+  _gsConflitoCSS();
+  _gsPendJanela = pid;
+  const vaga = (p.dados && p.dados.vaga) || p.vaga;
+  const lados = [p.dados.atual, p.dados.novo];
+  showM('<div class="mt">⚠️ Vaga ' + _vtEsc(vaga) + ' com 2 carros</div>' +
+    '<div class="ms" style="margin-bottom:8px">Os dois aparelhos marcaram esta vaga quase ao mesmo tempo. Confira qual carro está nela.</div>' +
+    _gsCardCarro('atual', lados[0], 0) + _gsCardCarro('novo', lados[1], 1) +
+    '<button class="bcx" id="gs-conf-depois" style="width:100%;margin-top:4px">Conferir depois</button>');
+  document.getElementById('gs-conf-depois').onclick = function(){ _gsPendJanela = null; closeOv(); };
+  document.querySelectorAll('.gs-este-na-vaga').forEach(function(b){
+    b.onclick = function(){ const i = Number(b.getAttribute('data-idx')); _gsConflitoPasso2(pid, lados[i], lados[1 - i], vaga); };
+  });
+}
+function _gsConflitoPasso2(pid, fica, outro, vaga){
+  showM('<div class="mt">E o outro carro (' + _vtEsc(outro.gs) + ')?</div>' +
+    '<div class="ms" style="margin-bottom:8px">' + _vtEsc(fica.gs) + ' fica na vaga ' + _vtEsc(vaga) + '.</div>' +
+    '<div class="ag">' +
+    '<button class="bsv" id="gs-c-vaga">📍 Escolher vaga</button>' +
+    '<button class="bsv" id="gs-c-passeio">🛣️ Está a passeio</button>' +
+    '<button class="bsv" id="gs-c-saiu">🚪 Já saiu</button>' +
+    '<button class="bcx" id="gs-c-depois">Conferir depois</button></div>');
+  const exec = function(destino, vagaOutro){
+    confirmarUsuario('resolvendo o conflito da vaga ' + vaga, function(usuario){
+      const quem = usuario ? usuario.nome + ' · ' + usuario.cargo : '';
+      const texto = 'Conflito de vaga resolvido: ' + fica.gs + ' mantido na ' + vaga + ', ' + outro.gs + ' ' +
+        (destino === 'vaga' ? 'movido para a ' + vagaOutro : destino === 'passeio' ? 'marcado a passeio' : 'saiu (check-out)') + (usuario ? ' por ' + usuario.nome : '');
+      const ok = _gsResolver(pid, { fica:fica.gs, vaga:vaga, outro:outro.gs, destino:destino, vaga_outro:vagaOutro || null }, 'conflito_vaga_resolvido', function(){
+        if((S[vaga] || {}).hospedagem !== fica.gs) _gsVagaColocar(vaga, fica.gs, fica.dados);
+        if(destino === 'vaga') _gsVagaColocar(vagaOutro, outro.gs, outro.dados);
+        else _gsPasseioColocar(outro.gs, vaga, outro.dados);
+        [fica.gs, outro.gs].forEach(function(g){
+          const h = HOSPEDAGENS[g] || {};
+          addHistorico(String(h.apt || (g === fica.gs ? (fica.dados || {}).apt : (outro.dados || {}).apt) || '?'), 'conflito_resolvido', g === fica.gs ? vaga : (vagaOutro || ''), texto, quem, g);
+          const l = HISTORICO[String(h.apt || '?')]; if(l && l.length) l[l.length - 1]._res = pid;
+        });
+        upd(); saveData();
+      });
+      _gsPendJanela = null;
+      closeOv();
+      if(ok) showToast('✅ ' + texto, 4000);
+      if(ok && destino === 'saiu') setTimeout(function(){ showPasseioCheckout(outro.gs); }, 300);   // check-out normal (trava de recarga vale)
+    });
+  };
+  document.getElementById('gs-c-vaga').onclick = function(){
+    _gsEscolherVagaNoMapa('Toque na vaga livre para o ' + outro.gs, function(v){ exec('vaga', v); });
+  };
+  document.getElementById('gs-c-passeio').onclick = function(){ exec('passeio'); };
+  document.getElementById('gs-c-saiu').onclick = function(){ exec('saiu'); };
+  document.getElementById('gs-c-depois').onclick = function(){ _gsPendJanela = null; closeOv(); };
+}
+
+// ── ÓRFÃS: ativas, sem vaga, sem passeio e sem pendência de lugar aberta ─────
+function gsOrfasAtuais(){
+  if(!gsSrvAtivo()) return [];
+  const naVaga = {}; Object.keys(S).forEach(function(k){ if(S[k] && S[k].status === 'occupied' && S[k].hospedagem) naVaga[S[k].hospedagem] = true; });
+  const emPend = {}; gsPendenciasAbertas().forEach(function(p){ if(p.tipo === 'conflito_vaga' && p.dados){ emPend[p.dados.novo && p.dados.novo.gs] = 1; emPend[p.dados.atual && p.dados.atual.gs] = 1; } if(p.tipo === 'gs_dois_lugares') emPend[p.gs] = 1; });
+  return Object.keys(HOSPEDAGENS).filter(function(gs){
+    const h = HOSPEDAGENS[gs];
+    return h && !h.checkout_ts && h.status !== 'aguardando_designacao' && h.status !== 'duplicada' && !naVaga[gs] && !PASSEIO[gs] && !emPend[gs];
+  });
+}
+function _gsOrfaDesde(gs){
+  let ts = 0;
+  Object.keys(HISTORICO).forEach(function(a){ (HISTORICO[a] || []).forEach(function(e){ if(e && e.hospedagem === gs && (e.ts || 0) > ts) ts = e.ts; }); });
+  return ts || ((HOSPEDAGENS[gs] || {}).checkin_ts) || Date.now();
+}
+function gsOrfaAbrir(gs){
+  const h = HOSPEDAGENS[gs]; if(!h) return;
+  const desde = _dLocal(_gsOrfaDesde(gs));
+  showM('<div class="mt">🚗 Hospedagem sem vaga — ' + _vtEsc(gs) + '</div>' +
+    '<div class="ms" style="margin-bottom:8px">Apt ' + _vtEsc(String(h.apt || '?')) + ' · ' + _vtEsc([h.plate, h.model, h.color].filter(Boolean).join(' · ') || '—') +
+    '<br>Ativa, sem vaga e sem passeio desde <strong>' + _vtEsc(desde) + '</strong>.</div><div class="ag">' +
+    '<button class="bsv" id="gs-o-vaga">📍 Colocar numa vaga</button>' +
+    '<button class="bsv" id="gs-o-passeio">🛣️ Está a passeio</button>' +
+    '<button class="bcx" id="gs-o-encerrar" style="color:#A32D2D;border-color:#E8A8A8">Encerrar hospedagem antiga</button>' +
+    '<button class="bcx" onclick="closeOv()">Fechar</button></div>');
+  const registrar = function(tipo, txt, vaga, usuario){
+    addHistorico(String(h.apt || '?'), tipo, vaga || '', txt, usuario ? usuario.nome + ' · ' + usuario.cargo : '', gs);
+  };
+  document.getElementById('gs-o-vaga').onclick = function(){
+    _gsEscolherVagaNoMapa('Toque na vaga livre para o ' + gs, function(v){
+      confirmarUsuario('colocando ' + gs + ' na vaga ' + v, function(u){
+        _gsVagaColocar(v, gs); registrar('movimentacao_vaga', 'Hospedagem sem vaga colocada na ' + v, v, u);
+        _gsSyncAcao('orfa_colocada', gs); upd(); saveData(); showToast('✅ ' + gs + ' na vaga ' + v, 3000);
+      });
+    });
+  };
+  document.getElementById('gs-o-passeio').onclick = function(){
+    confirmarUsuario('marcando ' + gs + ' a passeio', function(u){
+      _gsPasseioColocar(gs, ''); registrar('saida_passeio', 'Hospedagem sem vaga marcada a passeio', '', u);
+      _gsSyncAcao('orfa_passeio', gs); upd(); saveData(); closeOv(); showToast('✅ ' + gs + ' a passeio', 3000);
+    });
+  };
+  document.getElementById('gs-o-encerrar').onclick = function(){
+    showEntrarPIN(function(){ confirmarUsuario('encerrando a hospedagem ' + gs, function(u){ gsEncerrarOrfa(gs, u); }); });
+  };
+}
+// ENCERRAMENTO ADMINISTRATIVO: PDF de fechamento com a observação + trilha
+function gsEncerrarOrfa(gs, usuario){
+  const h = HOSPEDAGENS[gs]; if(!h || h.checkout_ts) return false;
+  const usuarioStr = usuario ? usuario.nome + ' · ' + usuario.cargo : 'Gestor';
+  const txt = 'encerramento administrativo — hospedagem sem vaga desde ' + _dLocal(_gsOrfaDesde(gs));
+  const apt = String(h.apt || '');
+  addHistorico(apt, 'checkout', '', 'Checkout — ' + txt, usuarioStr, gs);
+  h.checkout_ts = Date.now(); h.usuario_checkout = usuarioStr; h.encerramento_administrativo = txt;
+  saveHospedagens();
+  try{ _gsSyncAcao('encerramento_administrativo', gs); }catch(e){}
+  try{ addLogSistema('Encerramento administrativo de ' + gs + ' (Apt ' + apt + ') — ' + txt, { aud:true, acao:'encerramento_administrativo', alvo:gs, quem:usuarioStr, origem:'usuario' }); }catch(e){}
+  const hist = _gsHistoricoDaHospedagem(apt, gs, h.checkin_ts || null);
+  const dv = { model:h.model || '', color:h.color || '', plate:h.plate || '', guest:h.guest || '', obs:txt + (h.obs ? ' · ' + h.obs : ''),
+               size:h.size || 'small', vaga:'', hospedagem:gs, apt:apt };
+  closeOv();
+  try{ _gsDocumentoDeFechamento({ hospNum:gs, apt:apt, vaga:'', dv:dv, hist:hist, snapshot:_gsSnapshotAnexosCheckout('', gs), anexos:(ANEXOS['h_' + gs] || []).slice() }); }
+  catch(e){ console.warn('[ÓRFÃ] PDF de fechamento falhou:', e && e.message); }
+  try{ upd(); _gsPendAtualizarPainel(); }catch(e){}
+  showToast('✅ ' + gs + ' encerrada — PDF de fechamento gerado', 4000);
+  return true;
+}
+
+// ── TELAS de cada tipo de pendência (Bloco D) ───────────────────────────────
+const GS_PEND_ROTULO = {
+  conflito_vaga:'Conflito de vaga', gs_dois_lugares:'Mesmo carro em dois lugares', alteracao_nao_aplicada:'Alteração não aplicada',
+  alteracao_concorrente:'Alteração concorrente', checkout_recarga_ativa:'Check-out com recarga ativa', possivel_duplicidade:'Possível duplicidade',
+  recarga_ponto_ocupado:'Recarga em ponto ocupado', checkout_definitivo:'Check-out definitivo mantido',
+};
+function gsPendAbrir(pid){
+  const p = _gsPend.mapa[pid]; if(!p) return;
+  if(p.resolvida_em){ _gsPendAvisoJaResolvida(p); return; }
+  _gsPendJanela = pid;
+  if(p.tipo === 'conflito_vaga') return gsConflitoAbrir(pid);
+  const d = p.dados || {};
+  const cab = '<div class="mt">⚠️ ' + _vtEsc(GS_PEND_ROTULO[p.tipo] || p.tipo) + '</div>';
+  const fechar = '<button class="bcx" id="gs-p-depois" style="width:100%;margin-top:6px">Conferir depois</button>';
+  const ligarFechar = function(){ const b = document.getElementById('gs-p-depois'); if(b) b.onclick = function(){ _gsPendJanela = null; closeOv(); }; };
+  const comOperador = function(acao, fn){ confirmarUsuario(acao, function(u){ fn(u, u ? u.nome + ' · ' + u.cargo : ''); }); };
+  if(p.tipo === 'gs_dois_lugares'){
+    const gs = d.gs || p.gs, ac = d.aceito || {}, rc = d.recusado || {};
+    const txt = function(o){ return o.tipo === 'vaga' ? 'Vaga ' + o.vaga : 'A passeio'; };
+    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(gs) + ' foi marcado em dois lugares. Onde ele está de verdade?</div><div class="ag">' +
+      '<button class="bsv" id="gs-dl-aceito">' + _vtEsc(txt(ac)) + ' (servidor)</button>' +
+      '<button class="bsv" id="gs-dl-recusado">' + _vtEsc(txt(rc)) + ' (aparelho ' + _vtEsc(rc.aparelho || '?') + ' · ' + _vtEsc(rc.quem || '—') + ')</button></div>' + fechar);
+    ligarFechar();
+    document.getElementById('gs-dl-aceito').onclick = function(){ comOperador('confirmando o lugar de ' + gs, function(u, q){
+      _gsResolver(pid, { lugar:'aceito' }, 'gs_dois_lugares_resolvido', function(){ addHistorico(String((HOSPEDAGENS[gs] || {}).apt || '?'), 'edicao', ac.vaga || '', 'Lugar confirmado: ' + txt(ac), q, gs); });
+      _gsPendJanela = null; closeOv(); }); };
+    document.getElementById('gs-dl-recusado').onclick = function(){
+      if(rc.tipo === 'vaga' && S[rc.vaga] && S[rc.vaga].status === 'occupied' && S[rc.vaga].hospedagem !== gs){ showToast('A vaga ' + rc.vaga + ' está ocupada por outro carro — libere-a antes.', 4000); return; }
+      comOperador('confirmando o lugar de ' + gs, function(u, q){
+        _gsResolver(pid, { lugar:'recusado' }, 'gs_dois_lugares_resolvido', function(){
+          const onde = _gsOndeEsta(gs);
+          if(onde && onde.tipo === 'vaga') _gsVagaLiberar(onde.vaga); else if(onde) delete PASSEIO[gs];
+          if(rc.tipo === 'vaga') _gsVagaColocar(rc.vaga, gs, rc.dados); else _gsPasseioColocar(gs, (onde && onde.vaga) || '', rc.dados);
+          addHistorico(String((HOSPEDAGENS[gs] || {}).apt || '?'), 'movimentacao_vaga', rc.vaga || '', 'Lugar corrigido: ' + txt(rc), q, gs);
+          upd(); saveData();
+        });
+        _gsPendJanela = null; closeOv(); }); };
+    return;
+  }
+  if(p.tipo === 'alteracao_nao_aplicada' || p.tipo === 'alteracao_concorrente'){
+    const campos = d.campos || {};
+    const linhas = Object.keys(campos).filter(function(c){ return c.charAt(0) !== '_'; }).map(function(c){
+      const v = campos[c];
+      return '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px"><div style="font-weight:800;font-size:12px">' + _vtEsc(c) + '</div>' +
+        '<div style="font-size:12px">Servidor: <strong>' + _vtEsc(JSON.stringify(v.servidor)) + '</strong> <span style="color:#888">(aparelho ' + _vtEsc(d.servidor_aparelho || '?') + (d.servidor_em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.servidor_em))) : '') + ')</span></div>' +
+        '<div style="font-size:12px">Aparelho ' + _vtEsc(d.aparelho || '?') + ': <strong>' + _vtEsc(JSON.stringify(v.aparelho)) + '</strong> <span style="color:#888">(' + _vtEsc(d.quem || '—') + (d.em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.em))) : '') + ')</span></div></div>';
+    }).join('');
+    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || '')) + ' — os dois valores ficaram guardados. Qual vale?</div>' + linhas +
+      '<div class="ag"><button class="bsv" id="gs-alt-srv">Manter o do servidor</button><button class="bsv" id="gs-alt-ap">Usar o do aparelho ' + _vtEsc(d.aparelho || '?') + '</button></div>' + fechar);
+    ligarFechar();
+    document.getElementById('gs-alt-srv').onclick = function(){ comOperador('mantendo o valor do servidor', function(){ _gsResolver(pid, { vale:'servidor' }, 'alteracao_resolvida'); _gsPendJanela = null; closeOv(); }); };
+    document.getElementById('gs-alt-ap').onclick = function(){ comOperador('usando o valor do aparelho', function(){
+      _gsResolver(pid, { vale:'aparelho' }, 'alteracao_resolvida', function(){ Object.keys(campos).forEach(function(c){ if(c.charAt(0) !== '_') _gsSetCampoLocal(p.tabela, p.chave, c, campos[c].aparelho); }); });
+      _gsPendJanela = null; closeOv(); }); };
+    return;
+  }
+  if(p.tipo === 'checkout_recarga_ativa'){
+    const vaga = d.vaga || p.vaga, r = RECARGAS[vaga];
+    const ativa = !!(r && r.hospedagem === (d.gs || p.gs) && r.ativo);   // encerrar NÃO apaga o registro (fica ativo=false)
+    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(d.gs || p.gs) + ' teve o check-out feito no aparelho ' + _vtEsc(d.aparelho || '?') + ' com a recarga da vaga ' + _vtEsc(vaga) + ' ainda ativa.' +
+      (ativa ? ' Encerre a recarga (a cobrança usa o horário que você informar).' : ' A recarga já foi encerrada.') + '</div><div class="ag">' +
+      (ativa ? '<button class="bsv" id="gs-cr-encerrar">⚡ Encerrar a recarga da vaga ' + _vtEsc(vaga) + '</button>' : '<button class="bsv" id="gs-cr-ok">Concluir</button>') + '</div>' + fechar);
+    ligarFechar();
+    const be = document.getElementById('gs-cr-encerrar'); if(be) be.onclick = function(){ _gsPendJanela = null; closeOv(); _gsAbrirEncerrarRecarga(vaga); };
+    const bo = document.getElementById('gs-cr-ok'); if(bo) bo.onclick = function(){ comOperador('concluindo a pendência', function(){ _gsResolver(pid, { recarga:'encerrada' }, 'checkout_recarga_resolvido'); _gsPendJanela = null; closeOv(); }); };
+    return;
+  }
+  if(p.tipo === 'possivel_duplicidade'){
+    const a = d.gs_existente, b = d.gs_novo;
+    const info = function(g){ const h = HOSPEDAGENS[g] || {}; return '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px"><strong>' + _vtEsc(g) + '</strong> · Apt ' + _vtEsc(String(h.apt || '?')) +
+      '<br><span style="font-size:12px">' + _vtEsc([h.plate, h.model, h.color].filter(Boolean).join(' · ')) + ' · ' + _vtEsc(_gsOndeTexto(_gsOndeEsta(g))) + '</span></div>'; };
+    showM(cab + '<div class="ms" style="margin-bottom:8px">A mesma placa (' + _vtEsc(d.placa || '') + ') está em duas hospedagens ativas.</div>' + info(a) + info(b) +
+      '<div class="ag"><button class="bsv" id="gs-dup-mesmo">São o mesmo carro</button><button class="bsv" id="gs-dup-dif">São carros diferentes</button></div>' + fechar);
+    ligarFechar();
+    document.getElementById('gs-dup-dif').onclick = function(){ comOperador('confirmando carros diferentes', function(){ _gsResolver(pid, { mesmo_carro:false }, 'duplicidade_resolvida'); _gsPendJanela = null; closeOv(); }); };
+    document.getElementById('gs-dup-mesmo').onclick = function(){ comOperador('unindo hospedagens duplicadas', function(u, q){
+      _gsResolver(pid, { mesmo_carro:true, mantida:a, duplicada:b }, 'duplicidade_resolvida', function(){ gsUnirDuplicadas(a, b, q); });
+      _gsPendJanela = null; closeOv(); }); };
+    return;
+  }
+  if(p.tipo === 'recarga_ponto_ocupado'){
+    const at = d.ativa || {}, nv = d.nova || {};
+    showM(cab + '<div class="ms" style="margin-bottom:8px">O ponto de recarga ' + _vtEsc((d.ponto || []).join('/')) + ' só carrega um carro. Qual fica?</div>' +
+      '<div style="font-size:12px;margin-bottom:6px">Ativa: vaga ' + _vtEsc(at.vaga || '?') + ' · ' + _vtEsc((at.dados || {}).hospedagem || '') + ' (aparelho ' + _vtEsc(at.aparelho || '?') + ')<br>' +
+      'Pedida: vaga ' + _vtEsc(nv.vaga || '?') + ' · ' + _vtEsc((nv.dados || {}).hospedagem || '') + ' (aparelho ' + _vtEsc(nv.aparelho || '?') + ' · ' + _vtEsc(nv.quem || '—') + ')</div>' +
+      '<div class="ag"><button class="bsv" id="gs-rp-ativa">Manter a recarga ativa</button><button class="bsv" id="gs-rp-nova">Ficar com a pedida (encerrar a ativa)</button></div>' + fechar);
+    ligarFechar();
+    document.getElementById('gs-rp-ativa').onclick = function(){ comOperador('mantendo a recarga ativa', function(){ _gsResolver(pid, { fica:'ativa' }, 'recarga_ponto_resolvido'); _gsPendJanela = null; closeOv(); }); };
+    document.getElementById('gs-rp-nova').onclick = function(){ comOperador('trocando a recarga do ponto', function(){
+      _gsResolver(pid, { fica:'nova' }, 'recarga_ponto_resolvido'); _gsPendJanela = null; closeOv(); _gsAbrirEncerrarRecarga(at.vaga);
+      showToast('Encerre a recarga ativa e inicie a recarga da vaga ' + (nv.vaga || '') + ' pela tela de Recarga.', 6000); }); };
+    return;
+  }
+  // informativas (ex.: check-out definitivo mantido)
+  showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(JSON.stringify(d.campos || d)) + '</div><div class="ag"><button class="bsv" id="gs-inf-ok">Ciente</button></div>' + fechar);
+  ligarFechar();
+  document.getElementById('gs-inf-ok').onclick = function(){ comOperador('ciente da pendência', function(){ _gsResolver(pid, { ciente:true }, 'pendencia_ciente'); _gsPendJanela = null; closeOv(); }); };
+}
+function _gsSetCampoLocal(tab, k, campo, v){
+  const aplicar = function(o){ if(!o) return; if(v === null || v === undefined) delete o[campo]; else o[campo] = _gsSyncCopia(v); };
+  if(tab === 'hospedagens'){ aplicar(HOSPEDAGENS[k]); saveHospedagens(); }
+  else if(tab === 'vagas'){ aplicar(S[k]); try{ ref(k); }catch(e){} upd(); saveData(); }
+  else if(tab === 'passeio'){ aplicar(PASSEIO[k]); upd(); saveData(); }
+  else if(tab === 'recargas_ativas'){ aplicar(RECARGAS[k]); saveRecargas(); }
+  else if(tab === 'funcionarios'){ const i = USUARIOS.findIndex(function(u){ return u && String(u.id) === String(k); }); if(i >= 0){ const c = Object.assign({}, USUARIOS[i]); aplicar(c); USUARIOS[i] = c; saveUsuarios(); } }
+  else if(tab === 'config' && campo === 'valor'){ _gsCfgAplicarRecebido(k, { valor:v }); }
+  else if(tab === 'vistorias'){ const lk = _gsSyncLocalVistKey(k); if(lk){ aplicar(VISTORIAS[lk]); saveVistorias(); } }
+}
+// "são o mesmo carro": a MAIS ANTIGA fica; a outra é registrada como duplicada (sem apagar)
+function gsUnirDuplicadas(antiga, nova, quem){
+  const hn = HOSPEDAGENS[nova], ha = HOSPEDAGENS[antiga]; if(!hn || !ha) return;
+  const ondeN = _gsOndeEsta(nova), ondeA = _gsOndeEsta(antiga);
+  if(ondeN && ondeN.tipo === 'vaga'){ _gsVagaLiberar(ondeN.vaga); if(!ondeA) _gsVagaColocar(ondeN.vaga, antiga); }
+  else if(ondeN && ondeN.tipo === 'passeio'){ delete PASSEIO[nova]; if(!ondeA) _gsPasseioColocar(antiga, ''); }
+  hn.status = 'duplicada'; hn.duplicada_de = antiga; hn.checkout_ts = Date.now(); hn.usuario_checkout = 'duplicidade · ' + (quem || '');
+  saveHospedagens();
+  addHistorico(String(hn.apt || '?'), 'edicao', '', 'Hospedagem registrada como DUPLICADA de ' + antiga + ' (mesmo carro)', quem || '', nova);
+  addHistorico(String(ha.apt || '?'), 'edicao', '', 'Duplicidade resolvida: ' + nova + ' era o mesmo carro', quem || '', antiga);
+  upd(); saveData();
+}
+function _gsAbrirEncerrarRecarga(vaga){
+  // a tela de Recarga, com o ponto destacado: o encerramento (e a cobrança) é o de sempre
+  try{ _rcAbrirNaRecarga(vaga); }catch(e){}
+  try{ if(RECARGAS[vaga]) setTimeout(function(){ showRecargaFinalizar(vaga); }, 150); else showToast('A recarga da vaga ' + vaga + ' já foi encerrada.', 4000); }
+  catch(e){ showToast('Abra a recarga da vaga ' + vaga + ' na tela de Recarga e encerre.', 5000); }
+}
+
+// ── BLOCO DE PENDÊNCIAS do painel ───────────────────────────────────────────
+function _gsPendExtrasHTML(){
+  if(!gsSrvAtivo()) return '';
+  _gsConflitoCSS();
+  const ab = gsPendenciasAbertas(), orf = gsOrfasAtuais();
+  let html = '';
+  if(ab.length){
+    html += '<div class="exp-secao-titulo" id="pend-srv-titulo">DO SERVIDOR (' + ab.length + ')</div>';
+    ab.forEach(function(p){
+      const d = p.dados || {};
+      const sub = p.tipo === 'conflito_vaga' ? 'Vaga ' + (d.vaga || p.vaga) + ': ' + ((d.atual || {}).gs || '?') + ' × ' + ((d.novo || {}).gs || '?')
+        : (p.gs ? p.gs : '') + (p.vaga ? ' · vaga ' + p.vaga : '') + (d.aparelho ? ' · aparelho ' + d.aparelho : '');
+      html += '<div class="gs-pend-card" data-pend="' + _vtEsc(p.id) + '"><div class="cav-titulo">⚠️ ' + _vtEsc(GS_PEND_ROTULO[p.tipo] || p.tipo) + '</div>' +
+        '<div class="cav-subtitulo">' + _vtEsc(sub) + ' · toque para resolver</div></div>';
+    });
+  }
+  if(orf.length){
+    html += '<div class="exp-secao-titulo" id="pend-orfas-titulo">HOSPEDAGEM SEM VAGA (' + orf.length + ')</div>';
+    orf.forEach(function(gs){
+      const h = HOSPEDAGENS[gs] || {};
+      html += '<div class="gs-pend-card" data-orfa="' + _vtEsc(gs) + '"><div class="cav-titulo">🚗 ' + _vtEsc(gs) + ' · Apt ' + _vtEsc(String(h.apt || '?')) + '</div>' +
+        '<div class="cav-subtitulo">sem vaga desde ' + _vtEsc(_dLocal(_gsOrfaDesde(gs))) + ' · toque para resolver</div></div>';
+    });
+  }
+  return html;
+}
+function _gsPendLigarCards(raiz){
+  (raiz || document).querySelectorAll('.gs-pend-card[data-pend]').forEach(function(c){ c.onclick = function(){ gsPendAbrir(c.getAttribute('data-pend')); }; });
+  (raiz || document).querySelectorAll('.gs-pend-card[data-orfa]').forEach(function(c){ c.onclick = function(){ gsOrfaAbrir(c.getAttribute('data-orfa')); }; });
+}
+function gsPendContagem(){ return gsSrvAtivo() ? gsPendenciasAbertas().length + gsOrfasAtuais().length : 0; }
+function _gsPendAtualizarPainel(){
+  if(!gsSrvAtivo()) return;
+  try{
+    const g = document.getElementById('grupo-pendencias'), b = document.getElementById('pendencias-badge');
+    if(g){
+      let t = document.getElementById('pend-servidor');
+      if(!t){
+        const tiles = g.querySelector('.grupo-tile') && g.querySelector('.grupo-tile').parentNode;
+        if(tiles){ const d = document.createElement('div'); d.className = 'grupo-tile vermelho'; d.innerHTML = '<div class="grupo-tile-num" id="pend-servidor">0</div><div class="grupo-tile-label">Conflitos</div>'; tiles.appendChild(d); t = document.getElementById('pend-servidor'); }
+      }
+      const n = gsPendContagem();
+      if(t) t.textContent = n;
+      if(b){
+        const base = (parseInt((document.getElementById('pend-semvaga') || {}).textContent, 10) || 0) + (parseInt((document.getElementById('pend-semassin') || {}).textContent, 10) || 0);
+        const tot = base + n;
+        b.textContent = tot; b.style.display = tot > 0 ? 'flex' : 'none';
+        g.classList.toggle('tem-pendencia', tot > 0);
+      }
+    }
+    // a lista aberta é refeita (sem fechar nada)
+    const ov = document.getElementById('expansao-overlay');
+    if(ov && ov.classList.contains('on') && _expansaoGrupoAtual === 'pendencias' && typeof abrirExpansao === 'function') abrirExpansao('pendencias');
+  }catch(e){}
+}
+
+// ── BLOCO I: bloqueios com o servidor ligado ────────────────────────────────
+const GS_SRV_BLOQ_MSG = 'indisponível com o servidor ligado — os dados vêm do servidor';
+function gsSrvBloqueia(oque){
+  if(!gsSrvAtivo()) return false;
+  try{ showToast('🔒 ' + (oque ? oque + ': ' : '') + GS_SRV_BLOQ_MSG, 5000); }catch(e){}
+  try{ addLogSistema('Bloqueado com o servidor ligado: ' + (oque || ''), { aud:true, acao:'bloqueado_servidor_ligado', alvo:String(oque || ''), origem:'usuario' }); }catch(e){}
+  return true;
+}
+function _gsBotaoBloqueado(id, rotulo, extraStyle){
+  return '<button class="bcx" id="' + id + '" disabled aria-disabled="true" style="width:100%;margin-top:6px;background:#e9e9e9;color:#999;border-color:#ddd;cursor:not-allowed;' + (extraStyle || '') + '">' + rotulo + '</button>' +
+    '<div class="gs-bloq-aviso" style="font-size:11px;color:#888;text-align:center;margin-top:2px">' + GS_SRV_BLOQ_MSG + '</div>';
+}
+
+// ── BLOCO J: identificador próprio do aparelho ──────────────────────────────
+const GS_APARELHO_LS = 'gs-srv-aparelho';                      // `gs-srv-*` nunca entra em backup
+const GS_APARELHO_ARQ = 'garagespot/aparelho.json';
+function _gsAparelhoIdLocal(){
+  let id = null;
+  try{ id = localStorage.getItem(GS_APARELHO_LS); }catch(e){}
+  if(!id){ id = 'ap-' + _gsIdAleatorio(); try{ localStorage.setItem(GS_APARELHO_LS, id); }catch(e){} }
+  return id;
+}
+// os ARQUIVOS privados são a verdade (o armazenamento do navegador do WebView pode ser limpo)
+async function gsAparelhoId(){
+  try{
+    const f = await _gsArqLerJSON(GS_APARELHO_ARQ);
+    if(f && f.id){ try{ if(localStorage.getItem(GS_APARELHO_LS) !== f.id) localStorage.setItem(GS_APARELHO_LS, f.id); }catch(e){} return f.id; }
+    const id = _gsAparelhoIdLocal();
+    await _gsArqGravarSeguro(GS_APARELHO_ARQ, JSON.stringify({ id:id, criado:Date.now() }), false);
+    return id;
+  }catch(e){ return _gsAparelhoIdLocal(); }
+}
+// a série offline nunca se repete: continua do maior número que o servidor conhece
+function _gsSrvSerieAjustar(serie){
+  if(!serie) return;
+  try{
+    const st = JSON.parse(localStorage.getItem(GS_SRV_SERIE_LS) || '{}') || {};
+    ['gs', 'vist'].forEach(function(t){ const n = Number(serie[t]) || 0; if(n > (parseInt(st[t], 10) || 0)) st[t] = n; });
+    localStorage.setItem(GS_SRV_SERIE_LS, JSON.stringify(st));
+  }catch(e){}
+}
+function _gsSrvMarcarTransferido(info){
+  const s = _gsSrvLer();
+  if(s.transferido) return;
+  s.transferido = true; s.transferido_em = (info && info.transferido_em) || new Date().toISOString();
+  _gsSrvGravar(s);
+  try{ _gsSyncParar(); _gsVersaoParar(); }catch(e){}
+  try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); _gsSrvTimerSinal = null; }catch(e){}
+  try{ addLogSistema('Esta conta foi TRANSFERIDA para outro aparelho — sincronização parada aqui (os dados locais ficam intactos)',
+    { aud:true, acao:'servidor_conta_transferida', alvo:String(s.letra || ''), origem:'servidor' }); }catch(e){}
+  _gsSrvEstado = 'transferido';
+  try{ _gsSrvAtualizarRodape(); }catch(e){}
+  try{ showToast('🔁 Esta conta foi transferida para outro aparelho — este aparelho parou de sincronizar.', 7000); }catch(e){}
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // v1.9.9.5 — CAMADA ÚNICA DE ARQUIVOS (fotos, documentos, assinaturas, vistorias)
