@@ -1365,7 +1365,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.0.0.0';
+const GS_VERSION = 'v2.1.0.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 29;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
@@ -4009,6 +4009,7 @@ function doChk(id){
         HOSPEDAGENS[hospNum].usuario_checkout=usuarioStr;
         saveHospedagens();
       }
+      try{ _gsSyncAcao('checkout', hospNum); }catch(eS){}   // v2.1.0.0 ação explícita
       // Salva histórico e anexos antes de apagar os dados
       // v1.9.6.8: recortado pela HOSPEDAGEM, não pelo apartamento. Reúne os dois
       // apartamentos numa troca e, ao mesmo tempo, deixa de fora a movimentação de
@@ -4242,6 +4243,7 @@ function showEdit(id, fromPasseio){
         hosp.saida_prevista=saida;
         saveHospedagens();
       }
+      try{ _gsSyncAcao('edicao_detalhes', hospNum); }catch(eS){}   // v2.1.0.0 ação explícita
       // 3) Vistorias da hospedagem: refletir o novo apto (nome do arquivo coerente)
       if(aptMudou && typeof VISTORIAS!=='undefined'){
         for(const vid in VISTORIAS){
@@ -4460,6 +4462,7 @@ function showPasseioCheckout(gs){
       HOSPEDAGENS[hospNum].checkout_ts=Date.now();
       HOSPEDAGENS[hospNum].usuario_checkout=usuarioStr;
       saveHospedagens();
+      try{ _gsSyncAcao('checkout_passeio', hospNum); }catch(eS){}   // v2.1.0.0 ação explícita
       // v1.9.9.3 — O CHECK-OUT A PASSEIO GERA O MESMO DOCUMENTO DE FECHAMENTO.
       // Recorte do histórico e retrato dos anexos ANTES de qualquer apagamento —
       // a mesma ordem do check-out pela vaga. O documento (PDF salvo, registrado,
@@ -6311,6 +6314,7 @@ window._abrirDatePickerNovaData = function(gs){
         const ant=hosp.saida_prevista;
         hosp.saida_prevista=v;
         if(typeof saveHospedagens==='function') saveHospedagens();
+        try{ _gsSyncAcao('checkout_nova_data', gs); }catch(eS){}   // v2.1.0.0 ação explícita
         if(typeof addHistorico==='function'){
           addHistorico(hosp.apt,'edicao',null,'Saída prevista: '+(ant||'—')+' → '+v,'sistema',gs);
         }
@@ -7734,6 +7738,7 @@ function assinarVistoria(id){
       VISTORIAS[id].usuario_assinou=usuarioStr;
       VISTORIAS[id].assinatura_pendente=false;
       saveVistorias();
+      try{ _gsSyncAcao('vistoria_assinada', id); }catch(eS){}   // v2.1.0.0 ação explícita
       if(VISTORIAS[id].origem==='nci') _vtRecomporVistoria(id);
       if(v.apt){
         addHistorico(v.apt,'vistoria_assinada','',v.numero,usuarioStr,v.hospedagem||'');
@@ -7785,6 +7790,7 @@ function deletarVistoria(id){
       _gsRegistrarRemocao('vistoria', id);   // v1.9.9.4: caminho legítimo (sentinela)
       delete VISTORIAS[id];
       saveVistorias({permitirVazio:true}); // v1.9.4.10: exclusão INTENCIONAL
+      try{ _gsSyncAcao('vistoria_excluida', id); }catch(eS){}   // v2.1.0.0 ação explícita
       const vagaId=Object.keys(S).find(k=>S[k].apt===v.apt&&S[k].status==='occupied');
       if(vagaId) refVistoria(vagaId);
       closeOv();
@@ -11951,6 +11957,7 @@ async function _gdPodaLixeira(token, id){
 
 async function _gdPodaExecutarNuvem(){
   if(_gsSuspenso('limpeza da nuvem')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
+  if(_gsDriveSoA('limpeza da nuvem')) return { ok:false, erro:GS_DRIVE_SO_A_MSG };   // v2.1.0.0
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = await _gdPodaSimularNuvem();
   if(plano.indisponivel) return { ok:false, erro:'nuvem não conectada' };
@@ -13460,6 +13467,11 @@ function _gdErroReconectar(){
 // sobe intacto até o card de nuvem.
 async function _gdFetch(url, opts, token, etapa){
   opts = opts || {};
+  // v2.1.0.0 (Bloco F) — GARANTIA: com login, fora do aparelho A nenhuma ESCRITA chega ao Drive,
+  // mesmo que um caminho novo esqueça a trava de entrada. Leitura (GET) continua.
+  if(String(opts.method || 'GET').toUpperCase() !== 'GET' && _gsDriveSoA('chamada de escrita ao Drive')){
+    const eA = new Error(GS_DRIVE_SO_A_MSG); eA.gdNaoEscritor = true; throw eA;
+  }
   const headers = Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + token });
   const r = await fetch(url, Object.assign({}, opts, { headers: headers }));
   if(r.ok) return r;
@@ -13873,6 +13885,7 @@ function desconectarGoogleDrive(){
 // v1.9.9.1 — `json` pode ser uma STRING ou um BLOB (ver `_gdEnviarArquivo`). O
 // caminho do backup COMPLETO passa Blob; todo o resto continua passando texto.
 async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
+  if(_gsDriveSoA('envio de backup')) return {ok:false, erro:GS_DRIVE_SO_A_MSG};   // v2.1.0.0 (Bloco F)
   if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste aparelho'};
   if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
   if(_gdEnviando)      return {ok:false, erro:'já há um envio em andamento'};
@@ -13951,7 +13964,7 @@ async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
 // é re-serializado: o mesmo pacote que foi para o disco vai para a nuvem.
 function _gdEspelharNoDrive(nome, json, motivo){
   try{
-    if(_gsSuspenso('envio de backup à nuvem')) return;   // v1.9.9.4
+    if(_gsSuspenso('envio de backup à nuvem') || _gsDriveSoA('envio de backup à nuvem')) return;   // v1.9.9.4
     if(!_gdDisponivel() || !_gdConectado()) return;
     // v1.9.5.3 — NÃO subir quando não há para onde subir. Três guardas:
     //  1. app escondido: o backup do `visibilitychange` 'hidden' era exatamente o
@@ -14009,7 +14022,7 @@ let _gdRolanteMotivo = '';
 // Fire-and-forget: nada aqui pode atrasar nem afetar o backup local.
 function _gdEspelharEstadoAtual(json, motivo){
   try{
-    if(_gsSuspenso('estado atual na nuvem')) return;   // v1.9.9.4
+    if(_gsSuspenso('estado atual na nuvem') || _gsDriveSoA('estado atual na nuvem')) return;   // v1.9.9.4
     if(!_gdDisponivel() || !_gdConectado()) return;
     _gdRolantePendente = json;
     _gdRolanteMotivo = motivo || 'mudança';
@@ -14039,7 +14052,7 @@ const GD_ROLANTE_EMVOO_TETO_MS = 5 * 60 * 1000;
 let _gdRolanteEmVooDesde = 0;
 
 async function _gdFlushRolante(){
-  if(_gsSuspenso('estado atual na nuvem')) return;   // v1.9.9.4
+  if(_gsSuspenso('estado atual na nuvem') || _gsDriveSoA('estado atual na nuvem')) return;   // v1.9.9.4
   try{
     if(_gdRolanteEmVoo){
       const parado = Date.now() - (_gdRolanteEmVooDesde || 0);
@@ -14148,7 +14161,7 @@ function _gdMesAntigoParaNovo(nome){
 }
 
 async function _gdMigrarEstrutura(){
-  if(_gsSuspenso('migração de pastas')) return;   // v1.9.9.4
+  if(_gsSuspenso('migração de pastas') || _gsDriveSoA('migração de pastas')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(localStorage.getItem(GD_MIGRACAO_LS) === 'ok') return;      // já rodou
@@ -14271,6 +14284,8 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
   try{
     // v1.9.9.4: em modo protegido o PDF (já salvo no aparelho) entra na fila e sobe depois.
     if(_GS_PROT){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'modo protegido'); return; }
+    // v2.1.0.0 (Bloco F): fora do aparelho A o PDF fica salvo e PENDENTE aqui (sessão D leva ao A)
+    if(_gsDriveSoA('PDF de fechamento')){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, GS_DRIVE_SO_A_MSG); return; }
     if(!_gdDisponivel() || !_gdConectado()){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'Drive não conectado'); return; }
     _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs).then(function(r){
       _gdTirarPDFPendente(nomeArquivo);
@@ -14300,7 +14315,7 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
 // que continuam existindo. Nenhum item é perdido: o que não coube fica na fila.
 const GD_PDF_LOTE_USUARIO = 3;
 async function _gdTentarPDFsPendentes(opts){
-  if(_gsSuspenso('reenvio de PDFs')) return;   // v1.9.9.4
+  if(_gsSuspenso('reenvio de PDFs') || _gsDriveSoA('reenvio de PDFs')) return;   // v1.9.9.4
   opts = opts || {};
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
@@ -14604,7 +14619,7 @@ async function _hhjEnviarUm(gs){
 // Tira o documento provisório da pasta. Chamado no check-out e pela conferência.
 // NUNCA falha para fora: um provisório que sobrou é conserto da próxima rodada.
 async function _hhjRetirar(gs){
-  if(_gsSuspenso('Hospedados Hoje')) return;   // v1.9.9.4 (a conferência retira depois)
+  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return;   // v1.9.9.4 (a conferência retira depois)
   try{
     const est = _hhjEstado();
     const reg = est.arquivos[gs];
@@ -14642,7 +14657,7 @@ function _hhjMarcar(gs, motivo){
 // Trabalhador de segundo plano. UM documento por vez, com respiro entre eles.
 // Qualquer condição ruim: sai calado e tenta no tique de 10 min.
 async function _hhjProcessar(){
-  if(_gsSuspenso('Hospedados Hoje')) return;   // v1.9.9.4
+  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return;   // v1.9.9.4
   if(_hhjRodando) return;
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
@@ -14686,7 +14701,7 @@ async function _hhjProcessar(){
 // envio ter dado certo na hora: ninguém que já saiu continua lá, e sem hospedagem
 // ativa a pasta fica VAZIA. Roda no tique, depois do lote.
 async function _hhjConferir(){
-  if(_gsSuspenso('Hospedados Hoje')) return;   // v1.9.9.4
+  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(_gdEnviando) return;
@@ -14900,7 +14915,7 @@ async function _gdHistEnviarUm(item){
 
 // Processa um LOTE. Chamada pelo tique; sai calada em qualquer condição ruim.
 async function _gdHistProcessar(){
-  if(_gsSuspenso('varredura do histórico')) return;   // v1.9.9.4
+  if(_gsSuspenso('varredura do histórico') || _gsDriveSoA('varredura do histórico')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(DRIVE_STATUS.nuvem_cheio) return;             // sem espaço, não adianta insistir
@@ -14981,7 +14996,7 @@ function _gdReorgSalvar(e){
 }
 
 async function _gdReorganizarSemData(){
-  if(_gsSuspenso('reorganização da nuvem')) return;   // v1.9.9.4
+  if(_gsSuspenso('reorganização da nuvem') || _gsDriveSoA('reorganização da nuvem')) return;   // v1.9.9.4
   try{
     const est0 = _gdReorgEstado();
     if(est0.concluida) return;
@@ -15227,7 +15242,7 @@ const GD_AUD_LOTE = 200;
 // Roda no tique. Sai calada em qualquer condição ruim — nada aqui pode atrasar,
 // travar ou sequer aparecer para quem está operando o app.
 async function _gdArquivarAuditoria(){
-  if(_gsSuspenso('arquivamento da trilha')) return;   // v1.9.9.4
+  if(_gsSuspenso('arquivamento da trilha') || _gsDriveSoA('arquivamento da trilha')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     if(DRIVE_STATUS.nuvem_cheio) return;
@@ -15320,7 +15335,7 @@ function _gdAgendarRetentativa(){
 // Chamado pelo tique periódico. Fail-safe: qualquer erro aqui é engolido — a nuvem
 // nunca pode derrubar o app nem atrapalhar quem está operando o mapa.
 async function _gdTentarPendente(){
-  if(_gsSuspenso('retentativa da nuvem')) return;   // v1.9.9.4
+  if(_gsSuspenso('retentativa da nuvem') || _gsDriveSoA('retentativa da nuvem')) return;   // v1.9.9.4
   try{
     if(!_gdDisponivel() || !_gdConectado()) return;
     // v1.9.5.3: não insistir quando as condições ainda são ruins — seria só
@@ -15345,6 +15360,7 @@ async function _gdTentarPendente(){
 }
 
 async function fazerBackupNuvemAgora(){
+  if(_gsDriveSoA('backup na nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho A. O backup local continua normal.', 5000); return {ok:false, erro:GS_DRIVE_SO_A_MSG}; }   // v2.1.0.0
   if(!_gdDisponivel()){
     showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000);
     return {ok:false, erro:'nuvem indisponível neste aparelho'};
@@ -16679,6 +16695,7 @@ function _rcEditarPeriodo(vagaId){
         // mantém ativa; se o novo término ainda é futuro, reativa o estado de carregamento
         if(novoFim>Date.now()){ rr.ativo=true; rr.confirmada=false; }
         saveRecargas();
+        try{ _gsSyncAcao('recarga_editada', vagaId); }catch(eS){}   // v2.1.0.0 ação explícita
         if(typeof agendarAlertaRecarga==='function') agendarAlertaRecarga(vagaId);
         if(rr.apt && typeof addHistorico==='function'){
           addHistorico(rr.apt,'recarga_editada',vagaId,'Período da recarga ajustado · '+mud.join(' · '),usuarioStr,rr.hospedagem);
@@ -17179,6 +17196,7 @@ function showRecargaFila(vagaId){
         const hosp=vaga?.hospedagem||'';
         FILA_RECARGA.push({apt,vagaId,hospedagem:hosp,ts_pedido:Date.now(),usuario:usuarioStr});
         saveFilaRecarga();   // v1.9.9.3
+        try{ _gsSyncAcao('recarga_fila_entrada', vagaId); }catch(eS){}   // v2.1.0.0 ação explícita
         closeOv();
         showToast('Apt. '+apt+' adicionado a fila de recarga');
       });
@@ -17876,6 +17894,7 @@ window._abrirAddFilaModal = function(){
         const usuarioStr = usuario ? (usuario.nome+' · '+usuario.cargo) : '';
         FILA_RECARGA.push({ apt:carro.apt, vagaId:carro.vagaId, hospedagem:carro.hospedagem, model:carro.model, color:carro.color, ts_pedido:Date.now(), usuario:usuarioStr });
         saveFilaRecarga();   // v1.9.9.3
+        try{ _gsSyncAcao('recarga_fila_entrada', carro.vagaId); }catch(eS){}   // v2.1.0.0 ação explícita
         if(typeof closeOv==='function') closeOv();
         showToast('Apt '+carro.apt+' adicionado à fila',2500);
         if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
@@ -18442,6 +18461,7 @@ function _gdContarPendentes(){
 // Fail-safe por fila: uma que falhe não impede as outras de tentarem.
 async function _gdReenviarPendentes(motivo, opts_progresso){
   const antes = _gdContarPendentes();
+  if(_gsDriveSoA('reenvio de pendentes')) return { antes:antes, depois:antes, reenviados:0, erro:GS_DRIVE_SO_A_MSG };   // v2.1.0.0
   if(!antes.total) return { antes:antes, depois:antes, reenviados:0 };
   _gdProxTentativaTs = 0;
   // v1.9.9.1 — AS TRÊS FILAS, UMA DE CADA VEZ, COM O EVENT LOOP DEVOLVIDO ENTRE
@@ -18482,6 +18502,7 @@ async function _gdReenviarPendentes(motivo, opts_progresso){
 // v1.9.9.0 — e RECONECTA, quando é disso que a nuvem precisa, e esvazia as filas.
 function _gdForcarPeloRodape(){
   try{
+    if(_gsDriveSoA('rodapé da nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho A. O backup local continua normal.', 5000); return Promise.resolve(); }   // v2.1.0.0
     if(!_gdDisponivel()){
       showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
       return Promise.resolve();
@@ -18638,7 +18659,7 @@ function _renderNuvemStatus(){
     ${_gdEspacoAvisoHTML()}
     ${_gdPdfsPendentesHTML()}
     ${_gdHistProgressoHTML()}
-    <button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>
+    ${_gsDriveSoA('') ? '<button class="bsv" id="btn-nuvem-agora" disabled aria-disabled="true" style="width:100%;margin-top:8px;background:#bdbdbd;border-color:#bdbdbd;color:#fff;cursor:not-allowed">☁️ Fazer backup na nuvem agora</button><div id="drive-so-a" style="font-size:11px;color:#777;margin-top:4px;text-align:center">' + GS_DRIVE_SO_A_MSG + '</div>' : '<button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>'}
     <button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
     <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. <strong>Na nuvem, nenhum documento é apagado</strong>; no aparelho, PDFs saem só depois de confirmados na nuvem e de passados ${GS_PODA_DIAS_LOCAL} dias.</div>
@@ -22085,11 +22106,12 @@ function _gsSrvRodapeTexto(){
   if(!_gsSrvLigado()) return '';
   const s = _gsSrvLer();
   const ap = s.letra ? ' · aparelho ' + s.letra : '';
-  if(_gsSrvEstado === 'conectado') return 'Servidor: conectado' + ap;
-  if(_gsSrvEstado === 'reconectar') return 'Servidor: reconectar ao servidor' + ap;
-  if(_gsSrvEstado === 'conectando') return 'Servidor: conectando…' + ap;
-  if(_gsSrvEstado === 'nao_configurado') return 'Servidor: não configurado' + ap;
-  return 'Servidor: sem conexão' + ap;
+  const sx = (typeof _gsSyncRodapeExtra === 'function') ? _gsSyncRodapeExtra() : '';   // v2.1.0.0
+  if(_gsSrvEstado === 'conectado') return 'Servidor: conectado' + ap + sx;
+  if(_gsSrvEstado === 'reconectar') return 'Servidor: reconectar ao servidor' + ap + sx;
+  if(_gsSrvEstado === 'conectando') return 'Servidor: conectando…' + ap + sx;
+  if(_gsSrvEstado === 'nao_configurado') return 'Servidor: não configurado' + ap + sx;
+  return 'Servidor: sem conexão' + ap + sx;
 }
 function _gsSrvRodapeHTML(){
   const t = _gsSrvRodapeTexto();
@@ -22113,7 +22135,7 @@ function _gsSrvAtualizarRodape(){
 // ── sinal (não bloqueia nada) ───────────────────────────────────────────────
 async function _gsSrvSinal(){
   if(!_gsSrvLigado()) return;
-  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:0, p_fila_pesada:0, p_relogio_ms:Date.now() }, 8000);
+  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:0, p_relogio_ms:Date.now() }, 8000);
   if(!r.error){
     _gsSrvMudarEstado('conectado');
     const s = _gsSrvLer();
@@ -22135,6 +22157,9 @@ function _gsSrvIniciar(){
     }catch(e){ _gsSrvMudarEstado('sem_conexao'); }
   })();
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); _gsSrvTimerSinal = setInterval(function(){ _gsSrvSinal(); }, 4 * 60 * 1000); }catch(e){}
+  // v2.1.0.0: sincronização (fila, recebimento) e conferência de versão publicada — em segundo plano
+  try{ _gsSyncIniciar(); }catch(e){ console.warn('[SYNC] início:', e && e.message); }
+  try{ _gsVersaoIniciar(); }catch(e){}
 }
 
 // ── login / desligar ────────────────────────────────────────────────────────
@@ -22156,7 +22181,7 @@ async function gsSrvEntrar(email, senha){
     return { ok:false, erro:'o servidor não registrou este aparelho: ' + ((d.error && d.error.message) || 'sem letra') };
   }
   _gsSrvGravar({ ligado:true, email:String(email || '').trim(), letra:d.data.letra, dispositivo_id:d.data.id,
-                 empresa:d.data.empresa, ambiente:_gsSrvAmbiente(), desde:Date.now() });
+                 empresa:d.data.empresa, empresa_id:d.data.empresa_id, ambiente:_gsSrvAmbiente(), desde:Date.now() });
   _gsSrvMudarEstado('conectado');
   try{ addLogSistema('Servidor conectado neste aparelho — letra ' + d.data.letra + ' · empresa ' + d.data.empresa,
     { aud:true, acao:'servidor_conectado', alvo:d.data.letra, origem:'usuario' }); }catch(e){}
@@ -22170,6 +22195,7 @@ async function gsSrvDesligar(){
   _gsSrvGravar(s);
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); }catch(e){}
   _gsSrvTimerSinal = null;
+  try{ _gsSyncParar(); _gsVersaoParar(); }catch(e){}   // v2.1.0.0 — fila e base ficam nos arquivos
   _gsSrvMudarEstado('desligado');
   try{ addLogSistema('Servidor DESLIGADO neste aparelho (modo local; nada foi apagado)', { aud:true, acao:'servidor_desligado', origem:'usuario' }); }catch(e){}
 }
@@ -22390,6 +22416,7 @@ async function gsSrvCargaInicial(aoProgresso){
   try{ localStorage.setItem(GS_SRV_CARGA_LS, JSON.stringify(st)); }catch(e){}
   try{ addLogSistema('Carga inicial CONCLUÍDA e conferida: ' + ordem.map(function(k){ return k + ' ' + local[k]; }).join(', ') +
     (orfas.length ? ' · ' + orfas.length + ' hospedagem(ns) órfã(s) listada(s)' : ''), { aud:true, acao:'carga_inicial_concluida', alvo:st.carga_id, origem:'automatico' }); }catch(e){}
+  try{ if(_gsSync.estado === 'decisao' || _gsSync.estado === 'parado'){ _gsSync.estado = 'parado'; _gsSyncIniciar(); } }catch(e){}   // v2.1.0.0
   return { ok:true, local:local, servidor:servidor, contadores:fim.data.contadores, orfas:orfas };
 }
 
@@ -22429,10 +22456,12 @@ function showServidor(){
       '<div style="font-size:12px;margin-top:4px" id="srv-estado">' + _vtEsc(_gsSrvRodapeTexto()) + '</div>' +
     '</div>' +
     '<div style="font-size:12px;color:#555;margin-bottom:8px">' + cargaTxt + '</div>' +
-    (carga.estado !== 'concluida' ? '<button class="bsv" id="srv-carga" style="width:100%;margin-bottom:6px">📤 Enviar dados deste aparelho para o servidor (carga inicial)</button>' : '') +
+    '<div id="srv-sync">' + _gsSyncPainelHTML() + '</div>' +
+    (carga.estado !== 'concluida' && ['ativo', 'adotando'].indexOf(_gsSync.estado) < 0 && ['baixar', 'misturaria'].indexOf(_gsSync.decisao) < 0 ? '<button class="bsv" id="srv-carga" style="width:100%;margin-bottom:6px">📤 Enviar dados deste aparelho para o servidor (carga inicial)</button>' : '') +
     '<div id="srv-carga-res" style="font-size:12px;margin:4px 0"></div>' +
     '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
+  try{ _gsSyncLigarPainel(); }catch(e){}   // v2.1.0.0 — ligado NA HORA (sem janela morta)
   setTimeout(function(){
     const d = document.getElementById('srv-desligar');
     if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
@@ -22460,6 +22489,1046 @@ async function _gsSrvExecutarCargaNaTela(){
     (linhas ? '<div style="overflow-x:auto"><table id="srv-cg-tabela" style="font-size:12px;border-collapse:collapse;margin-top:6px"><tr><th style="text-align:left">tabela</th><th>aparelho</th><th>servidor</th><th></th></tr>' + linhas + '</table></div>' : '') +
     orf + '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2.1.0.0 — SERVIDOR B: SINCRONIZAÇÃO (fila de envio · recebimento · baixar tudo)
+// ════════════════════════════════════════════════════════════════════════════
+// REGRA DE OURO (a mesma da sessão A): SEM LOGIN NO SERVIDOR, NADA DISTO RODA.
+// Nenhum gancho é instalado, nenhum arquivo é lido, nenhum pedido sai.
+//
+// PRINCÍPIOS
+//  • A operação NUNCA espera o servidor: tudo aqui é segundo plano.
+//  • A FILA mora nos ARQUIVOS PRIVADOS (camada `_gsArq*` da v1.9.9.5), um
+//    arquivo por ação. Um item só sai da fila depois da CONFIRMAÇÃO do servidor.
+//  • Cada ação tem CÓDIGO ÚNICO: reenviar nunca duplica (o servidor devolve o
+//    mesmo resultado na segunda chegada).
+//  • BASE = o que o servidor confirmou (versão + dados) de cada registro.
+//    SOMBRA = a base com as ações ainda na fila aplicadas por cima.
+//    O DETECTOR compara o aparelho com a sombra: o que mudou e ainda não foi
+//    capturado vira ação de "edição". Nenhuma alteração local fica sem subir —
+//    inclusive a que o app perder por um corte no meio (na abertura seguinte o
+//    aparelho difere da base e o detector a captura de novo).
+//  • RECEBER não gera eco (o recebido entra na base e na memória juntos) e NÃO
+//    sobrescreve registro com ação local na fila — a local vale por cima até
+//    ser confirmada; a confirmação traz o registro como o servidor o guardou.
+//  • Nada é apagado: excluir é "marcar" no servidor; ações recusadas pelo
+//    servidor vão para `recusadas/`, não para o lixo.
+//
+// FORA DESTA SESSÃO: funcionários, PINs, turnos e configuração (sessão C) e
+// fotos/PDFs (sessão D) — continuam só no aparelho.
+const GS_SCHEMA = 1;                                // formato dos registros que este app entende
+const GS_SYNC_RAIZ = 'garagespot/sync';
+const GS_SYNC_ESPELHO  = ['hospedagens', 'vagas', 'passeio', 'recargas_ativas', 'fila_recarga', 'vistorias'];
+const GS_SYNC_INCLUSAO = ['eventos', 'trilha', 'recargas_encerradas'];
+const GS_SYNC_TABS = GS_SYNC_ESPELHO.concat(GS_SYNC_INCLUSAO);
+const GS_SYNC_SHARDS = 8;                           // a base de cada tabela em 8 arquivos
+const GS_SYNC_MAX_OPS = 80;                         // ops por ação (adoção grande vira várias ações)
+const GS_SYNC_PULL_MS = 30000;                      // reserva do tempo real
+const GS_VERSAO_MS = 5 * 60 * 1000;                 // conferência de versão publicada
+const GS_OCIOSO_MS = 60000;                         // sem toque há 60 s
+const GS_DRIVE_SO_A_MSG = 'o envio ao Drive é feito pelo aparelho A';
+
+const _gsSync = {
+  estado: 'parado',          // parado | preparando | decisao | adotando | ativo
+  decisao: null,             // carga | baixar | misturaria
+  motivo: '',
+  emp: '', dv: '', letra: '',
+  base: {}, sombra: {}, raw: {},
+  fila: [], n: 0, recusadas: 0, guardados: [],
+  cursor: 0, adotado: false, modo: '',
+  shardsSujos: {}, gravacao: Promise.resolve(),
+  enviando: false, falhas: 0, proxEnvio: 0, timerEnvio: null,
+  recebendo: false, deNovo: false, timerPull: null, timerRetentar: null,
+  timerDet: null, detEm: 0, sujas: {}, intencao: null,
+  canal: null, rt: '', ultimoRecebimento: 0, ultimoEnvio: 0,
+  ganchos: false, ouvintes: false,
+  modalDesatualizado: false, redesenhoPendente: null, avisoGuardados: false,
+  stats: { enviadas: 0, recebidas: 0 },
+};
+let _gsVersaoTimer = null, _gsVersaoNova = null, _gsVersaoOciosoTimer = null, _gsUltimoToque = Date.now();
+
+// ── utilidades ──────────────────────────────────────────────────────────────
+// JSON canônico (chaves ordenadas): o servidor guarda `jsonb`, que reordena as
+// chaves — comparar sem isto acusaria diferença onde não há.
+function _gsSyncCanon(x){
+  if(x === undefined || typeof x === 'function') return undefined;
+  if(x === null || typeof x !== 'object') return JSON.stringify(x);
+  if(Array.isArray(x)) return '[' + x.map(function(v){ const c = _gsSyncCanon(v); return c === undefined ? 'null' : c; }).join(',') + ']';
+  const ks = Object.keys(x).sort(), p = [];
+  for(let i = 0; i < ks.length; i++){ const c = _gsSyncCanon(x[ks[i]]); if(c !== undefined) p.push(JSON.stringify(ks[i]) + ':' + c); }
+  return '{' + p.join(',') + '}';
+}
+function _gsSyncCopia(x){ return (x === undefined) ? undefined : JSON.parse(JSON.stringify(x)); }
+function _gsSyncSem(o, campo){ const c = {}; Object.keys(o || {}).forEach(function(k){ if(k !== campo) c[k] = o[k]; }); return c; }
+function _gsSyncShard(k){ return parseInt(_gsArqHash(String(k)).slice(-2), 16) % GS_SYNC_SHARDS; }
+function _gsSyncDir(){ return GS_SYNC_RAIZ + '/' + _gsArqSanear(_gsSync.emp || 'sem-empresa'); }
+function _gsSyncEhInclusao(t){ return GS_SYNC_INCLUSAO.indexOf(t) >= 0; }
+function _gsSyncEhEspelho(t){ return GS_SYNC_ESPELHO.indexOf(t) >= 0; }
+function _gsSyncLetra(){ return String(_gsSrvLer().letra || ''); }
+// Só no DEV: marca as ações do teste de dois aparelhos (o servidor só aceita na empresa dev).
+function _gsSyncMarcaTeste(){
+  try{ if(!_isDevEnv()) return null; const m = localStorage.getItem('gs_srv_teste_marca'); return (m && /^teste-sync-[A-Za-z0-9_-]+$/.test(m)) ? m : null; }catch(e){ return null; }
+}
+
+// ── o aparelho visto como registros do servidor ─────────────────────────────
+function _gsSyncChaveVist(key, v){ return String((v && v.uuid) || ('vist-' + key)); }
+function _gsSyncFilaChaves(){
+  const vistos = {}, out = [];
+  (Array.isArray(FILA_RECARGA) ? FILA_RECARGA : []).forEach(function(f){
+    if(!f || typeof f !== 'object') return;
+    let k = f._sid;
+    if(!k){
+      const b = 'q' + _gsSrvHash([f.hospedagem || '', f.ts_pedido || 0, f.apt || ''].join('|'));
+      vistos[b] = (vistos[b] || 0) + 1; k = b + '-' + vistos[b];
+    }
+    out.push({ k: k, f: f });
+  });
+  return out;
+}
+function _gsSyncVagaDados(d){
+  // MESMA forma do `buildSnapshot` (é a forma que a carga inicial enviou)
+  return { status:d.status, apt:d.apt, model:d.model, color:d.color, plate:d.plate, guest:d.guest, obs:d.obs || '', size:d.size,
+           mergedMaster:d.mergedMaster, mergedSlave:d.mergedSlave, hmergeWith:d.hmergeWith || null, hospedagem:d.hospedagem || '' };
+}
+function _gsSyncLocalEspelho(tab){
+  const o = {};
+  try{
+    if(tab === 'hospedagens') Object.keys(HOSPEDAGENS || {}).forEach(function(k){ if(HOSPEDAGENS[k] && typeof HOSPEDAGENS[k] === 'object') o[k] = HOSPEDAGENS[k]; });
+    else if(tab === 'vagas') Object.keys(S || {}).forEach(function(id){ if(S[id]) o[id] = _gsSyncVagaDados(S[id]); });
+    else if(tab === 'passeio') Object.keys(PASSEIO || {}).forEach(function(k){ if(PASSEIO[k]) o[k] = PASSEIO[k]; });
+    else if(tab === 'recargas_ativas') Object.keys(RECARGAS || {}).forEach(function(k){ if(RECARGAS[k]) o[k] = RECARGAS[k]; });
+    else if(tab === 'fila_recarga') _gsSyncFilaChaves().forEach(function(x){ o[x.k] = _gsSyncSem(x.f, '_sid'); });
+    else if(tab === 'vistorias'){
+      const b = _gsSync.base.vistorias || {}, sb = _gsSync.sombra.vistorias || {};
+      Object.keys(VISTORIAS || {}).forEach(function(key){
+        const v = VISTORIAS[key]; if(!v || typeof v !== 'object') return;
+        const ch = _gsSyncChaveVist(key, v);
+        const ref = sb[ch] || b[ch];
+        // `_chave` nunca muda depois de ir ao servidor (evita vaivém entre aparelhos)
+        o[ch] = Object.assign(_gsSrvSemImagens(v), { _chave:(ref && ref.d && ref.d._chave) || key });
+      });
+    }
+  }catch(e){ console.warn('[SYNC] leitura de', tab, 'falhou:', e && e.message); }
+  return o;
+}
+// Linhas das tabelas só de inclusão, com as MESMAS chaves da carga inicial
+// (o que a carga já levou não sobe de novo). O que veio do servidor carrega a
+// própria chave (`_sid`/`sid`).
+function _gsSyncLocalInclusao(tab){
+  const o = {};
+  try{
+    if(tab === 'eventos'){
+      const vistos = {};
+      Object.keys(HISTORICO || {}).forEach(function(apt){
+        (HISTORICO[apt] || []).forEach(function(e){
+          if(!e) return;
+          const b = 'e' + _gsSrvHash([e.hospedagem || '', e.tipo || '', e.ts || 0, e.vaga || '', e.extra || '', e.usuario || ''].join('|'));
+          vistos[b] = (vistos[b] || 0) + 1;
+          const k = e._sid || (b + '-' + vistos[b]);
+          o[k] = { gs:e.hospedagem || '', apt:apt, tipo:e.tipo || '', vaga:e.vaga || '', extra:String(e.extra || ''),
+                   usuario:e.usuario || '', acao_em:_gsSrvIso(e.ts), d:_gsSyncSem(e, '_sid') };
+        });
+      });
+    } else if(tab === 'trilha'){
+      const vistos = {};
+      (_lerTrilha() || []).forEach(function(e){
+        const b = _gdAudId(e);
+        vistos[b] = (vistos[b] || 0) + 1;
+        const k = e.sid || (b + (vistos[b] > 1 ? '-' + vistos[b] : ''));
+        o[k] = { acao:e.acao || '', quem:e.quem || '', alvo:e.alvo || '', origem:e.origem || '', msg:String(e.msg || ''), acao_em:_gsSrvIso(e.ts) };
+      });
+    } else if(tab === 'recargas_encerradas'){
+      const vistos = {};
+      (HISTORICO_RECARGAS || []).forEach(function(e){
+        if(!e) return;
+        const b = 'r' + _gsSrvHash([e.vagaId || '', e.inicio_ts || 0, e.ts || 0, e.hospedagem || ''].join('|'));
+        vistos[b] = (vistos[b] || 0) + 1;
+        const k = e._sid || (b + '-' + vistos[b]);
+        o[k] = { gs:e.hospedagem || '', vaga:e.vagaId || '', inicio_em:_gsSrvIso(e.inicio_ts), fim_em:_gsSrvIso(e.fim_ts),
+                 valor:(e.valor == null ? '' : String(e.valor)), d:_gsSyncSem(e, '_sid') };
+      });
+    }
+  }catch(e){ console.warn('[SYNC] leitura de', tab, 'falhou:', e && e.message); }
+  return o;
+}
+function _gsSyncAparelhoTemDados(){
+  try{
+    if(Object.keys(HOSPEDAGENS || {}).length || Object.keys(PASSEIO || {}).length || Object.keys(VISTORIAS || {}).length) return true;
+    if(Object.keys(RECARGAS || {}).length || (FILA_RECARGA || []).length || (HISTORICO_RECARGAS || []).length) return true;
+    if(Object.keys(S || {}).some(function(id){ return S[id] && S[id].status === 'occupied'; })) return true;
+    if(Object.keys(HISTORICO || {}).some(function(a){ return (HISTORICO[a] || []).length > 0; })) return true;
+  }catch(e){ return true; }
+  return false;
+}
+
+// ── detector de diferenças ──────────────────────────────────────────────────
+function _gsSyncTab(o, t){ return o[t] || (o[t] = {}); }
+function _gsSyncDiffEspelho(tab, ops){
+  const loc = _gsSyncLocalEspelho(tab);
+  const base = _gsSyncTab(_gsSync.base, tab), som = _gsSyncTab(_gsSync.sombra, tab), raw = _gsSyncTab(_gsSync.raw, tab);
+  Object.keys(loc).forEach(function(k){
+    let r; try{ r = JSON.stringify(loc[k]); }catch(e){ return; }
+    if(raw[k] === r) return;                       // igual ao que já foi tratado
+    const d = JSON.parse(r), ref = som[k] || base[k];
+    if(!ref || ref.x){
+      ops.push({ tabela:tab, chave:k, op:'criar', campos:d, versao_base:base[k] ? base[k].v : null });
+      som[k] = { d:d, x:false };
+    } else {
+      const campos = {}, antes = {}, remover = []; let mudou = false;
+      const ks = {}; Object.keys(d).forEach(function(c){ ks[c] = 1; }); Object.keys(ref.d || {}).forEach(function(c){ ks[c] = 1; });
+      Object.keys(ks).forEach(function(c){
+        const vr = ref.d ? ref.d[c] : undefined;
+        if(_gsSyncCanon(d[c]) === _gsSyncCanon(vr)) return;
+        mudou = true;
+        antes[c] = (vr === undefined) ? null : vr;
+        if(d[c] === undefined) remover.push(c); else campos[c] = d[c];
+      });
+      if(mudou){
+        const op = { tabela:tab, chave:k, op:'editar', campos:campos, antes:antes, versao_base:base[k] ? base[k].v : null };
+        if(remover.length) op.remover = remover;
+        ops.push(op);
+        som[k] = { d:d, x:false };
+      }
+    }
+    raw[k] = r;
+  });
+  // vivo no servidor (ou na fila) e sumiu do aparelho → excluir (o servidor só MARCA)
+  if(tab === 'hospedagens' || tab === 'vagas') return;   // hospedagem e vaga nunca somem
+  const vistos = {};
+  Object.keys(base).concat(Object.keys(som)).forEach(function(k){
+    if(vistos[k] || loc[k]) return; vistos[k] = 1;
+    const ref = som[k] || base[k];
+    if(!ref || ref.x) return;
+    ops.push({ tabela:tab, chave:k, op:'excluir', versao_base:base[k] ? base[k].v : null });
+    som[k] = { d:ref.d, x:true }; delete raw[k];
+  });
+}
+function _gsSyncDiffInclusao(tab, ops){
+  const loc = _gsSyncLocalInclusao(tab);
+  const base = _gsSyncTab(_gsSync.base, tab), som = _gsSyncTab(_gsSync.sombra, tab);
+  Object.keys(loc).forEach(function(k){
+    if(base[k] || som[k]) return;
+    ops.push({ tabela:tab, chave:k, op:'inserir', linha:loc[k] });
+    som[k] = 1;
+  });
+}
+// Captura TUDO o que mudou (nas tabelas sujas, ou em todas) numa ou mais ações.
+function _gsSyncDetectar(opts){
+  opts = opts || {};
+  if(_gsSync.estado !== 'ativo') return 0;
+  const tabs = opts.todas ? GS_SYNC_TABS.slice() : GS_SYNC_TABS.filter(function(t){ return _gsSync.sujas[t]; });
+  if(opts.todas) _gsSync.sujas = {}; else tabs.forEach(function(t){ delete _gsSync.sujas[t]; });
+  if(!tabs.length) return 0;
+  const ops = [];
+  tabs.forEach(function(t){
+    try{ if(_gsSyncEhInclusao(t)) _gsSyncDiffInclusao(t, ops); else _gsSyncDiffEspelho(t, ops); }
+    catch(e){ console.warn('[SYNC] detector falhou em', t, e && e.message); }
+  });
+  if(!ops.length) return 0;
+  const it = _gsSync.intencao;
+  _gsSync.intencao = null;
+  const tipo = (it && Date.now() - it.ts < 5000) ? it.tipo : (opts.tipo || 'edicao');
+  _gsSyncEnfileirar(ops, tipo, it && it.alvo);
+  return ops.length;
+}
+function _gsSyncAgendarDeteccao(ms){
+  if(_gsSync.estado !== 'ativo') return;
+  const quando = Date.now() + (ms || 0);
+  if(_gsSync.timerDet && _gsSync.detEm <= quando) return;
+  clearTimeout(_gsSync.timerDet);
+  _gsSync.detEm = quando;
+  _gsSync.timerDet = setTimeout(function(){ _gsSync.timerDet = null; _gsSyncDetectar(); }, Math.max(0, ms || 0));
+}
+function _gsSyncMarcarSuja(t){ if(_gsSync.estado !== 'ativo') return; _gsSync.sujas[t] = true; _gsSyncAgendarDeteccao(800); }
+// AÇÃO EXPLÍCITA: dá nome à captura e a antecipa. Chamada no ponto de entrada de
+// cada operação (check-in, mover, check-out…). Sem login, não faz nada.
+function _gsSyncAcao(tipo, alvo){
+  if(_gsSync.estado !== 'ativo') return;
+  if(!_gsSync.intencao || Date.now() - _gsSync.intencao.ts > 2000) _gsSync.intencao = { tipo:String(tipo), alvo:(alvo == null ? null : String(alvo)), ts:Date.now() };
+  GS_SYNC_TABS.forEach(function(t){ _gsSync.sujas[t] = true; });
+  _gsSyncAgendarDeteccao(250);
+}
+function _gsSyncOperador(ops){
+  let nome = '';
+  for(let i = 0; i < ops.length && !nome; i++){
+    const o = ops[i];
+    if(o.op === 'inserir' && o.linha) nome = o.linha.usuario || o.linha.quem || '';
+  }
+  if(!nome) return null;
+  let id = null;
+  try{
+    const p = String(nome).split(' · ');
+    const u = (USUARIOS || []).find(function(x){ return x && x.nome === p[0] && (p.length < 2 || x.cargo === p[1]); });
+    if(u) id = String(u.id);
+  }catch(e){}
+  return { id:id, nome:String(nome) };
+}
+
+// ── a fila (arquivos privados, um por ação) ─────────────────────────────────
+function _gsSyncNovoId(){
+  let r = '';
+  try{ if(window.crypto && crypto.randomUUID) r = crypto.randomUUID().replace(/-/g, '').slice(0, 16); }catch(e){}
+  if(!r) r = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+  return 'a' + (_gsSyncLetra() || 'X') + '-' + Date.now().toString(36) + '-' + r;
+}
+function _gsSyncGravarItem(item){
+  item.gravadoOk = false;
+  item.gravado = _gsArqGravarSeguro(item.arquivo, JSON.stringify(item.acao), false)
+    .then(function(){ item.gravadoOk = true; return true; },
+          function(e){ console.warn('[SYNC] ação não gravada em arquivo (fica na memória e tenta de novo):', e && e.message); return false; });
+  return item.gravado;
+}
+function _gsSyncEnfileirar(ops, tipo, alvo){
+  const marca = _gsSyncMarcaTeste();
+  for(let i = 0; i < ops.length; i += GS_SYNC_MAX_OPS){
+    const parte = ops.slice(i, i + GS_SYNC_MAX_OPS);
+    const id = _gsSyncNovoId();
+    const acao = { id:id, tipo:tipo || 'edicao', acao_em:new Date().toISOString(), aparelho:_gsSyncLetra(),
+                   operador:_gsSyncOperador(parte), schema:GS_SCHEMA, ops:parte };
+    if(alvo) acao.alvo = alvo;
+    if(marca) acao.teste = marca;
+    _gsSync.n++;
+    const item = { id:id, n:_gsSync.n, acao:acao, arquivo:_gsSyncDir() + '/fila/' + String(_gsSync.n).padStart(10, '0') + '-' + id + '.json' };
+    _gsSyncGravarItem(item);
+    _gsSync.fila.push(item);
+  }
+  _gsSyncGravarEstado();
+  _gsSyncAtualizarRodape();
+  _gsSyncAgendarEnvio(30);
+}
+function _gsSyncPendenteEm(tab, k, exceto){
+  for(let i = 0; i < _gsSync.fila.length; i++){
+    const it = _gsSync.fila[i]; if(it === exceto) continue;
+    const ops = (it.acao && it.acao.ops) || [];
+    for(let j = 0; j < ops.length; j++) if(ops[j].tabela === tab && ops[j].chave === k) return true;
+  }
+  return false;
+}
+function _gsSyncMapaPendentes(){
+  const m = {};
+  _gsSync.fila.forEach(function(it){ ((it.acao && it.acao.ops) || []).forEach(function(o){ m[o.tabela + '|' + o.chave] = true; }); });
+  return m;
+}
+
+// ── envio (segundo plano, em ordem, com novas tentativas espaçadas) ─────────
+function _gsSyncAgendarEnvio(ms){
+  if(_gsSync.estado !== 'ativo') return;
+  clearTimeout(_gsSync.timerEnvio);
+  _gsSync.timerEnvio = setTimeout(function(){ _gsSync.timerEnvio = null; _gsSyncEnviar(); }, Math.max(0, ms || 0));
+}
+// Erro de DADO (o servidor nunca vai aceitar): a ação vai para `recusadas/`.
+// Rede, sessão, função ausente, regra de negócio → tenta de novo (nada se perde).
+function _gsSyncErroPermanente(err){
+  const c = String((err && err.code) || '');
+  return /^(22|23|42)/.test(c) && c !== '42501' && c !== '42883';
+}
+async function _gsSyncEnviar(){
+  if(_gsSync.enviando || _gsSync.estado !== 'ativo') return;
+  if(Date.now() < _gsSync.proxEnvio){ _gsSyncAgendarEnvio(_gsSync.proxEnvio - Date.now()); return; }
+  _gsSync.enviando = true;
+  try{
+    while(_gsSync.fila.length && _gsSync.estado === 'ativo'){
+      const item = _gsSync.fila[0];
+      if(!(await item.gravado)) await _gsSyncGravarItem(item);
+      const r = await _gsSrvRpc('aplicar_acao', { p_acao:item.acao }, 20000);
+      if(_gsSync.estado !== 'ativo') break;
+      if(r.error){
+        if(_gsSyncErroPermanente(r.error)){ await _gsSyncRecusar(item, r.error); continue; }
+        _gsSync.falhas++;
+        const espera = [2, 5, 15, 30, 60][Math.min(_gsSync.falhas - 1, 4)] * 1000;
+        _gsSync.proxEnvio = Date.now() + espera;
+        if(_gsSrvErroDeSessao(r.error)) _gsSrvMudarEstado('reconectar'); else _gsSrvMudarEstado('sem_conexao');
+        _gsSyncAgendarEnvio(espera);
+        break;
+      }
+      _gsSync.falhas = 0; _gsSync.proxEnvio = 0;
+      if(_gsSrvEstado !== 'conectado') _gsSrvMudarEstado('conectado');
+      await _gsSyncConfirmar(item, r.data || {});
+    }
+  }catch(e){ console.warn('[SYNC] envio interrompido (tenta de novo):', e && e.message); _gsSyncAgendarEnvio(5000); }
+  finally{ _gsSync.enviando = false; _gsSyncAtualizarRodape(); }
+}
+function _gsSyncTirarDaFila(item){
+  const i = _gsSync.fila.indexOf(item);
+  if(i >= 0) _gsSync.fila.splice(i, 1);
+  const B = _gsArqBackend();
+  return B ? B.apagar(item.arquivo).then(function(){ return B.apagar(item.arquivo + '.tmp'); }) : Promise.resolve();
+}
+async function _gsSyncRecusar(item, err){
+  try{ await _gsArqGravarSeguro(_gsSyncDir() + '/recusadas/' + item.id + '.json', JSON.stringify({ acao:item.acao, erro:{ code:err.code || '', message:err.message || '' }, em:Date.now() }), false); }
+  catch(e){ console.warn('[SYNC] recusada não gravada — fica na fila:', e && e.message); _gsSyncAgendarEnvio(30000); throw e; }
+  await _gsSyncTirarDaFila(item);
+  _gsSync.recusadas++;
+  _gsSyncGravarEstado();
+  try{ addLogSistema('Servidor RECUSOU a ação ' + item.id + ' (' + item.acao.tipo + '): ' + (err.message || err.code) + ' — guardada para conferência',
+    { aud:true, acao:'sync_acao_recusada', alvo:item.id, origem:'automatico' }); }catch(e){}
+}
+// Confirmação: a base passa a ser o que o servidor guardou; sem outra ação na
+// fila para o mesmo registro, o aparelho também passa a valer isso (campos que
+// outro aparelho mudou, check-out definitivo, exclusão que não ressuscita).
+async function _gsSyncConfirmar(item, resp){
+  _gsSyncDetectar();                    // o que mudou e ainda não foi capturado entra na fila ANTES
+  const m = _gsSyncNovoMudou();
+  (resp.resultados || []).forEach(function(r){
+    const tab = r.tabela, k = r.chave;
+    if(_gsSyncEhInclusao(tab)){
+      if(r.estado === 'inserido' || r.estado === 'ja_existia'){ _gsSyncTab(_gsSync.base, tab)[k] = 1; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
+      delete _gsSyncTab(_gsSync.sombra, tab)[k];
+      return;
+    }
+    if(!_gsSyncEhEspelho(tab)) return;
+    const base = _gsSyncTab(_gsSync.base, tab), som = _gsSyncTab(_gsSync.sombra, tab), raw = _gsSyncTab(_gsSync.raw, tab);
+    const outro = _gsSyncPendenteEm(tab, k, item);
+    if(r.versao == null){                // o servidor não tem o registro: a próxima captura o CRIA
+      if(!outro){ delete base[k]; delete som[k]; delete raw[k]; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
+      return;
+    }
+    if(!base[k] || r.versao >= base[k].v){ base[k] = { v:r.versao, d:r.dados, x:!!r.excluido }; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true; }
+    if(!outro){ delete som[k]; _gsSyncAplicarRegistro(tab, k, base[k], m); }
+  });
+  await _gsSyncGravarBase();
+  await _gsSyncTirarDaFila(item);
+  _gsSync.ultimoEnvio = Date.now(); _gsSync.stats.enviadas++;
+  if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
+  _gsSyncAtualizarRodape();
+}
+
+// ── aplicar no aparelho o que o servidor diz ────────────────────────────────
+function _gsSyncNovoMudou(){ return { algo:false, tabs:{}, vagas:{}, recargas:{}, tokens:{}, rebuild:false, removidasVist:[], trilha:[] }; }
+function _gsSyncLocalVistKey(ch){
+  const ks = Object.keys(VISTORIAS || {});
+  for(let i = 0; i < ks.length; i++){ const v = VISTORIAS[ks[i]]; if(v && _gsSyncChaveVist(ks[i], v) === ch) return ks[i]; }
+  return null;
+}
+// rec = {v, d, x}. Ajusta a MEMÓRIA ao registro; quem chama persiste e redesenha.
+function _gsSyncAplicarRegistro(tab, k, rec, m){
+  const raw = _gsSyncTab(_gsSync.raw, tab);
+  const d = rec.d || {}, x = !!rec.x;
+  try{
+    if(tab === 'hospedagens'){
+      if(x) return;                                            // hospedagem nunca some
+      if(HOSPEDAGENS[k] && _gsSyncCanon(HOSPEDAGENS[k]) === _gsSyncCanon(d)){ raw[k] = JSON.stringify(HOSPEDAGENS[k]); return; }
+      HOSPEDAGENS[k] = _gsSyncCopia(d);
+      raw[k] = JSON.stringify(HOSPEDAGENS[k]);
+      m.tokens[k] = 1; if(d.apt) m.tokens[String(d.apt)] = 1;
+    } else if(tab === 'vagas'){
+      const s = S[k]; if(!s || x) return;
+      const antes = _gsSyncVagaDados(s);
+      if(_gsSyncCanon(antes) === _gsSyncCanon(d)){ raw[k] = JSON.stringify(antes); return; }
+      if(antes.mergedMaster !== !!d.mergedMaster || antes.mergedSlave !== !!d.mergedSlave || (antes.hmergeWith || null) !== (d.hmergeWith || null) || antes.size !== d.size) m.rebuild = true;
+      s.status = d.status || 'free'; s.apt = d.apt || ''; s.model = d.model || ''; s.color = d.color || ''; s.plate = d.plate || '';
+      s.guest = d.guest || ''; s.obs = d.obs || ''; s.size = d.size || 'small'; s.mergedMaster = !!d.mergedMaster; s.mergedSlave = !!d.mergedSlave;
+      s.hmergeWith = d.hmergeWith || null; s.hospedagem = d.hospedagem || '';
+      raw[k] = JSON.stringify(_gsSyncVagaDados(s));
+      m.vagas[k] = 1; m.tokens[k] = 1; if(antes.hospedagem) m.tokens[antes.hospedagem] = 1; if(s.hospedagem) m.tokens[s.hospedagem] = 1;
+      if(antes.hmergeWith) m.vagas[antes.hmergeWith] = 1; if(s.hmergeWith) m.vagas[s.hmergeWith] = 1;
+    } else if(tab === 'passeio' || tab === 'recargas_ativas'){
+      const alvo = tab === 'passeio' ? PASSEIO : RECARGAS;
+      if(x){ if(!alvo[k]) return; delete alvo[k]; delete raw[k]; }
+      else {
+        if(alvo[k] && _gsSyncCanon(alvo[k]) === _gsSyncCanon(d)){ raw[k] = JSON.stringify(alvo[k]); return; }
+        alvo[k] = _gsSyncCopia(d); raw[k] = JSON.stringify(alvo[k]);
+      }
+      m.tokens[k] = 1; if(d.hospedagem) m.tokens[d.hospedagem] = 1;
+      if(tab === 'recargas_ativas') m.recargas[k] = 1;
+    } else if(tab === 'fila_recarga'){
+      const atual = _gsSyncFilaChaves().find(function(z){ return z.k === k; });
+      if(x){ if(!atual) return; const i = FILA_RECARGA.indexOf(atual.f); if(i >= 0) FILA_RECARGA.splice(i, 1); delete raw[k]; }
+      else {
+        if(atual && _gsSyncCanon(_gsSyncSem(atual.f, '_sid')) === _gsSyncCanon(d)){ raw[k] = JSON.stringify(_gsSyncSem(atual.f, '_sid')); return; }
+        const novo = Object.assign(_gsSyncCopia(d), { _sid:k });
+        if(atual){ const i = FILA_RECARGA.indexOf(atual.f); if(i >= 0) FILA_RECARGA[i] = novo; else FILA_RECARGA.push(novo); }
+        else FILA_RECARGA.push(novo);
+        FILA_RECARGA.sort(function(a, b){ return (a.ts_pedido || 0) - (b.ts_pedido || 0); });
+        raw[k] = JSON.stringify(_gsSyncSem(novo, '_sid'));
+      }
+      m.tokens[d.hospedagem || ''] = 1;
+    } else if(tab === 'vistorias'){
+      const lk = _gsSyncLocalVistKey(k);
+      if(x){
+        if(!lk) return;
+        try{ _gsRegistrarRemocao('vistoria', lk); }catch(e){}   // caminho LEGÍTIMO para a sentinela
+        delete VISTORIAS[lk]; delete raw[k]; m.removidasVist.push(lk);
+      } else {
+        const atual = lk ? VISTORIAS[lk] : null;
+        if(atual && _gsSyncCanon(Object.assign(_gsSrvSemImagens(atual), { _chave:d._chave || lk })) === _gsSyncCanon(d)){
+          raw[k] = JSON.stringify(Object.assign(_gsSrvSemImagens(atual), { _chave:d._chave || lk })); return;
+        }
+        const novo = _gsSyncSem(d, '_chave');
+        // as IMAGENS não viajam nesta sessão: as que o aparelho tem ficam
+        ['documento_final_b64', 'assinatura', 'assinatura_b64'].forEach(function(c){
+          if(atual && atual[c]){ novo[c] = atual[c]; delete novo['tem_' + c]; }
+        });
+        let key = lk || String(d._chave || d.numero || k);
+        if(!lk && VISTORIAS[key]) key = key + '-' + String(k).slice(-4);
+        VISTORIAS[key] = novo;
+        raw[k] = JSON.stringify(Object.assign(_gsSrvSemImagens(novo), { _chave:d._chave || key }));
+      }
+      m.tokens[d.hospedagem || d.hospedagem_gs || ''] = 1;
+    } else return;
+    m.algo = true; m.tabs[tab] = true;
+  }catch(e){ console.warn('[SYNC] aplicar', tab, k, 'falhou:', e && e.message); }
+}
+function _gsSyncInserirLocal(tab, k, d, m){
+  try{
+    if(tab === 'eventos'){
+      const e = Object.assign(_gsSyncCopia((d && d.e) || {}), { _sid:k });
+      const apt = String((d && d.apt) || e.apt || '?');
+      if(!HISTORICO[apt]) HISTORICO[apt] = [];
+      HISTORICO[apt].push(e);
+      HISTORICO[apt].sort(function(a, b){ return (a.ts || 0) - (b.ts || 0); });
+      m.tokens[e.hospedagem || ''] = 1;
+    } else if(tab === 'recargas_encerradas'){
+      HISTORICO_RECARGAS.push(Object.assign(_gsSyncCopia(d || {}), { _sid:k }));
+    } else if(tab === 'trilha'){
+      // Só o aparelho que escreve no Drive (A) guarda a trilha dos outros — é ele
+      // quem a arquiva. Nos demais ela fica no servidor.
+      if(_gsSyncLetra() !== 'A') return;
+      const t = d || {};
+      const e = { ts:Number(t.ts) || Date.now(), msg:String(t.msg || ''), aud:1, sid:k };
+      ['quem', 'acao', 'alvo', 'origem'].forEach(function(c){ if(t[c]) e[c] = String(t[c]); });
+      m.trilha.push(e);
+    } else return;
+    m.algo = true; m.tabs[tab] = true;
+  }catch(e){ console.warn('[SYNC] inserir', tab, k, 'falhou:', e && e.message); }
+}
+// Grava as coleções que mudaram, pelos MESMOS caminhos do app (guardas, sentinela).
+function _gsSyncPersistirLocal(m){
+  const t = m.tabs;
+  try{ if(t.hospedagens) saveHospedagens(); }catch(e){ console.warn('[SYNC] hospedagens:', e && e.message); }
+  try{ if(t.vagas || t.passeio) saveData(); }catch(e){ console.warn('[SYNC] mapa:', e && e.message); }
+  try{ if(t.recargas_ativas) saveRecargas({ permitirVazio:true }); }catch(e){ console.warn('[SYNC] recargas:', e && e.message); }
+  try{ if(t.fila_recarga) saveFilaRecarga(); }catch(e){ console.warn('[SYNC] fila de recarga:', e && e.message); }
+  try{ if(t.vistorias) saveVistorias(m.removidasVist.length ? { permitirVazio:true } : undefined); }catch(e){ console.warn('[SYNC] vistorias:', e && e.message); }
+  try{ if(t.eventos) saveHistorico(); }catch(e){ console.warn('[SYNC] histórico:', e && e.message); }
+  try{ if(t.recargas_encerradas) saveRecargaHist(); }catch(e){ console.warn('[SYNC] recargas encerradas:', e && e.message); }
+  if(m.trilha.length){
+    try{ let log = _lerLog(); m.trilha.forEach(function(e){ log.push(e); }); log = _logPodar(log); localStorage.setItem(LOG_KEY, JSON.stringify(log)); }
+    catch(e){ console.warn('[SYNC] trilha recebida não gravada:', e && e.message); }
+  }
+  if(m.removidasVist.length){
+    try{ addLogSistema('Vistoria(s) ' + m.removidasVist.join(', ') + ' excluída(s) — recebido do servidor', { aud:true, acao:'sync_vistoria_removida', alvo:m.removidasVist.join(','), origem:'servidor' }); }catch(e){}
+  }
+}
+// Redesenha SEM fechar nada. Arrasto ou "mover" em andamento: espera terminar.
+function _gsSyncRedesenhar(m){
+  if(!m || !m.algo) return;
+  const p = _gsSync.redesenhoPendente;
+  if(p){ Object.assign(m.vagas, p.vagas); Object.assign(m.recargas, p.recargas); Object.assign(m.tokens, p.tokens); m.rebuild = m.rebuild || p.rebuild; _gsSync.redesenhoPendente = null; }
+  let ocupado = false;
+  try{ ocupado = !!dragState || !!(document.getElementById('move-banner') && document.getElementById('move-banner').classList.contains('on')); }catch(e){}
+  if(ocupado){ _gsSync.redesenhoPendente = m; setTimeout(function(){ const q = _gsSync.redesenhoPendente; if(q){ _gsSync.redesenhoPendente = null; _gsSyncRedesenhar(q); } }, 700); return; }
+  try{
+    if(m.rebuild){ rebuildTable(); try{ if(typeof positionPilares === 'function') setTimeout(positionPilares, 50); }catch(e){} }
+    else Object.keys(m.vagas).forEach(function(id){ try{ if(S[id]) ref(id); }catch(e){} });
+    Object.keys(m.recargas).forEach(function(v){ try{ if(typeof refRecarga === 'function') refRecarga(v); }catch(e){} });
+    upd();
+    const pw = document.getElementById('painel-wrap'); if(pw && pw.style.display !== 'none') renderPainelDia();
+    const rw = document.getElementById('recarga-wrap'); if(rw && rw.style.display !== 'none') renderTelaRecarga();
+    _gsSyncAvisarModal(Object.keys(m.tokens).filter(Boolean));
+  }catch(e){ console.warn('[SYNC] redesenho falhou:', e && e.message); }
+}
+function _gsSyncAvisarModal(tokens){
+  try{
+    const ov = document.getElementById('ov'), mc = document.getElementById('mc');
+    if(!ov || !ov.classList.contains('on') || !mc || !tokens.length) return;
+    const txt = mc.innerText || mc.textContent || '';
+    const toca = tokens.some(function(t){ return new RegExp('(^|[^A-Za-z0-9])' + String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Za-z0-9])').test(txt); });
+    if(!toca) return;
+    _gsSync.modalDesatualizado = true;
+    if(document.getElementById('srv-atualizado')) return;
+    const d = document.createElement('div');
+    d.id = 'srv-atualizado';
+    d.style.cssText = 'background:#FFF6E0;border:1px solid #E8C77A;color:#7A5300;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:700;margin-bottom:6px';
+    d.textContent = '🔄 Atualizado no outro aparelho — os dados novos aparecem ao fechar';
+    mc.insertBefore(d, mc.firstChild);
+  }catch(e){}
+}
+
+// ── recebimento ─────────────────────────────────────────────────────────────
+function _gsSyncAplicarLinhas(linhas){
+  _gsSyncDetectar();                    // o local que ainda não foi capturado entra na fila antes
+  const m = _gsSyncNovoMudou(), pend = _gsSyncMapaPendentes();
+  let guardou = false;
+  (linhas || []).forEach(function(l){
+    if(!l || !l.t) return;
+    if((Number(l.s) || 1) > GS_SCHEMA){ _gsSync.guardados.push(l); guardou = true; return; }
+    const tab = l.t, k = String(l.k);
+    if(_gsSyncEhInclusao(tab)){
+      const base = _gsSyncTab(_gsSync.base, tab);
+      if(base[k] || _gsSyncTab(_gsSync.sombra, tab)[k]) return;
+      base[k] = 1; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true;
+      _gsSyncInserirLocal(tab, k, l.d, m);
+      return;
+    }
+    if(!_gsSyncEhEspelho(tab)) return;
+    const base = _gsSyncTab(_gsSync.base, tab);
+    if(base[k] && Number(l.v) <= base[k].v) return;          // eco da própria ação ou já visto
+    base[k] = { v:Number(l.v), d:l.d, x:!!l.x }; _gsSync.shardsSujos[tab + '|' + _gsSyncShard(k)] = true;
+    if(pend[tab + '|' + k]) return;      // a alteração local na fila continua valendo por cima
+    _gsSyncAplicarRegistro(tab, k, base[k], m);
+  });
+  _gsSync.stats.recebidas += (linhas || []).length;
+  if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
+  if(guardou){ _gsSyncGravarGuardados(); _gsSyncAvisarAtualizar(); }
+  return m;
+}
+async function _gsSyncReceber(motivo){
+  if(_gsSync.estado !== 'ativo') return;
+  if(_gsSync.recebendo){ _gsSync.deNovo = true; return; }
+  _gsSync.recebendo = true;
+  try{
+    for(let voltas = 0; voltas < 50 && _gsSync.estado === 'ativo'; voltas++){
+      _gsSync.deNovo = false;
+      const r = await _gsSrvRpc('mudancas_desde', { p_cursor:_gsSync.cursor, p_limite:500 }, 15000);
+      if(_gsSync.estado !== 'ativo') break;
+      if(r.error){
+        if(_gsSrvErroDeSessao(r.error)) _gsSrvMudarEstado('reconectar'); else _gsSrvMudarEstado('sem_conexao');
+        break;
+      }
+      if(_gsSrvEstado !== 'conectado') _gsSrvMudarEstado('conectado');
+      const d = r.data || {};
+      if((d.linhas || []).length) _gsSyncAplicarLinhas(d.linhas);
+      const c = Number(d.cursor) || 0;
+      if(c > _gsSync.cursor){ _gsSync.cursor = c; await _gsSyncGravarBase(); await _gsSyncGravarEstado(); }
+      _gsSync.ultimoRecebimento = Date.now();
+      if(!d.mais && !_gsSync.deNovo) break;
+    }
+  }catch(e){ console.warn('[SYNC] recebimento falhou (' + (motivo || '') + '):', e && e.message); }
+  finally{ _gsSync.recebendo = false; _gsSyncAtualizarRodape(); }
+}
+// Chamado pelo tempo real ("há mudança até o cursor N") — o aviso não traz dados.
+function _gsSyncAvisoRecebido(cursor){
+  if(_gsSync.estado !== 'ativo') return;
+  if(cursor != null && Number(cursor) <= _gsSync.cursor) return;
+  setTimeout(function(){ _gsSyncReceber('tempo real'); }, 120);
+}
+function _gsSyncAssinarTempoReal(){
+  try{
+    const cli = _gsSrvCliente();
+    if(!cli || !cli.channel || !_gsSync.emp || _gsSync.canal) return;
+    _gsSync.canal = cli.channel('gs-aviso-' + _gsSync.emp)
+      .on('postgres_changes', { event:'*', schema:'public', table:'sync_aviso', filter:'empresa_id=eq.' + _gsSync.emp }, function(p){
+        _gsSyncAvisoRecebido(p && p.new ? p.new.cursor : null);
+      })
+      .subscribe(function(status){ _gsSync.rt = String(status || ''); if(status === 'SUBSCRIBED') _gsSyncReceber('tempo real conectado'); });
+  }catch(e){ console.warn('[SYNC] tempo real indisponível (segue pela consulta a cada 30 s):', e && e.message); }
+}
+
+// ── persistência do estado da sincronização (arquivos privados) ─────────────
+function _gsSyncGravarEstado(){
+  const est = { v:1, emp:_gsSync.emp, dv:_gsSync.dv, cursor:_gsSync.cursor, n:_gsSync.n, adotado:_gsSync.adotado,
+                modo:_gsSync.modo, recusadas:_gsSync.recusadas, ts:Date.now() };
+  _gsSync.gravacao = _gsSync.gravacao.then(function(){ return _gsArqGravarSeguro(_gsSyncDir() + '/estado.json', JSON.stringify(est), false); })
+    .catch(function(e){ console.warn('[SYNC] estado não gravado:', e && e.message); });
+  return _gsSync.gravacao;
+}
+function _gsSyncGravarBase(){
+  const sujos = Object.keys(_gsSync.shardsSujos); _gsSync.shardsSujos = {};
+  if(!sujos.length) return _gsSync.gravacao;
+  const porTab = {};
+  sujos.forEach(function(s){ const p = s.split('|'); (porTab[p[0]] = porTab[p[0]] || {})[p[1]] = true; });
+  const arquivos = [];
+  Object.keys(porTab).forEach(function(tab){
+    const base = _gsSync.base[tab] || {}, grupos = {};
+    Object.keys(porTab[tab]).forEach(function(i){ grupos[i] = {}; });
+    Object.keys(base).forEach(function(k){
+      const i = String(_gsSyncShard(k)); if(!grupos[i]) return;
+      grupos[i][k] = _gsSyncEhInclusao(tab) ? 1 : [base[k].v, base[k].d, base[k].x ? 1 : 0];
+    });
+    Object.keys(grupos).forEach(function(i){ arquivos.push({ p:_gsSyncDir() + '/base/' + tab + '-' + i + '.json', c:JSON.stringify(grupos[i]) }); });
+  });
+  _gsSync.gravacao = _gsSync.gravacao.then(async function(){
+    for(let i = 0; i < arquivos.length; i++){
+      try{ await _gsArqGravarSeguro(arquivos[i].p, arquivos[i].c, false); }
+      catch(e){ console.warn('[SYNC] base não gravada (' + arquivos[i].p + '):', e && e.message); }
+    }
+  });
+  return _gsSync.gravacao;
+}
+function _gsSyncGravarGuardados(){
+  const c = JSON.stringify(_gsSync.guardados);
+  _gsSync.gravacao = _gsSync.gravacao.then(function(){ return _gsArqGravarSeguro(_gsSyncDir() + '/guardados.json', c, false); })
+    .catch(function(e){ console.warn('[SYNC] guardados não gravados:', e && e.message); });
+  return _gsSync.gravacao;
+}
+async function _gsSyncCarregar(){
+  const B = _gsArqBackend(), dir = _gsSyncDir();
+  GS_SYNC_TABS.forEach(function(t){ _gsSync.base[t] = {}; _gsSync.sombra[t] = {}; _gsSync.raw[t] = {}; });
+  _gsSync.fila = []; _gsSync.guardados = [];
+  const est = await _gsArqLerJSON(dir + '/estado.json');
+  _gsSync.adotado = !!(est && est.adotado && est.emp === _gsSync.emp);
+  _gsSync.cursor = (est && Number(est.cursor)) || 0;
+  _gsSync.n = (est && Number(est.n)) || 0;
+  _gsSync.modo = (est && est.modo) || '';
+  _gsSync.recusadas = (est && Number(est.recusadas)) || 0;
+  for(let t = 0; t < GS_SYNC_TABS.length; t++){
+    const tab = GS_SYNC_TABS[t];
+    for(let i = 0; i < GS_SYNC_SHARDS; i++){
+      const o = await _gsArqLerJSON(dir + '/base/' + tab + '-' + i + '.json');
+      if(!o) continue;
+      Object.keys(o).forEach(function(k){
+        if(_gsSyncEhInclusao(tab)) _gsSync.base[tab][k] = 1;
+        else if(Array.isArray(o[k])) _gsSync.base[tab][k] = { v:Number(o[k][0]) || 0, d:o[k][1], x:!!o[k][2] };
+      });
+    }
+  }
+  const nomes = (await B.listar(dir + '/fila')).filter(function(n){ return /\.json$/.test(n); }).sort();
+  for(let i = 0; i < nomes.length; i++){
+    const p = dir + '/fila/' + nomes[i];
+    const acao = await _gsArqLerJSON(p);
+    if(!acao || !acao.id){ console.warn('[SYNC] item da fila ilegível — mantido no disco:', nomes[i]); continue; }
+    const n = parseInt(nomes[i], 10) || 0;
+    if(n > _gsSync.n) _gsSync.n = n;
+    const item = { id:acao.id, n:n, acao:acao, arquivo:p, gravadoOk:true, gravado:Promise.resolve(true) };
+    _gsSync.fila.push(item);
+    // a SOMBRA é refeita a partir da fila (o que já foi capturado não é capturado de novo)
+    (acao.ops || []).forEach(function(o){
+      if(_gsSyncEhInclusao(o.tabela)){ _gsSyncTab(_gsSync.sombra, o.tabela)[o.chave] = 1; return; }
+      if(!_gsSyncEhEspelho(o.tabela)) return;
+      const som = _gsSyncTab(_gsSync.sombra, o.tabela), base = _gsSyncTab(_gsSync.base, o.tabela);
+      const ref = som[o.chave] || base[o.chave];
+      if(o.op === 'excluir') som[o.chave] = { d:ref ? ref.d : {}, x:true };
+      else if(o.op === 'criar') som[o.chave] = { d:_gsSyncCopia(o.campos || {}), x:false };
+      else {
+        const d = _gsSyncCopia((ref && ref.d) || {});
+        Object.keys(o.campos || {}).forEach(function(c){ d[c] = o.campos[c]; });
+        (o.remover || []).forEach(function(c){ delete d[c]; });
+        som[o.chave] = { d:d, x:false };
+      }
+    });
+  }
+  const g = await _gsArqLerJSON(dir + '/guardados.json');
+  if(Array.isArray(g)) _gsSync.guardados = g;
+}
+
+// ── início, decisão e adoção ────────────────────────────────────────────────
+async function _gsSyncIniciar(){
+  if(!gsSrvAtivo()) return;
+  if(['preparando', 'adotando', 'ativo'].indexOf(_gsSync.estado) >= 0) return;
+  clearTimeout(_gsSync.timerRetentar);
+  if(!_gsArqBackend()){ _gsSync.estado = 'parado'; _gsSync.motivo = 'sem armazenamento de arquivos neste aparelho'; return; }
+  _gsSync.estado = 'preparando'; _gsSync.motivo = ''; _gsSync.decisao = null;
+  _gsSyncAtualizarRodape();
+  try{
+    const s = _gsSrvLer();
+    if(!s.empresa_id || !s.dispositivo_id){
+      const d = await _gsSrvRpc('registrar_dispositivo', { p_nome:'GarageSpot ' + _gsSrvAmbiente(), p_versao:GS_VERSION }, 10000);
+      if(d.error || !d.data || !d.data.empresa_id) return _gsSyncRetentar('sem conexão para identificar a empresa');
+      const s2 = _gsSrvLer(); s2.empresa_id = d.data.empresa_id; s2.dispositivo_id = d.data.id; _gsSrvGravar(s2);
+    }
+    const s3 = _gsSrvLer();
+    if(!gsSrvAtivo()){ _gsSync.estado = 'parado'; return; }
+    _gsSync.emp = String(s3.empresa_id); _gsSync.dv = String(s3.dispositivo_id); _gsSync.letra = String(s3.letra || '');
+    await _gsSyncCarregar();
+    if(!gsSrvAtivo()){ _gsSync.estado = 'parado'; return; }
+    if(_gsSync.adotado){ _gsSyncAtivar(); return; }
+    await _gsSyncDecidir();
+  }catch(e){ console.warn('[SYNC] início falhou:', e && e.message); _gsSyncRetentar('falha ao preparar: ' + ((e && e.message) || e)); }
+}
+function _gsSyncRetentar(motivo){
+  _gsSync.estado = 'parado'; _gsSync.motivo = motivo || '';
+  _gsSyncAtualizarRodape();
+  clearTimeout(_gsSync.timerRetentar);
+  _gsSync.timerRetentar = setTimeout(function(){ if(gsSrvAtivo()) _gsSyncIniciar(); }, 30000);
+}
+function _gsSyncCargaLocal(){ try{ return JSON.parse(localStorage.getItem(GS_SRV_CARGA_LS) || 'null') || {}; }catch(e){ return {}; } }
+async function _gsSyncDecidir(){
+  const r = await _gsSrvRpc('estado_sync', {}, 10000);
+  if(r.error || !r.data) return _gsSyncRetentar('sem conexão para conferir o servidor');
+  const est = r.data, cont = est.contagens || {};
+  const carga = _gsSyncCargaLocal();
+  const origem = carga.estado === 'concluida' && (est.cargas || []).some(function(c){
+    return c.carga_id === carga.carga_id && c.estado === 'concluida' && (!c.dispositivo_id || String(c.dispositivo_id) === _gsSync.dv);
+  });
+  const srvTem = GS_SYNC_TABS.some(function(t){ return (Number(cont[t]) || 0) > 0; });
+  const locTem = _gsSyncAparelhoTemDados();
+  if(origem) return _gsSyncAdotar('origem');
+  if(!srvTem && !locTem) return _gsSyncAdotar('vazio');
+  _gsSync.decisao = (carga.estado === 'em_andamento' || (!srvTem && locTem)) ? 'carga' : (!locTem ? 'baixar' : 'misturaria');
+  _gsSync.estado = 'decisao';
+  _gsSyncAtualizarRodape();
+  try{ const el = document.getElementById('srv-sync'); if(el){ el.innerHTML = _gsSyncPainelHTML(); _gsSyncLigarPainel(); } }catch(e){}
+}
+// modo: 'origem' (este aparelho fez a carga) · 'vazio' (os dois vazios) · 'baixar' (aparelho vazio)
+async function _gsSyncAdotar(modo, aoProgresso){
+  const prog = typeof aoProgresso === 'function' ? aoProgresso : function(){};
+  _gsSync.estado = 'adotando'; _gsSyncAtualizarRodape();
+  const linhas = {}; let cursor0 = null, pag = { tabela:null, depois:null }, total = 0;
+  for(let voltas = 0; pag && voltas < 20000; voltas++){
+    const r = await _gsSrvRpc('baixar_tudo', { p_tabela:pag.tabela, p_depois:pag.depois, p_limite:1000 }, 30000);
+    if(r.error || !r.data){
+      _gsSync.estado = (modo === 'baixar') ? 'decisao' : 'parado';
+      if(modo !== 'baixar') _gsSyncRetentar('falha ao baixar o estado do servidor');
+      _gsSyncAtualizarRodape();
+      return { ok:false, erro:(r.error && r.error.message) || 'sem resposta' };
+    }
+    if(cursor0 === null) cursor0 = Number(r.data.cursor) || 0;
+    (r.data.linhas || []).forEach(function(l){ (linhas[l.t] = linhas[l.t] || []).push(l); total++; });
+    prog(total, r.data.tabela);
+    pag = r.data.proxima;
+  }
+  if(modo === 'baixar' && _gsSyncAparelhoTemDados()){
+    _gsSync.estado = 'decisao'; _gsSync.decisao = 'misturaria'; _gsSyncAtualizarRodape();
+    return { ok:false, erro:'este aparelho passou a ter dados próprios — nada foi misturado' };
+  }
+  GS_SYNC_TABS.forEach(function(t){ _gsSync.base[t] = {}; _gsSync.sombra[t] = {}; _gsSync.raw[t] = {}; });
+  _gsSync.guardados = [];
+  const m = _gsSyncNovoMudou();
+  const locIncl = {};
+  if(modo === 'origem') GS_SYNC_INCLUSAO.forEach(function(t){ locIncl[t] = _gsSyncLocalInclusao(t); });
+  GS_SYNC_TABS.forEach(function(t){
+    (linhas[t] || []).forEach(function(l){
+      if((Number(l.s) || 1) > GS_SCHEMA){ _gsSync.guardados.push(l); return; }
+      const k = String(l.k);
+      // na ORIGEM, o que outro aparelho mudou depois da carga prevalece; o resto é deste aparelho
+      const doServidor = modo === 'baixar' || (modo === 'origem' && l.u && String(l.u) !== _gsSync.dv);
+      if(_gsSyncEhInclusao(t)){
+        _gsSync.base[t][k] = 1;
+        if(doServidor && !(locIncl[t] && locIncl[t][k])) _gsSyncInserirLocal(t, k, l.d, m);
+      } else {
+        _gsSync.base[t][k] = { v:Number(l.v), d:l.d, x:!!l.x };
+        if(doServidor) _gsSyncAplicarRegistro(t, k, _gsSync.base[t][k], m);
+      }
+    });
+    for(let i = 0; i < GS_SYNC_SHARDS; i++) _gsSync.shardsSujos[t + '|' + i] = true;
+  });
+  _gsSync.cursor = cursor0 || 0; _gsSync.adotado = true; _gsSync.modo = modo; _gsSync.decisao = null;
+  await _gsSyncGravarBase();
+  await _gsSyncGravarEstado();
+  if(_gsSync.guardados.length){ _gsSyncGravarGuardados(); _gsSyncAvisarAtualizar(); }
+  if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
+  try{ addLogSistema('Sincronização com o servidor LIGADA (' + ({ origem:'aparelho da carga inicial', vazio:'servidor e aparelho vazios', baixar:'dados baixados do servidor' })[modo] +
+    ') — ' + total + ' registro(s) do servidor, ponto ' + _gsSync.cursor, { aud:true, acao:'sync_iniciada', alvo:modo, origem:modo === 'baixar' ? 'usuario' : 'automatico' }); }catch(e){}
+  _gsSyncAtivar();
+  return { ok:true, total:total, cursor:_gsSync.cursor };
+}
+function _gsSyncAtivar(){
+  _gsSync.estado = 'ativo'; _gsSync.motivo = ''; _gsSync.decisao = null;
+  _gsSyncInstalarGanchos();
+  _gsSyncAplicarGuardados();
+  _gsSyncDetectar({ todas:true });
+  _gsSyncAgendarEnvio(0);
+  _gsSyncReceber('abertura');
+  clearInterval(_gsSync.timerPull);
+  _gsSync.timerPull = setInterval(function(){
+    if(_gsSync.estado !== 'ativo') return;
+    _gsSyncDetectar({ todas:true });          // rede de segurança: o que nenhum gancho viu
+    _gsSyncReceber('consulta de 30 s');
+    if(_gsSync.fila.length && !_gsSync.enviando) _gsSyncAgendarEnvio(0);
+  }, GS_SYNC_PULL_MS);
+  _gsSyncAssinarTempoReal();
+  _gsSyncAtualizarRodape();
+}
+function _gsSyncAplicarGuardados(){
+  if(!_gsSync.guardados.length) return;
+  const agora = _gsSync.guardados.filter(function(l){ return (Number(l.s) || 1) <= GS_SCHEMA; });
+  if(!agora.length) return;
+  _gsSync.guardados = _gsSync.guardados.filter(function(l){ return (Number(l.s) || 1) > GS_SCHEMA; });
+  // versão menor ou igual à base é ignorada lá dentro — reaplicar é seguro
+  agora.forEach(function(l){ if(_gsSyncEhEspelho(l.t)){ const b = _gsSyncTab(_gsSync.base, l.t)[l.k]; if(b && b.v >= l.v) delete _gsSync.base[l.t][l.k]; } });
+  _gsSyncAplicarLinhas(agora);
+  _gsSyncGravarGuardados();
+}
+function _gsSyncAvisarAtualizar(){
+  if(!_gsSync.avisoGuardados){
+    _gsSync.avisoGuardados = true;
+    try{ showToast('⬆️ Chegaram dados de uma versão mais nova do app — atualize o GarageSpot (fechar e abrir).', 7000); }catch(e){}
+    try{ addLogSistema('Registros de versão mais nova guardados sem aplicar — o app precisa ser atualizado', { aud:true, acao:'sync_schema_novo', origem:'automatico' }); }catch(e){}
+  }
+  _gsSyncAtualizarRodape();
+  _gsVersaoConferir();
+}
+function _gsSyncParar(){
+  _gsSync.estado = 'parado'; _gsSync.decisao = null; _gsSync.motivo = '';
+  clearTimeout(_gsSync.timerEnvio); clearTimeout(_gsSync.timerDet); clearTimeout(_gsSync.timerRetentar); clearInterval(_gsSync.timerPull);
+  _gsSync.timerEnvio = _gsSync.timerDet = _gsSync.timerRetentar = _gsSync.timerPull = null;
+  try{ const cli = _gsSrvCli; if(cli && _gsSync.canal) cli.removeChannel(_gsSync.canal); }catch(e){}
+  _gsSync.canal = null;
+  // os ARQUIVOS ficam (fila, base, ponto): religar continua de onde parou
+  _gsSync.base = {}; _gsSync.sombra = {}; _gsSync.raw = {}; _gsSync.fila = [];
+  _gsSyncAtualizarRodape();
+}
+
+// ── ganchos (instalados SÓ quando a sincronização liga) ─────────────────────
+function _gsSyncEnvolver(nome, antes, depois){
+  const orig = window[nome];
+  if(typeof orig !== 'function' || orig.__gsSync) return false;
+  const w = function(){
+    try{ if(antes) antes(arguments); }catch(e){}
+    const r = orig.apply(this, arguments);
+    try{ if(depois) depois(arguments); }catch(e){}
+    return r;
+  };
+  w.__gsSync = true; w.__gsOrig = orig;
+  window[nome] = w;
+  return true;
+}
+function _gsSyncInstalarGanchos(){
+  if(_gsSync.ganchos) return;
+  _gsSync.ganchos = true;
+  // detector: toda gravação local marca a tabela como suja
+  [['saveHospedagens', ['hospedagens']], ['saveData', ['vagas', 'passeio']], ['saveHistorico', ['eventos']],
+   ['addHistorico', ['eventos']], ['iniciarHistorico', ['eventos']], ['saveRecargas', ['recargas_ativas']],
+   ['saveRecargaHist', ['recargas_encerradas']], ['saveFilaRecarga', ['fila_recarga']], ['saveVistorias', ['vistorias']]
+  ].forEach(function(p){ _gsSyncEnvolver(p[0], null, function(){ p[1].forEach(_gsSyncMarcarSuja); }); });
+  _gsSyncEnvolver('addLogSistema', null, function(a){ if(a[1] && a[1].aud) _gsSyncMarcarSuja('trilha'); });
+  // ações explícitas (a intenção é anotada ANTES: a ação externa dá o nome)
+  [['saveV', function(a){ return a[7] ? 'checkin' : 'retorno_passeio'; }, 0],
+   ['_nciCommitCheckin', 'checkin_nci'], ['_aplicarDesignacaoExec', 'designar_vaga', 0], ['_aplicarDesignacaoAutomatica', 'designar_vaga', 0],
+   ['executarMove', 'mover', 1], ['aplicarHMerge', 'vaga_merge', 0], ['desfazHMerge', 'vaga_merge_desfeito', 0],
+   ['trocarParaGrande', 'vaga_grande', 0], ['trocarParaPequeno', 'vaga_pequena', 0], ['_doOutExec', 'saida_passeio', 2],
+   ['_vstConfirmar', 'vistoria_criada'], ['_nciCommitNovaVistoriaAdicional', 'vistoria_adicional'],
+   ['iniciarRecarga', 'recarga_iniciada', 0], ['_prolongarRecargaAplicar', 'recarga_prolongada', 0],
+   ['_rcEncerrarConfirmar', 'recarga_encerrada', 0], ['_removerDaFilaRecarga', 'recarga_fila_saida'],
+   ['_rcConsumirRemanejamento', 'recarga_remanejamento', 0]
+  ].forEach(function(p){
+    _gsSyncEnvolver(p[0], function(a){ _gsSyncAcao(typeof p[1] === 'function' ? p[1](a) : p[1], p[2] == null ? null : a[p[2]]); }, null);
+  });
+  // fechar um modal que ficou desatualizado redesenha o que está por baixo
+  _gsSyncEnvolver('closeOv', null, function(){
+    if(!_gsSync.modalDesatualizado) return;
+    _gsSync.modalDesatualizado = false;
+    try{ const pw = document.getElementById('painel-wrap'); if(pw && pw.style.display !== 'none') renderPainelDia(); }catch(e){}
+    try{ const rw = document.getElementById('recarga-wrap'); if(rw && rw.style.display !== 'none') renderTelaRecarga(); }catch(e){}
+    try{ upd(); }catch(e){}
+  });
+  if(!_gsSync.ouvintes){
+    _gsSync.ouvintes = true;
+    window.addEventListener('online', function(){
+      if(_gsSync.estado === 'ativo'){ _gsSync.proxEnvio = 0; _gsSync.falhas = 0; _gsSyncAgendarEnvio(500); setTimeout(function(){ _gsSyncReceber('conexão voltou'); }, 800); }
+      else if(gsSrvAtivo() && _gsSync.estado === 'parado') _gsSyncIniciar();
+    });
+    document.addEventListener('visibilitychange', function(){
+      if(_gsSync.estado !== 'ativo') return;
+      if(document.visibilityState === 'hidden'){ _gsSyncDetectar({ todas:true }); _gsSyncGravarBase(); }
+      else { _gsSyncReceber('app reaberto'); if(_gsSync.fila.length){ _gsSync.proxEnvio = 0; _gsSyncAgendarEnvio(300); } }
+    });
+  }
+}
+
+// ── rodapé e tela ───────────────────────────────────────────────────────────
+function _gsSyncRodapeExtra(){
+  if(!_gsSrvLigado()) return '';
+  if(_gsSync.estado === 'decisao') return ' · sincronização aguardando decisão (Gestão → Servidor)';
+  if(_gsSync.estado === 'adotando') return ' · baixando dados do servidor…';
+  const n = _gsSync.fila.length;
+  if(n) return ' · ' + n + (n === 1 ? ' ação aguardando envio' : ' ações aguardando envio');
+  if(_gsSync.guardados.length) return ' · atualize o app';
+  return '';
+}
+let _gsSyncRodapeUlt = '';
+function _gsSyncAtualizarRodape(){
+  try{
+    const t = _gsSrvRodapeTexto();
+    if(t === _gsSyncRodapeUlt) return;
+    _gsSyncRodapeUlt = t;
+    _gsSrvAtualizarRodape();
+    const el = document.getElementById('srv-estado'); if(el) el.textContent = t;
+  }catch(e){}
+}
+function _gsSyncPainelHTML(){
+  const e = _gsSync.estado;
+  const caixa = function(cor, fundo, html){ return '<div style="background:' + fundo + ';border:1px solid ' + cor + ';border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.45">' + html + '</div>'; };
+  if(e === 'ativo'){
+    const n = _gsSync.fila.length;
+    return caixa('#9FD4C2', '#EAF7F2', '<strong>🔄 Sincronização ligada</strong><br>' +
+      (n ? n + (n === 1 ? ' ação aguardando envio' : ' ações aguardando envio') : 'Tudo enviado') +
+      ' · último recebimento ' + (_gsSync.ultimoRecebimento ? _dtLocal(_gsSync.ultimoRecebimento) : '—') +
+      ' · tempo real: ' + (_gsSync.rt === 'SUBSCRIBED' ? 'conectado' : 'consulta a cada 30 s') +
+      (_gsSync.recusadas ? '<br><span style="color:#A32D2D">' + _gsSync.recusadas + ' ação(ões) recusada(s) pelo servidor, guardada(s) para conferência</span>' : '') +
+      (_gsSync.guardados.length ? '<br><span style="color:#A32D2D">Há dados de uma versão mais nova — atualize o app</span>' : '') +
+      '<div style="color:#888;font-size:11px;margin-top:3px">Fotos e PDFs ainda não viajam entre aparelhos.</div>');
+  }
+  if(e === 'decisao' && _gsSync.decisao === 'baixar'){
+    return caixa('#B9D6F2', '#EEF6FF', '<strong>O servidor já tem os dados da empresa</strong> e este aparelho está vazio.<br>Baixe os dados para este aparelho passar a sincronizar (fotos não descem nesta versão).' +
+      '<button class="bsv" id="srv-baixar" style="width:100%;margin-top:8px">⬇️ Baixar dados do servidor</button>');
+  }
+  if(e === 'decisao' && _gsSync.decisao === 'misturaria'){
+    return caixa('#E8A8A8', '#FFF1F1', '<strong>Este aparelho tem dados próprios, e o servidor já tem os dados da empresa</strong> (enviados por outro aparelho).<br>' +
+      'Para não misturar os dois, nada é sincronizado. Juntar os dados será decidido numa próxima etapa.<br>Neste aparelho, a única opção agora é <strong>desligar o servidor</strong> e seguir no modo local — nada é apagado.');
+  }
+  if(e === 'decisao' && _gsSync.decisao === 'carga'){
+    return caixa('#E8C77A', '#FFF8E8', '<strong>Envie os dados deste aparelho (carga inicial)</strong> para começar a sincronizar.');
+  }
+  if(e === 'preparando' || e === 'adotando') return caixa('#ddd', '#f7f7f7', '⏳ Preparando a sincronização…');
+  return caixa('#ddd', '#f7f7f7', 'Sincronização parada' + (_gsSync.motivo ? ' — ' + _vtEsc(_gsSync.motivo) + ' (tenta de novo sozinha)' : '') + '.');
+}
+function _gsSyncLigarPainel(){
+  const b = document.getElementById('srv-baixar');
+  if(b) b.onclick = function(){ showEntrarPIN(function(){ _gsSyncBaixarNaTela(); }); };
+}
+async function _gsSyncBaixarNaTela(){
+  showM('<div class="mt">⬇️ Baixar dados do servidor</div><div class="ms" id="srv-bx-ms">Baixando…</div>' +
+    '<div style="font-size:11px;color:#888">Fotos e PDFs não descem nesta versão.</div>');
+  const r = await _gsSyncAdotar('baixar', function(n, tab){ const ms = document.getElementById('srv-bx-ms'); if(ms) ms.textContent = 'Baixando ' + tab + '… (' + n + ' registro(s))'; });
+  showM('<div class="mt">⬇️ Baixar dados do servidor</div>' +
+    '<div class="ms" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
+    (r.ok ? '✅ ' + r.total + ' registro(s) baixado(s). Este aparelho passa a sincronizar.' : '⚠️ ' + _vtEsc(r.erro || 'não concluído')) + '</div>' +
+    '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+}
+
+// ── Bloco F: regra provisória do Drive (até a sessão D) ─────────────────────
+// Com login, SÓ o aparelho de letra A escreve no Drive. Os demais seguem com o
+// backup LOCAL; o que iria para a nuvem fica pendente no próprio aparelho.
+const _gsDriveSoAAvisado = {};
+function _gsDriveSoA(oque){
+  try{
+    if(!gsSrvAtivo()) return false;
+    if(String(_gsSrvLer().letra || '') === 'A') return false;
+    if(oque && !_gsDriveSoAAvisado[oque]){ _gsDriveSoAAvisado[oque] = true; console.log('[DRIVE] ' + oque + ': ' + GS_DRIVE_SO_A_MSG); }
+    return true;
+  }catch(e){ return false; }
+}
+
+// ── Bloco G: versão publicada e recarga só com o app ocioso ─────────────────
+function _gsMarcarToque(){ _gsUltimoToque = Date.now(); }
+try{ ['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(function(ev){ document.addEventListener(ev, _gsMarcarToque, { capture:true, passive:true }); }); }catch(e){}
+function _gsAppOcioso(){
+  const on = function(id){ const el = document.getElementById(id); return !!(el && el.classList.contains('on')); };
+  if(on('ov')) return { ok:false, motivo:'modal aberto' };
+  if(on('nci-overlay') || (typeof _nciD !== 'undefined' && _nciD)) return { ok:false, motivo:'check-in em andamento' };
+  if(document.getElementById('vst-modal-aux')) return { ok:false, motivo:'janela aberta' };
+  if(on('expansao-overlay')) return { ok:false, motivo:'lista aberta' };
+  if((typeof dragState !== 'undefined' && dragState) || on('move-banner')) return { ok:false, motivo:'carro sendo movido' };
+  if(typeof MODO_DESIGNACAO !== 'undefined' && MODO_DESIGNACAO) return { ok:false, motivo:'designação em andamento' };
+  if(Date.now() - _gsUltimoToque < GS_OCIOSO_MS) return { ok:false, motivo:'toque recente' };
+  if(_gsSync.fila.some(function(it){ return !it.gravadoOk; })) return { ok:false, motivo:'fila ainda sendo gravada' };
+  if(_gsSync.estado === 'adotando') return { ok:false, motivo:'baixando dados' };
+  return { ok:true };
+}
+function _gsRecarregarPagina(){ location.reload(); }
+function _gsVersaoTentarRecarregar(){
+  clearTimeout(_gsVersaoOciosoTimer);
+  if(!_gsVersaoNova || !gsSrvAtivo()) return false;
+  const o = _gsAppOcioso();
+  if(!o.ok){ _gsVersaoOciosoTimer = setTimeout(_gsVersaoTentarRecarregar, 15000); return false; }
+  // a CDN do Pages pode servir o HTML antigo por alguns minutos: não insistir em laço
+  try{
+    const u = JSON.parse(sessionStorage.getItem('gs_versao_recarga') || 'null');
+    if(u && u.alvo === _gsVersaoNova && Date.now() - u.ts < 15 * 60 * 1000){ _gsVersaoOciosoTimer = setTimeout(_gsVersaoTentarRecarregar, 5 * 60 * 1000); return false; }
+    sessionStorage.setItem('gs_versao_recarga', JSON.stringify({ alvo:_gsVersaoNova, ts:Date.now() }));
+  }catch(e){}
+  try{ addLogSistema('Versão ' + _gsVersaoNova + ' publicada — app recarregado com a tela ociosa (estava na ' + GS_VERSION + ')', { aud:true, acao:'app_recarregado_versao', alvo:_gsVersaoNova, origem:'automatico' }); }catch(e){}
+  _gsRecarregarPagina();
+  return true;
+}
+async function _gsVersaoConferir(){
+  if(!gsSrvAtivo()) return null;
+  try{
+    const r = await fetch('version.json?t=' + Date.now(), { cache:'no-store' });
+    if(!r.ok) return null;
+    const j = await r.json();
+    const v = String((j && j.version) || '');
+    if(/^v\d+(\.\d+)+$/.test(v) && v !== GS_VERSION){ _gsVersaoNova = v; _gsVersaoTentarRecarregar(); }
+    return v;
+  }catch(e){ return null; }
+}
+function _gsVersaoIniciar(){
+  if(_gsVersaoTimer || !gsSrvAtivo()) return;
+  _gsVersaoTimer = setInterval(function(){ if(gsSrvAtivo()) _gsVersaoConferir(); }, GS_VERSAO_MS);
+}
+function _gsVersaoParar(){ clearInterval(_gsVersaoTimer); _gsVersaoTimer = null; clearTimeout(_gsVersaoOciosoTimer); _gsVersaoNova = null; }
 
 // ════════════════════════════════════════════════════════════════════════════
 // v1.9.9.5 — CAMADA ÚNICA DE ARQUIVOS (fotos, documentos, assinaturas, vistorias)
