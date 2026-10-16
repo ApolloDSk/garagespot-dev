@@ -1365,7 +1365,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.2.0.0';
+const GS_VERSION = 'v2.3.0.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 29;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
@@ -4951,8 +4951,9 @@ function confirmarUsuario(acao, callback){
       _emPlantao=function(u){ return estaNoExpediente(u); };
     }
   } catch(e){ console.error('[plantao] fonte do destaque falhou, usando expediente', e); _emPlantao=function(u){ return estaNoExpediente(u); }; }
-  const noExp=_usrLanc.filter(_emPlantao).sort((a,b)=>a.nome.localeCompare(b.nome));
-  const foraExp=_usrLanc.filter(u=>!_emPlantao(u)).sort((a,b)=>a.nome.localeCompare(b.nome));
+  // v2.3.0.0: ativos primeiro, inativos abaixo — cada grupo em ordem alfabética
+  const noExp=gsUsrOrdenados(_usrLanc.filter(_emPlantao));
+  const foraExp=gsUsrOrdenados(_usrLanc.filter(u=>!_emPlantao(u)));
   const todosForaOuSemExp=noExp.length===0;
 
   function renderItemUsr(u){
@@ -5133,7 +5134,7 @@ function showModalUsuarios(){
       </div>`;
   }
   function renderLista(){
-    const lista=[...USUARIOS].sort((a,b)=>a.nome.localeCompare(b.nome));
+    const lista=gsUsrOrdenados(USUARIOS);   // v2.3.0.0: ativos primeiro, inativos abaixo
     const listaHTML=lista.length===0
       ?'<span style="font-size:12px;color:#bbb;font-style:italic">Nenhum usuário cadastrado</span>'
       :lista.map(itemUsrHTML).join('');
@@ -5157,7 +5158,7 @@ function showModalUsuarios(){
     window._pinUsr=(uid)=>{ const u=USUARIOS.find(x=>x.id===uid); if(u) _usrDefinirPin(u, renderLista); };
     window._filtrarUsr=(q)=>{
       const ql=String(q||'').toLowerCase();
-      const f=USUARIOS.filter(u=>(u.nome||'').toLowerCase().includes(ql)||(u.cargo||'').toLowerCase().includes(ql)).sort((a,b)=>a.nome.localeCompare(b.nome));
+      const f=gsUsrOrdenados(USUARIOS.filter(u=>(u.nome||'').toLowerCase().includes(ql)||(u.cargo||'').toLowerCase().includes(ql)));
       const el=document.getElementById('lista-usr'); if(!el) return;
       el.innerHTML=f.length===0?'<span style="font-size:12px;color:#bbb">Sem resultado</span>':f.map(itemUsrHTML).join('');
     };
@@ -5587,7 +5588,7 @@ function showEditarPlantao(){
     const ativos=new Set(pl.membros.map(function(u){return u.id;}));
     const escTxt=function(u){ return u.escala==='12x36'?(' · 12x36 '+(u.diaAB||'')+'/'+(u.turno12||'')):''; };
     // (1) No plantão agora — cada um com Remover
-    const noPlantao=pl.membros.slice().sort(function(a,b){return a.nome.localeCompare(b.nome);});
+    const noPlantao=gsUsrOrdenados(pl.membros);
     const plantaoHTML = noPlantao.length===0
       ? '<span style="font-size:12px;color:#bbb;font-style:italic">Ninguém no plantão agora</span>'
       : noPlantao.map(function(u){
@@ -5600,7 +5601,7 @@ function showEditarPlantao(){
     // (2) Lista de cadastrados para incluir (só os que NÃO estão no plantão)
     let incluirBloco='';
     if(_plantaoModoIncluir){
-      const candidatos=[...USUARIOS].filter(function(u){return !ativos.has(u.id);}).sort(function(a,b){return a.nome.localeCompare(b.nome);});
+      const candidatos=gsUsrOrdenados([...USUARIOS].filter(function(u){return !ativos.has(u.id);}));
       const candHTML = candidatos.length===0
         ? '<span style="font-size:12px;color:#bbb;font-style:italic">Todos os cadastrados já estão no plantão</span>'
         : candidatos.map(function(u){
@@ -6057,7 +6058,11 @@ function renderAgrupadoresPainel(){
   set('rec-fila', recFila);
 
   // Badge no agrupador Pendências — Melhoria 3: NÃO inclui atrasados (movidos para Hoje)
-  const totalPend=semVaga+semAssin;
+  // v2.3.0.0 (Bloco G): UM escritor só do selo — com o servidor ligado ele soma TODOS os tipos
+  // abertos (pendências do servidor + hospedagens sem vaga), igual em todos os aparelhos.
+  // Antes, este ponto gravava só as locais e apagava o que `_gsPendAtualizarPainel` tinha somado.
+  const totalPend=semVaga+semAssin+(typeof gsPendContagem==='function'?gsPendContagem():0);
+  try{ const tS=document.getElementById('pend-servidor'); if(tS) tS.textContent=(typeof gsPendContagem==='function'?gsPendContagem():0); }catch(e){}
   const grupoPend=document.getElementById('grupo-pendencias');
   const badgePend=document.getElementById('pendencias-badge');
   if(grupoPend && badgePend){
@@ -6562,10 +6567,11 @@ const GESTAO_PIN_KEY='garagespot_gestao_pin';
 // — a tentativa seguinte saía deslocada por um dígito órfão e falhava, e o erro
 // re-armava a armadilha. Ver `_gsPinTeclado`, que é o ponto único do teclado.
 //
-// SENHA_DEV é CONSTANTE NO CÓDIGO de propósito: é imune a qualquer perda de
-// dado no aparelho e funciona mesmo sem PIN guardado. Fica visível no HTML
-// público — aceito como fallback até a fase de servidor.
-const SENHA_DEV='1022';
+// v2.3.0.0 (Bloco I): a senha de emergência NÃO está mais no HTML. O HTML guarda
+// só o HASH com sal (`SENHA_DEV_HASH`, junto do módulo do servidor D); a senha
+// fica no `.env.local` do Douglas. Ela continua imune a perda de dado no aparelho
+// e funciona offline — entra pelo link "Senha de emergência" da tela de PIN.
+// O antigo 1022 deixou de valer.
 
 // Lê o PIN guardado de forma tolerante. Devolve 4 dígitos ou null.
 // Tolera valor com espaços e valor gravado como JSON ("1200") por versão
@@ -6614,6 +6620,8 @@ function _gsPinGravar(pin){
 function _gsPinGarantido(){
   const p=_gsPinGuardado();
   if(p) return p;
+  // v2.3.0.0: com o PIN do gestor em HASH (texto apagado no servidor), não semeia o de fábrica
+  try{ if(typeof _gsPinHashGestor==='function' && _gsPinHashGestor()) return null; }catch(e){}
   _gsPinGravar('1200');
   return '1200';
 }
@@ -6624,17 +6632,16 @@ function _gsPinGarantido(){
 function _gsPinValido(digitado){
   try{
     const d=String(digitado===undefined||digitado===null?'':digitado).trim();
-    if(d===SENHA_DEV) return true;          // quebra-vidro: sempre passa
-    const hg=_gsPinHashGestor();             // v2.2.0.0: com hash, SÓ o hash vale (o texto antigo não)
+    const hg=_gsPinHashGestor();            // v2.2.0.0: com hash, SÓ o hash vale (o texto antigo não)
     if(hg) return _gsPinHashConfere(hg, d);
     const bruto=_gsPinLerBruto();
-    if(bruto.erro) return false;            // armazenamento ilegível → só a senha dev
+    if(bruto.erro) return false;            // armazenamento ilegível → só a senha de emergência (link próprio)
     const p=_gsPinNormalizar(bruto.valor);
     if(p) return d===p;
     return d==='1200';           // sem PIN utilizável guardado, vale o default
   }catch(e){
-    console.warn('[PIN] validação lançou, caindo no quebra-vidro:',e&&e.message);
-    try{ return String(digitado||'').trim()===SENHA_DEV; }catch(_){ return false; }
+    console.warn('[PIN] validação lançou (a senha de emergência continua pelo link próprio):',e&&e.message);
+    return false;
   }
 }
 
@@ -6785,20 +6792,18 @@ function showEntrarPIN(callback){
         <button class="pin-key" onclick="closeOv()" style="font-size:11px;color:#888">✕</button>
         <button class="pin-key" onclick="pinKey('0')">0</button>
         <button class="pin-key del" onclick="pinDel()">⌫</button>
-      </div>`;
+      </div>${_gsSenhaEmergenciaHTML()}`;
     document.getElementById('ov').classList.add('on');
   }
   render();
-  // v1.9.4.13: validação pelo ponto único (aceita o PIN do gestor OU a SENHA_DEV)
-  _gsPinTeclado(function(tentativa){
+  // v1.9.4.13: validação pelo ponto único (PIN do gestor)
+  const tec=_gsPinTeclado(function(tentativa){
     if(!_gsPinValido(tentativa)) return false;
-    // v1.9.4.15: o uso do quebra-vidro fica na trilha (é acesso nível gestor
-    // sem o PIN do gestor — tem de deixar rastro).
-    try{ if(String(tentativa)===SENHA_DEV) addLogSistema('Acesso de gestor liberado pela senha dev',
-      {aud:true, acao:'senha_dev_usada'}); }catch(e){}
     callback();
     return true;
   });
+  // v2.3.0.0: senha de emergência (só o hash no HTML; o uso fica na trilha)
+  _gsSenhaEmergenciaLigar(function(){ try{ window.pinKey=function(){}; window.pinDel=function(){}; }catch(e){} callback(); });
 }
 
 function alterarPIN(){
@@ -6816,11 +6821,12 @@ function alterarPIN(){
         <button class="pin-key" onclick="closeOv()" style="font-size:11px;color:#888">✕</button>
         <button class="pin-key" onclick="pinKey('0')">0</button>
         <button class="pin-key del" onclick="pinDel()">⌫</button>
-      </div>`;
+      </div>${step===1?_gsSenhaEmergenciaHTML():''}`;
     document.getElementById('ov').classList.add('on');
+    // v2.3.0.0: no passo 1, a senha de emergência (link) resolve "esqueci o PIN"
+    if(step===1) _gsSenhaEmergenciaLigar(function(){ step=2; renderStep(); });
     // v1.9.4.13: mesmo teclado único do showEntrarPIN (sem dessincronismo de
-    // bolinhas, sem toque duplicado). O passo 1 aceita o PIN do gestor OU a
-    // SENHA_DEV — é assim que "esqueci o PIN" se resolve: senha dev → Alterar PIN.
+    // bolinhas, sem toque duplicado).
     _gsPinTeclado(function(tentativa){
       if(step===1){
         if(!_gsPinValido(tentativa)) return false;
@@ -11988,7 +11994,7 @@ async function _gdPodaLixeira(token, id){
 
 async function _gdPodaExecutarNuvem(){
   if(_gsSuspenso('limpeza da nuvem')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
-  if(_gsDriveSoA('limpeza da nuvem')) return { ok:false, erro:GS_DRIVE_SO_A_MSG };   // v2.1.0.0
+  if(_gsDriveSoA('limpeza da nuvem')) return { ok:false, erro:_gsDriveMsg() };   // v2.1.0.0
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = await _gdPodaSimularNuvem();
   if(plano.indisponivel) return { ok:false, erro:'nuvem não conectada' };
@@ -13138,7 +13144,7 @@ function _gsConfirmarImportacao(obj, nomeArq){
     if(!b) return;
     b.onclick = function(){
       // PIN do gestor antes de mexer nos dados
-      const pinSalvo = _gsPinGuardado();   // v1.9.4.13: leitura normalizada/fail-safe
+      const pinSalvo = _gsPinGuardado() || _gsPinHashGestor();   // v1.9.4.13 (+ v2.3.0.0: o PIN em hash também conta)
       const aplicar = async function(){
         showToast('Importando...',3000);
         const res = await _gsAplicarBackup(obj, nomeArq);
@@ -13504,7 +13510,7 @@ async function _gdFetch(url, opts, token, etapa){
   // v2.1.0.0 (Bloco F) — GARANTIA: com login, fora do aparelho A nenhuma ESCRITA chega ao Drive,
   // mesmo que um caminho novo esqueça a trava de entrada. Leitura (GET) continua.
   if(String(opts.method || 'GET').toUpperCase() !== 'GET' && _gsDriveSoA('chamada de escrita ao Drive')){
-    const eA = new Error(GS_DRIVE_SO_A_MSG); eA.gdNaoEscritor = true; throw eA;
+    const eA = new Error(_gsDriveMsg()); eA.gdNaoEscritor = true; throw eA;
   }
   const headers = Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + token });
   const r = await fetch(url, Object.assign({}, opts, { headers: headers }));
@@ -13919,7 +13925,10 @@ function desconectarGoogleDrive(){
 // v1.9.9.1 — `json` pode ser uma STRING ou um BLOB (ver `_gdEnviarArquivo`). O
 // caminho do backup COMPLETO passa Blob; todo o resto continua passando texto.
 async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
-  if(_gsDriveSoA('envio de backup')) return {ok:false, erro:GS_DRIVE_SO_A_MSG};   // v2.1.0.0 (Bloco F)
+  if(_gsDriveSoA('envio de backup')) return {ok:false, erro:_gsDriveMsg()};   // v2.1.0.0 (Bloco F)
+  // v2.3.0.0 (Bloco E): o backup COMPLETO só sobe com as filas leve E pesada vazias — senão o
+  // arquivo da nuvem ficaria atrás do que este aparelho ainda não entregou ao servidor.
+  if(gsFilasDoServidorPendentes()){ _gdAdiarEnvio('filas do servidor ainda não vazias'); return {ok:false, adiado:true, erro:'aguardando o envio ao servidor terminar (' + gsFilasDoServidorPendentes() + ' item(ns) nas filas)'}; }
   if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste aparelho'};
   if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
   if(_gdEnviando)      return {ok:false, erro:'já há um envio em andamento'};
@@ -14319,7 +14328,13 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
     // v1.9.9.4: em modo protegido o PDF (já salvo no aparelho) entra na fila e sobe depois.
     if(_GS_PROT){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'modo protegido'); return; }
     // v2.1.0.0 (Bloco F): fora do aparelho A o PDF fica salvo e PENDENTE aqui (sessão D leva ao A)
-    if(_gsDriveSoA('PDF de fechamento')){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, GS_DRIVE_SO_A_MSG); return; }
+    // v2.3.0.0 (Bloco E): fora do responsável, o PDF segue pela FILA PESADA ao servidor e o
+    // responsável o leva ao Drive. Sem a fila pesada (sem sincronização), fica pendente aqui.
+    if(_gsDriveSoA('PDF de fechamento')){
+      if(!gsPesadaPdf(nomeArquivo, b64, 'pdf_fechamento', { apt:apt || null, checkin:checkinTs || null }))
+        _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, _gsDriveMsg());
+      return;
+    }
     if(!_gdDisponivel() || !_gdConectado()){ _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, 'Drive não conectado'); return; }
     _gdEnviarPDFFechamento(nomeArquivo, b64, apt, checkinTs).then(function(r){
       _gdTirarPDFPendente(nomeArquivo);
@@ -14327,6 +14342,8 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
       // começa a contar — e é a única coisa que autoriza a limpeza a alcançá-lo.
       try{ _gsMarcarPDFNaNuvem(nomeArquivo, r && r.id); }catch(eM){}
       addLogSistema('PDF de fechamento enviado à nuvem: ' + nomeArquivo);
+      // v2.3.0.0: as fotos/documentos desta hospedagem foram ao Drive DENTRO do PDF — o servidor fica sabendo
+      try{ const c = _gdHistClassificar(nomeArquivo); if(c && c.gs && gsSrvAtivo()) _gsPesadaConfirmarDriveDoGs(c.gs).catch(function(){}); }catch(eC){}
     }, function(e){
       _gdMarcarPDFPendente(nomeArquivo, apt, checkinTs, (e && e.message) || 'falha no envio');
       _gdMarcarFalha((e && e.message) || 'falha ao enviar o PDF', (e && e.gdDet) || null);
@@ -15394,7 +15411,7 @@ async function _gdTentarPendente(){
 }
 
 async function fazerBackupNuvemAgora(){
-  if(_gsDriveSoA('backup na nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho A. O backup local continua normal.', 5000); return {ok:false, erro:GS_DRIVE_SO_A_MSG}; }   // v2.1.0.0
+  if(_gsDriveSoA('backup na nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return {ok:false, erro:_gsDriveMsg()}; }   // v2.1.0.0
   if(!_gdDisponivel()){
     showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000);
     return {ok:false, erro:'nuvem indisponível neste aparelho'};
@@ -15731,7 +15748,7 @@ async function _gsChecarIntegridade(){
           showToast('✅ Restaurado: +'+res.anexosItens+' anexos, +'+res.vistorias+' vistorias, +'+res.usuarios+' funcionários',6000);
           closeOv();
         };
-        const pinSalvo = _gsPinGuardado();   // v1.9.4.13: leitura normalizada/fail-safe
+        const pinSalvo = _gsPinGuardado() || _gsPinHashGestor();   // v1.9.4.13 (+ v2.3.0.0: o PIN em hash também conta)
         if(!pinSalvo){ aplicar(); return; }
         showEntrarPIN(function(){ aplicar(); });
       };
@@ -17176,6 +17193,9 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
       // v1.9.6.6: entra no registro de documentos do aparelho. Sem registro não há
       // confirmação na nuvem, e sem confirmação a limpeza nunca o alcança.
       try{ if(_ent && _ent.salvo && _ent.nome) _gsRegistrarPDFLocal(_ent.nome, 'recarga'); }catch(e){}
+      // v2.3.0.0 (Bloco E): fora do responsável, o comprovante vai ao Drive pelo servidor (fila pesada)
+      try{ if(gsSrvAtivo() && !gsSouResponsavel() && docPdf && typeof docPdf.output === 'function')
+        gsPesadaPdf(((_ent && _ent.nome) || nome).replace(/\.pdf$/i, '') + '.pdf', docPdf.output('datauristring'), 'pdf_recarga', { gs:r.hospedagem || '', apt:r.apt || null }); }catch(e){}
     }catch(e){
       _rcEncerrarFalhou(vagaId, e, true);
       _rcDispararRetomada();
@@ -18496,7 +18516,7 @@ function _gdContarPendentes(){
 // Fail-safe por fila: uma que falhe não impede as outras de tentarem.
 async function _gdReenviarPendentes(motivo, opts_progresso){
   const antes = _gdContarPendentes();
-  if(_gsDriveSoA('reenvio de pendentes')) return { antes:antes, depois:antes, reenviados:0, erro:GS_DRIVE_SO_A_MSG };   // v2.1.0.0
+  if(_gsDriveSoA('reenvio de pendentes')) return { antes:antes, depois:antes, reenviados:0, erro:_gsDriveMsg() };   // v2.1.0.0
   if(!antes.total) return { antes:antes, depois:antes, reenviados:0 };
   _gdProxTentativaTs = 0;
   // v1.9.9.1 — AS TRÊS FILAS, UMA DE CADA VEZ, COM O EVENT LOOP DEVOLVIDO ENTRE
@@ -18537,7 +18557,7 @@ async function _gdReenviarPendentes(motivo, opts_progresso){
 // v1.9.9.0 — e RECONECTA, quando é disso que a nuvem precisa, e esvazia as filas.
 function _gdForcarPeloRodape(){
   try{
-    if(_gsDriveSoA('rodapé da nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho A. O backup local continua normal.', 5000); return Promise.resolve(); }   // v2.1.0.0
+    if(_gsDriveSoA('rodapé da nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return Promise.resolve(); }   // v2.1.0.0
     if(!_gdDisponivel()){
       showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
       return Promise.resolve();
@@ -18694,7 +18714,7 @@ function _renderNuvemStatus(){
     ${_gdEspacoAvisoHTML()}
     ${_gdPdfsPendentesHTML()}
     ${_gdHistProgressoHTML()}
-    ${_gsDriveSoA('') ? '<button class="bsv" id="btn-nuvem-agora" disabled aria-disabled="true" style="width:100%;margin-top:8px;background:#bdbdbd;border-color:#bdbdbd;color:#fff;cursor:not-allowed">☁️ Fazer backup na nuvem agora</button><div id="drive-so-a" style="font-size:11px;color:#777;margin-top:4px;text-align:center">' + GS_DRIVE_SO_A_MSG + '</div>' : '<button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>'}
+    ${_gsDriveSoA('') ? '<button class="bsv" id="btn-nuvem-agora" disabled aria-disabled="true" style="width:100%;margin-top:8px;background:#bdbdbd;border-color:#bdbdbd;color:#fff;cursor:not-allowed">☁️ Fazer backup na nuvem agora</button><div id="drive-so-a" style="font-size:11px;color:#777;margin-top:4px;text-align:center">' + _gsDriveMsg() + '</div>' : '<button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>'}
     ${gsSrvAtivo() ? _gsBotaoBloqueado('btn-nuvem-restaurar', '📥 Restaurar da nuvem') : '<button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>'}
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
     <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. <strong>Na nuvem, nenhum documento é apagado</strong>; no aparelho, PDFs saem só depois de confirmados na nuvem e de passados ${GS_PODA_DIAS_LOCAL} dias.</div>
@@ -21166,15 +21186,16 @@ function addAnexo(id, fromPasseio, file){
     if(!ANEXOS[key]) ANEXOS[key]=[];
     if(ANEXOS[key].length >= MAX_ANEXOS){ resolve(false); return; }
     const reader = new FileReader();
-    reader.onload = e=>{
+    const guardar = function(dataUrl, tipo){
       const nome = autoRenameAnexo(id, fromPasseio, file);
       ANEXOS[key].push({
         name: nome,
-        type: file.type,
-        data: e.target.result,
-        isImg: file.type.startsWith('image/')
+        type: tipo,
+        data: dataUrl,
+        isImg: String(tipo || '').startsWith('image/')
       });
       saveAnexos();
+      try{ if(_gsPesada.ativo) setTimeout(function(){ _gsPesadaVarrer().catch(function(){}); }, 1500); }catch(e){}   // v2.3.0.0
       // Registra no histórico
       const apt = fromPasseio ? (PASSEIO[id]?.apt||'') : (S[id]?.apt||'');
       const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
@@ -21182,6 +21203,16 @@ function addAnexo(id, fromPasseio, file){
       // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto nova entra no documento vivo.
       try{ _hhjMarcar(hospNum, 'foto adicionada'); }catch(e){}
       resolve(true);
+    };
+    reader.onload = e=>{
+      // v2.3.0.0 (Bloco C): com o servidor ligado a foto viaja entre aparelhos e ao Drive —
+      // é comprimida como no check-in (1920×1080, JPEG 0,85). Sem login: exatamente como antes.
+      if(typeof gsSrvAtivo === 'function' && gsSrvAtivo() && String(file.type || '').startsWith('image/')){
+        _nciFotoFileToB64Compr(file).then(function(c){ guardar(c, 'image/jpeg'); },
+          function(){ console.warn('[ANEXO] compressão falhou — guardada a original'); guardar(e.target.result, file.type); });
+        return;
+      }
+      guardar(e.target.result, file.type);
     };
     reader.readAsDataURL(file);
   });
@@ -21304,6 +21335,21 @@ function renderAnexosArea(id, fromPasseio, containerId){
     }
     grid.appendChild(el);
   });
+  // v2.3.0.0 (Bloco D): foto feita no OUTRO aparelho que ainda não chegou → espaço reservado
+  try{
+    const _gsH = fromPasseio ? id : (S[id] && S[id].hospedagem);
+    const _cheg = (typeof gsPesadaChegando === 'function') ? gsPesadaChegando(_gsH) : 0;
+    if(_cheg > 0){
+      const vazio = grid.querySelector('.attach-empty'); if(vazio) vazio.remove();
+      for(let k = 0; k < _cheg; k++){
+        const ph = document.createElement('div');
+        ph.className = 'attach-thumb gs-foto-chegando';
+        ph.style.cssText = 'display:flex;align-items:center;justify-content:center;background:#f3f3f3;border:1px dashed #bbb;color:#888;font-size:10px;text-align:center;line-height:1.2';
+        ph.textContent = '⏳ chegando do outro aparelho';
+        grid.appendChild(ph);
+      }
+    }
+  }catch(e){}
 
   // Eventos de input
   const camInput = document.getElementById('att-cam-'+containerId);
@@ -21351,7 +21397,7 @@ window.delAtt = function(id, fp, idx, containerId){
     const bN=document.getElementById('da-nao'); if(bN) bN.onclick=_reabrir;
     const bS=document.getElementById('da-sim'); if(bS) bS.onclick=function(){
       // 2) Exclusão protegida: precisa de PIN configurado
-      const pinSalvo = _gsPinGuardado();   // v1.9.4.13: leitura normalizada/fail-safe
+      const pinSalvo = _gsPinGuardado() || _gsPinHashGestor();   // v1.9.4.13 (+ v2.3.0.0: o PIN em hash também conta)
       if(!pinSalvo){
         showM(`<div class="mt">🔒 Exclusão protegida</div>
           <div class="ms" style="margin-bottom:12px">Para excluir anexos é preciso configurar um PIN de Gestão.<br>Vá em <strong>Gestão → Alterar PIN</strong>. A exclusão de anexos é sempre protegida.</div>
@@ -22173,12 +22219,13 @@ function _gsSrvAtualizarRodape(){
 async function _gsSrvSinal(){
   if(!_gsSrvLigado() || _gsSrvLer().transferido) return;
   _gsSrvUltimoSinal = Date.now();
-  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:0, p_relogio_ms:Date.now(), p_aparelho_id:await gsAparelhoId() }, 8000);
+  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:(_gsPesada.fila || []).length, p_relogio_ms:Date.now(), p_aparelho_id:await gsAparelhoId() }, 8000);
   if(!r.error && r.data && r.data.transferido){ _gsSrvMarcarTransferido(r.data); return; }   // v2.2.0.0 (Bloco J)
   if(!r.error){
     _gsSrvMudarEstado('conectado');
     const s = _gsSrvLer();
     if(r.data && r.data.letra && r.data.letra !== s.letra){ s.letra = r.data.letra; _gsSrvGravar(s); }
+    if(r.data && r.data.responsavel) _gsRespGravar(r.data.responsavel);   // v2.3.0.0
   } else if(_gsSrvErroDeSessao(r.error)) _gsSrvMudarEstado('reconectar');
   else _gsSrvMudarEstado('sem_conexao');
 }
@@ -22547,11 +22594,12 @@ function showServidor(){
     '</div>' +
     '<div style="font-size:12px;color:#555;margin-bottom:8px">' + cargaTxt + '</div>' +
     '<div id="srv-sync">' + _gsSyncPainelHTML() + '</div>' +
-
+    _gsRespPainelHTML() +   // v2.3.0.0 (Blocos E/F/H)
     '<div id="srv-carga-res" style="font-size:12px;margin:4px 0"></div>' +
     '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
   try{ _gsSyncLigarPainel(); }catch(e){}   // v2.1.0.0 — ligado NA HORA (sem janela morta)
+  try{ _gsRespLigarPainel(); }catch(e){}   // v2.3.0.0
   setTimeout(function(){
     const d = document.getElementById('srv-desligar');
     if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
@@ -23183,6 +23231,7 @@ function _gsSyncAplicarLinhas(linhas){
   (linhas || []).forEach(function(l){
     if(!l || !l.t) return;
     if(l.t === 'pendencias'){ _gsPendRecebida(l.d, m); return; }   // v2.2.0.0
+    if(l.t === 'arquivos'){ _gsPesadaRowRecebida(l.d, m); return; }   // v2.3.0.0
     if((Number(l.s) || 1) > GS_SCHEMA){ _gsSync.guardados.push(l); guardou = true; return; }
     const tab = l.t, k = String(l.k);
     if(_gsSyncEhInclusao(tab)){
@@ -23419,6 +23468,7 @@ async function _gsSyncAdotar(modo, aoProgresso){
   if(modo === 'origem') GS_SYNC_INCLUSAO.forEach(function(t){ locIncl[t] = _gsSyncLocalInclusao(t); });
   _gsPendLimpar();
   (linhas.pendencias || []).forEach(function(l){ _gsPendRecebida(l.d, m); });   // v2.2.0.0
+  (linhas.arquivos || []).forEach(function(l){ _gsPesadaRowRecebida(l.d, null); });   // v2.3.0.0
   GS_SYNC_TABS.forEach(function(t){
     (linhas[t] || []).forEach(function(l){
       if((Number(l.s) || 1) > GS_SCHEMA){ _gsSync.guardados.push(l); return; }
@@ -23461,9 +23511,11 @@ function _gsSyncAtivar(){
     _gsSyncDetectar({ todas:true });          // rede de segurança: o que nenhum gancho viu
     _gsSyncReceber('consulta de 30 s');
     if(_gsSync.fila.length && !_gsSync.enviando) _gsSyncAgendarEnvio(0);
+    try{ _gsPinsApagarTexto(); }catch(e){}   // v2.3.0.0
   }, GS_SYNC_PULL_MS);
   _gsSyncAssinarTempoReal();
   _gsSyncAtualizarRodape();
+  _gsPesadaIniciar();   // v2.3.0.0: fotos, documentos e PDFs (fila PESADA, separada da leve)
 }
 function _gsSyncAplicarGuardados(){
   if(!_gsSync.guardados.length) return;
@@ -23490,6 +23542,7 @@ function _gsSyncParar(){
   _gsSync.timerEnvio = _gsSync.timerDet = _gsSync.timerRetentar = _gsSync.timerPull = null;
   try{ const cli = _gsSrvCli; if(cli && _gsSync.canal) cli.removeChannel(_gsSync.canal); }catch(e){}
   _gsSync.canal = null;
+  _gsPesadaParar();   // v2.3.0.0
   // os ARQUIVOS ficam (fila, base, ponto): religar continua de onde parou
   _gsSync.base = {}; _gsSync.sombra = {}; _gsSync.raw = {}; _gsSync.fila = [];
   _gsSyncAtualizarRodape();
@@ -23596,9 +23649,10 @@ function _gsSyncRodapeExtra(){
   if(_gsSync.estado === 'decisao') return ' · sincronização aguardando decisão (Gestão → Servidor)';
   if(_gsSync.estado === 'adotando') return ' · baixando dados do servidor…';
   const n = _gsSync.fila.length;
-  if(n) return ' · ' + n + (n === 1 ? ' ação aguardando envio' : ' ações aguardando envio');
-  if(_gsSync.guardados.length) return ' · atualize o app';
-  return '';
+  const pes = _gsPesadaRodapeExtra();   // v2.3.0.0: fila pesada, contada à parte
+  if(n) return ' · ' + n + (n === 1 ? ' ação aguardando envio' : ' ações aguardando envio') + pes;
+  if(_gsSync.guardados.length) return ' · atualize o app' + pes;
+  return pes;
 }
 let _gsSyncRodapeUlt = '';
 function _gsSyncAtualizarRodape(){
@@ -23659,14 +23713,567 @@ async function _gsSyncBaixarNaTela(){
 // Com login, SÓ o aparelho de letra A escreve no Drive. Os demais seguem com o
 // backup LOCAL; o que iria para a nuvem fica pendente no próprio aparelho.
 const _gsDriveSoAAvisado = {};
+// v2.3.0.0 (Bloco E): a regra deixa de ser "letra A" e passa a ser "o RESPONSÁVEL",
+// que o servidor decide (aparelho A por padrão; troca automática ou assumida).
 function _gsDriveSoA(oque){
   try{
     if(!gsSrvAtivo()) return false;
-    if(String(_gsSrvLer().letra || '') === 'A') return false;
-    if(oque && !_gsDriveSoAAvisado[oque]){ _gsDriveSoAAvisado[oque] = true; console.log('[DRIVE] ' + oque + ': ' + GS_DRIVE_SO_A_MSG); }
+    if(gsSouResponsavel()) return false;
+    if(oque && !_gsDriveSoAAvisado[oque]){ _gsDriveSoAAvisado[oque] = true; console.log('[DRIVE] ' + oque + ': ' + _gsDriveMsg()); }
     return true;
   }catch(e){ return false; }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2.3.0.0 — SERVIDOR D: FOTOS, PDFs, TABLET RESPONSÁVEL E DRIVE
+// ════════════════════════════════════════════════════════════════════════════
+// DOCUMENTOS SÃO SAGRADOS: nenhum PDF, foto ou vistoria se perde; nada sai de um
+// lugar antes de confirmado no destino. A operação nunca espera o servidor nem o
+// Drive. Falha nunca é silenciosa (rodapé). SEM LOGIN, NADA DISTO RODA.
+//
+// O servidor é TRÂNSITO: o arquivo sobe para o armazenamento privado da empresa,
+// chega aos outros aparelhos (fotos, documentos e assinaturas de vistoria) e ao
+// Drive (pelo RESPONSÁVEL) e só então sai de lá.
+
+// ── RESPONSÁVEL (o único que escreve no Drive) ─────────────────────────────
+const GS_RESP_LS = 'gs-srv-resp';   // `gs-srv-*` nunca entra em backup
+function _gsRespLer(){ try{ return JSON.parse(localStorage.getItem(GS_RESP_LS) || 'null') || {}; }catch(e){ return {}; } }
+function _gsRespGravar(r){
+  if(!r) return;
+  const ant = _gsRespLer();
+  const novo = { letra:r.letra || null, sou:!!r.sou, limite_min:r.limite_min || null, ts:Date.now() };
+  try{ localStorage.setItem(GS_RESP_LS, JSON.stringify(novo)); }catch(e){}
+  if(ant.sou !== novo.sou || ant.letra !== novo.letra){
+    try{ addLogSistema('Envio ao Drive: responsável agora é o aparelho ' + (novo.letra || '?') + (novo.sou ? ' (ESTE aparelho)' : ''),
+      { aud:true, acao:'responsavel_visto', alvo:String(novo.letra || ''), origem:'servidor' }); }catch(e){}
+    try{ _gsSrvAtualizarRodape(); }catch(e){}
+    if(novo.sou) setTimeout(function(){ try{ _gsPesadaAgendar(500); }catch(e){} }, 0);
+  }
+}
+// Sem login, ESTE aparelho escreve (como sempre). Com login: o que o servidor disse;
+// antes da primeira resposta, o aparelho A (regra da sessão B).
+function gsSouResponsavel(){
+  if(!gsSrvAtivo()) return true;
+  const r = _gsRespLer();
+  if(r.letra) return !!r.sou;
+  return String(_gsSrvLer().letra || '') === 'A';
+}
+function _gsRespLetra(){ const r = _gsRespLer(); return r.letra || (gsSrvAtivo() && String(_gsSrvLer().letra || '') === 'A' ? 'A' : null) || 'responsável'; }
+function _gsDriveMsg(){ return 'o envio ao Drive é feito pelo aparelho ' + _gsRespLetra(); }
+async function gsAssumirResponsavel(){
+  const r = await _gsSrvRpc('assumir_responsavel', {}, 10000);
+  if(r.error) return { ok:false, erro:r.error.message };
+  _gsRespGravar(r.data);
+  try{ addLogSistema('Envio ao Drive ASSUMIDO por este aparelho (PIN do gestor)', { aud:true, acao:'responsavel_assumido', alvo:String((r.data || {}).letra || ''), origem:'usuario' }); }catch(e){}
+  return { ok:true, letra:(r.data || {}).letra };
+}
+
+// ── SENHA DE EMERGÊNCIA (o HTML guarda só o HASH com sal) ───────────────────
+let SENHA_DEV_HASH = 'sha256$c983f42b5561efd603e9e397$1e3a6a8a01e5fb2b1749eefc2618f37951b1d5f100d9fc3bcd5f3cdb3d2f660d';
+function _gsSenhaEmergenciaConfere(s){
+  try{ const v = String(s == null ? '' : s).trim(); return v.length >= 8 && _gsPinHashConfere(SENHA_DEV_HASH, v); }catch(e){ return false; }
+}
+function _gsSenhaEmergenciaHTML(){
+  return '<div style="text-align:center;margin-top:6px"><button type="button" id="pin-emerg-link" style="background:none;border:0;color:#888;font-size:11px;text-decoration:underline;cursor:pointer;font-family:inherit">Senha de emergência</button>' +
+    '<div id="pin-emerg-box" style="display:none;margin-top:6px"><input id="pin-emerg-campo" type="password" autocomplete="off" class="fi" placeholder="Senha de emergência" style="margin-bottom:6px">' +
+    '<button type="button" class="bsv" id="pin-emerg-ok" style="width:100%">Entrar</button>' +
+    '<div id="pin-emerg-err" style="min-height:14px;font-size:11px;color:#A32D2D;margin-top:4px"></div></div></div>';
+}
+function _gsSenhaEmergenciaLigar(aoAceitar){
+  const l = document.getElementById('pin-emerg-link'), box = document.getElementById('pin-emerg-box');
+  if(!l || !box) return;
+  l.onclick = function(){ box.style.display = ''; const c = document.getElementById('pin-emerg-campo'); if(c) c.focus(); };
+  const ok = document.getElementById('pin-emerg-ok');
+  if(ok) ok.onclick = function(){
+    const c = document.getElementById('pin-emerg-campo'), err = document.getElementById('pin-emerg-err');
+    if(!_gsSenhaEmergenciaConfere(c && c.value)){ if(err) err.textContent = 'Senha de emergência incorreta'; return; }
+    try{ addLogSistema('Acesso de gestor liberado pela senha de emergência', { aud:true, acao:'senha_dev_usada' }); }catch(e){}
+    aoAceitar();
+  };
+}
+
+// ── FILA PESADA (fotos, documentos, assinaturas, PDFs) ──────────────────────
+const _gsPesada = { fila:[], n:0, conhecidos:{}, srv:{}, complementados:{}, baixando:false, enviando:false, falhas:0, prox:0, timer:null,
+                    ativo:false, carregado:false, gravacao:Promise.resolve(), drive:{} };
+function _gsPesadaDir(){ return _gsSyncDir() + '/pesada'; }
+function _gsB64DeData(d){ const s = String(d || ''); const i = s.indexOf(','); return i >= 0 ? s.slice(i + 1) : s; }
+function _gsMimeDeData(d){ const m = /^data:([^;,]+)/.exec(String(d || '')); return m ? m[1] : 'application/octet-stream'; }
+function _gsBytesDeB64(b64){ const bin = atob(b64); const u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+function _gsB64DeBytes(u){ let s = ''; const C = 0x8000; for(let i = 0; i < u.length; i += C) s += String.fromCharCode.apply(null, u.subarray(i, i + C)); return btoa(s); }
+async function _gsSha256Bytes(u){
+  try{ const h = await crypto.subtle.digest('SHA-256', u); return Array.from(new Uint8Array(h)).map(function(b){ return b.toString(16).padStart(2, '0'); }).join(''); }
+  catch(e){ return null; }
+}
+async function _gsPesadaCarregar(){
+  const dir = _gsPesadaDir(), B = _gsArqBackend();
+  await _gsPesada.gravacao;
+  _gsPesada.fila = []; _gsPesada.n = 0;
+  _gsPesada.conhecidos = (await _gsArqLerJSON(dir + '/conhecidos.json')) || {};
+  _gsPesada.srv = Object.assign((await _gsArqLerJSON(dir + '/srv.json')) || {}, _gsPesada.srv || {});   // o que chegou no baixar-tudo vale por cima
+  _gsPesada.complementados = (await _gsArqLerJSON(dir + '/complementados.json')) || {};
+  const nomes = (await B.listar(dir + '/fila')).filter(function(n){ return /\.json$/.test(n); }).sort();
+  for(let i = 0; i < nomes.length; i++){
+    const meta = await _gsArqLerJSON(dir + '/fila/' + nomes[i]);
+    if(!meta || !meta.id){ console.warn('[PESADA] item ilegível mantido no disco:', nomes[i]); continue; }
+    const n = parseInt(nomes[i], 10) || 0; if(n > _gsPesada.n) _gsPesada.n = n;
+    _gsPesada.fila.push({ meta:meta, arquivo:dir + '/fila/' + nomes[i], dado:dir + '/fila/' + meta.id + '.dat', gravadoOk:true });
+  }
+  _gsPesada.carregado = true;
+}
+function _gsPesadaGravarJSON(nome, obj){
+  const c = JSON.stringify(obj);
+  _gsPesada.gravacao = _gsPesada.gravacao.then(function(){ return _gsArqGravarSeguro(_gsPesadaDir() + '/' + nome, c, false); })
+    .catch(function(e){ console.warn('[PESADA] ' + nome + ' não gravado:', e && e.message); });
+  return _gsPesada.gravacao;
+}
+function _gsPesadaJaTem(id){ return !!(_gsPesada.conhecidos[id] || _gsPesada.srv[id] || _gsPesada.fila.some(function(it){ return it.meta.id === id; })); }
+// Entra na fila: o CONTEÚDO vai para um arquivo próprio (.dat) e os metadados para o item.
+async function _gsPesadaEnfileirar(meta, dataUrl){
+  if(!_gsPesada.ativo || !meta || !meta.id || _gsPesadaJaTem(meta.id) || !dataUrl) return false;
+  _gsPesada.n++;
+  const dir = _gsPesadaDir();
+  const it = { meta:Object.assign({ mime:_gsMimeDeData(dataUrl), acao_em:new Date().toISOString() }, meta),
+               arquivo:dir + '/fila/' + String(_gsPesada.n).padStart(10, '0') + '-' + meta.id + '.json', dado:dir + '/fila/' + meta.id + '.dat', gravadoOk:false };
+  _gsPesada.fila.push(it);
+  try{
+    await _gsArqGravarSeguro(it.dado, _gsB64DeData(dataUrl), false);
+    await _gsArqGravarSeguro(it.arquivo, JSON.stringify(it.meta), false);
+    it.gravadoOk = true;
+  }catch(e){ console.warn('[PESADA] item não gravado (fica na memória e tenta de novo):', e && e.message); }
+  _gsSyncAtualizarRodape();
+  _gsPesadaAgendar(400);
+  return true;
+}
+// VARREDURA: fotos/anexos das hospedagens e imagens das vistorias que o servidor ainda não tem
+async function _gsPesadaVarrer(){
+  if(!_gsPesada.ativo) return 0;
+  let n = 0;
+  const baldes = Object.keys(ANEXOS || {}).filter(function(b){ return b.indexOf('h_') === 0 && HOSPEDAGENS[b.slice(2)]; });
+  // anexo sem id (antes da migração para arquivos) ganha um — é ele que identifica a foto no servidor
+  let semId = false;
+  baldes.forEach(function(b){ (ANEXOS[b] || []).forEach(function(a){ if(a && typeof a === 'object' && !a.id){ a.id = _gsArqNovoId(); semId = true; } }); });
+  if(semId) saveAnexos();
+  for(let i = 0; i < baldes.length; i++){
+    const b = baldes[i], itens = (ANEXOS[b] || []).slice();
+    const novos = itens.filter(function(a){ return a && a.id && !_gsPesadaJaTem(a.id); });
+    if(!novos.length) continue;
+    await _gsArqUsando([b], async function(){
+      for(let j = 0; j < novos.length; j++){
+        const a = novos[j];
+        const data = a.data !== undefined ? a.data : await _gsArqLerDado(a);
+        if(!data) continue;
+        const meta = {}; Object.keys(a).forEach(function(k){ if(k !== 'data' && k !== '_arq') meta[k] = a[k]; });
+        if(await _gsPesadaEnfileirar({ id:a.id, tipo:'anexo', gs:b.slice(2), balde:b, nome:a.name || '', meta:meta, precisa_aparelhos:true }, data)) n++;
+      }
+    });
+  }
+  const vs = Object.keys(VISTORIAS || {});
+  for(let i = 0; i < vs.length; i++){
+    const v = VISTORIAS[vs[i]]; if(!v) continue;
+    const ch = _gsSyncChaveVist(vs[i], v);   // a MESMA chave da vistoria no servidor
+    for(const [campo, tipo] of [['documento_final_b64', 'vistoria_documento'], ['assinatura', 'vistoria_assinatura']]){
+      const d = v[campo] || (campo === 'assinatura' ? v.assinatura_b64 : null);
+      if(!d || typeof d !== 'string' || d.indexOf('data:') !== 0) continue;
+      const id = (tipo === 'vistoria_documento' ? 'vd-' : 'va-') + _gsArqSanear(ch) + '-' + _gsArqHash(d);
+      if(_gsPesadaJaTem(id)) continue;
+      if(await _gsPesadaEnfileirar({ id:id, tipo:tipo, gs:v.hospedagem || v.hospedagem_gs || '', vistoria_uuid:ch, nome:vs[i] + '_' + tipo, meta:{ chave:vs[i], campo:campo }, precisa_aparelhos:true }, d)) n++;
+    }
+  }
+  return n;
+}
+// PDF gerado num aparelho que NÃO é o responsável: vai ao Drive pelo servidor
+function gsPesadaPdf(nome, b64, tipo, extra){
+  if(!_gsPesada.ativo || !nome || !b64) return false;
+  const id = 'pdf-' + _gsArqSanear(String(nome).replace(/\.pdf$/i, '')) + '-' + _gsArqHash(String(b64).slice(0, 4096) + String(b64).length);
+  const data = String(b64).indexOf('data:') === 0 ? b64 : 'data:application/pdf;base64,' + b64;
+  const cls = (typeof _gdHistClassificar === 'function' && _gdHistClassificar(nome)) || {};
+  _gsPesadaEnfileirar({ id:id, tipo:tipo || 'pdf_fechamento', gs:(extra && extra.gs) || cls.gs || '', nome:nome, mime:'application/pdf',
+                        meta:Object.assign({ apt:cls.apt || null, checkin:cls.checkin || null }, extra || {}), precisa_aparelhos:false }, data);
+  return true;
+}
+// Os PDFs que ficaram pendentes neste aparelho (sessões B/C, quando ele não escrevia no Drive)
+async function _gsPesadaPdfsPendentes(){
+  if(!_gsPesada.ativo || gsSouResponsavel()) return 0;
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  let n = 0;
+  const lista = (typeof _gdPdfsPendentes === 'function') ? _gdPdfsPendentes() : [];
+  for(let i = 0; i < lista.length; i++){
+    const p = lista[i];
+    if(!F || !p || !p.nome) continue;   // no navegador o PDF não fica guardado num arquivo: segue pendente (e dito no rodapé)
+    try{
+      const r = await F.readFile({ path:'GarageSpot/' + p.nome, directory:'DOCUMENTS' });
+      if(r && r.data && gsPesadaPdf(p.nome, r.data, /^Recarga_/i.test(p.nome) ? 'pdf_recarga' : 'pdf_fechamento', { apt:p.apt || null, checkin:p.checkin || null })){
+        try{ _gdTirarPDFPendente(p.nome); }catch(e){}
+        n++;
+      }
+    }catch(e){ console.warn('[PESADA] PDF pendente não lido:', p.nome, e && e.message); }
+  }
+  return n;
+}
+function _gsPesadaOciosa(){
+  const on = function(id){ const el = document.getElementById(id); return !!(el && el.classList.contains('on')); };
+  if(on('ov') || on('nci-overlay') || document.getElementById('vst-modal-aux') || on('expansao-overlay')) return false;
+  if((typeof dragState !== 'undefined' && dragState) || on('move-banner')) return false;
+  if(Date.now() - _gsUltimoToque < 3000) return false;
+  return true;
+}
+function _gsPesadaAgendar(ms){
+  if(!_gsPesada.ativo) return;
+  clearTimeout(_gsPesada.timer);
+  _gsPesada.timer = setTimeout(function(){ _gsPesada.timer = null; _gsPesadaRodar(); }, Math.max(0, ms || 0));
+}
+// Um passo por vez, só com a tela ociosa: envia, recebe, leva ao Drive (responsável), limpa o servidor.
+async function _gsPesadaRodar(){
+  if(!_gsPesada.ativo || _gsSync.estado !== 'ativo') return;
+  if(!_gsPesadaOciosa()){ _gsPesadaAgendar(2500); return; }
+  if(_gsPesada.enviando) return;
+  _gsPesada.enviando = true;
+  let mais = false;
+  try{
+    if(Date.now() >= _gsPesada.prox){
+      if(_gsPesada.fila.length) mais = await _gsPesadaEnviarUm();
+      else if(await _gsPesadaBaixarUm()) mais = true;
+      else if(gsSouResponsavel() && await _gsPesadaDriveUm()) mais = true;
+      else if(gsSouResponsavel()) await _gsPesadaLimpar();
+    }
+  }catch(e){ console.warn('[PESADA] passo falhou (tenta de novo):', e && e.message); _gsPesadaFalhou(); }
+  finally{ _gsPesada.enviando = false; _gsSyncAtualizarRodape(); }
+  _gsPesadaAgendar(mais ? 150 : (_gsPesada.prox > Date.now() ? _gsPesada.prox - Date.now() : 15000));
+}
+function _gsPesadaFalhou(){
+  _gsPesada.falhas++;
+  _gsPesada.prox = Date.now() + [3, 8, 20, 45, 90][Math.min(_gsPesada.falhas - 1, 4)] * 1000;
+}
+function _gsStorage(){ const cli = _gsSrvCliente(); return cli && cli.storage ? cli.storage.from('garagespot') : null; }
+async function _gsPesadaEnviarUm(){
+  const it = _gsPesada.fila[0];
+  if(!it.gravadoOk){ /* ainda gravando o próprio item */ return false; }
+  const b64 = await _gsArqLer(it.dado, false);
+  const bytes = _gsBytesDeB64(b64);
+  const hash = await _gsSha256Bytes(bytes);
+  const st = _gsStorage(); if(!st) throw new Error('armazenamento indisponível');
+  const caminho = _gsSync.emp + '/' + it.meta.id;
+  const up = await st.upload(caminho, bytes, { contentType:it.meta.mime || 'application/octet-stream', upsert:!!it.reenviar });
+  if(up.error && !/exist|duplicate|409/i.test(String(up.error.message || up.error.statusCode || ''))) throw new Error('envio: ' + up.error.message);
+  const r = await _gsSrvRpc('registrar_arquivo', { p:Object.assign({}, it.meta, { bytes:bytes.length, hash:hash }) }, 20000);
+  if(r.error){
+    if(/tamanho divergente/i.test(r.error.message || '')){ it.reenviar = true; }   // um objeto anterior incompleto: sobrescreve na próxima
+    throw new Error('registro: ' + r.error.message);
+  }
+  // CONFIRMADO pelo servidor (com o tamanho conferido): só agora sai da fila
+  _gsPesada.conhecidos[it.meta.id] = 1;
+  if(r.data && r.data.id) _gsPesada.srv[r.data.id] = Object.assign({}, r.data, { caminho:r.data.storage_path || caminho });
+  await _gsPesadaGravarJSON('conhecidos.json', _gsPesada.conhecidos);
+  await _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+  _gsPesada.fila.shift();
+  const B = _gsArqBackend(); await B.apagar(it.arquivo); await B.apagar(it.dado);
+  _gsPesada.falhas = 0; _gsPesada.prox = 0;
+  return true;
+}
+// Linha `arquivos` recebida do servidor (mudanças / baixar tudo)
+function _gsPesadaRowRecebida(d, m){
+  if(!d || !d.id) return;
+  _gsPesada.srv[d.id] = d;
+  _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+  if(m) m.arquivos = true;
+  _gsPesadaAgendar(800);
+}
+function _gsPesadaPendentesBaixa(){
+  const dv = _gsSync.dv;
+  return Object.keys(_gsPesada.srv).map(function(k){ return _gsPesada.srv[k]; }).filter(function(x){
+    return x && !x.removido_storage_em && /^(anexo|vistoria_documento|vistoria_assinatura)$/.test(String(x.tipo || '')) &&
+           String(x.criado_por || '') !== dv && !_gsPesada.conhecidos[x.id] && !(x.recebidos && x.recebidos[dv]);
+  });
+}
+// quantas fotos de um GS foram feitas no outro aparelho e ainda não chegaram (espaço reservado)
+function gsPesadaChegando(gs){
+  if(!gs || !_gsPesada.ativo) return 0;
+  try{ return _gsPesadaPendentesBaixa().filter(function(x){ return x.gs === gs && x.tipo === 'anexo'; }).length; }catch(e){ return 0; }
+}
+async function _gsPesadaBaixar(x){
+  const st = _gsStorage(); if(!st) throw new Error('armazenamento indisponível');
+  const r = await st.download(x.caminho || (_gsSync.emp + '/' + x.id));
+  if(r.error) throw new Error('download ' + x.id + ': ' + r.error.message);
+  const bytes = new Uint8Array(await r.data.arrayBuffer());
+  const hash = await _gsSha256Bytes(bytes);
+  if(x.hash && hash && hash !== x.hash) throw new Error('conteúdo divergente em ' + x.id);
+  return { bytes:bytes, hash:hash, dataUrl:'data:' + (x.mime || 'application/octet-stream') + ';base64,' + _gsB64DeBytes(bytes) };
+}
+async function _gsPesadaBaixarUm(){
+  const x = _gsPesadaPendentesBaixa()[0];
+  if(!x) return false;
+  const b = await _gsPesadaBaixar(x);
+  const m = _gsSyncNovoMudou();
+  if(x.tipo === 'anexo'){
+    const balde = x.balde || ('h_' + x.gs);
+    if(!ANEXOS[balde]) ANEXOS[balde] = [];
+    if(!ANEXOS[balde].some(function(a){ return a && a.id === x.id; })){
+      ANEXOS[balde].push(Object.assign({}, x.meta || {}, { id:x.id, name:(x.meta && x.meta.name) || x.nome || x.id, type:x.mime, data:b.dataUrl,
+                                                          isImg:/^image\//.test(x.mime || ''), _recebido_srv:1 }));
+      saveAnexos();   // caminho LEGÍTIMO: a sentinela sobe com o que chegou
+    }
+    m.tokens[x.gs] = 1;
+  } else {
+    const lk = _gsSyncLocalVistKey(x.vistoria_uuid);
+    const campo = (x.meta && x.meta.campo) || (x.tipo === 'vistoria_documento' ? 'documento_final_b64' : 'assinatura');
+    if(lk && VISTORIAS[lk] && VISTORIAS[lk][campo] !== b.dataUrl){
+      VISTORIAS[lk][campo] = b.dataUrl;
+      if(campo === 'assinatura') VISTORIAS[lk].assinatura_b64 = b.dataUrl;
+      delete VISTORIAS[lk]['tem_' + campo];
+      saveVistorias();
+    } else if(!lk){ return false; }   // a vistoria ainda não chegou: tenta depois
+    m.tokens[x.gs] = 1;
+  }
+  const c = await _gsSrvRpc('confirmar_recebimento', { p_id:x.id, p_hash:b.hash }, 15000);
+  if(c.error) throw new Error('confirmação ' + x.id + ': ' + c.error.message);
+  _gsPesada.conhecidos[x.id] = 1; await _gsPesadaGravarJSON('conhecidos.json', _gsPesada.conhecidos);
+  try{ const v = _vagaIdDoGs(x.gs); if(v) ref(v); _gsSyncAvisarModal([x.gs]); _gsPendAtualizarPainel(); }catch(e){}
+  _gsPesadaComplementarAgendar(x.gs);
+  return true;
+}
+// RESPONSÁVEL: PDFs dos outros aparelhos → Drive; fotos/vistorias de hospedagens já fechadas → confirmadas
+async function _gsPesadaDriveUm(){
+  if(_gsDriveSoA('envio ao Drive') || !_gdDisponivel() || !_gdConectado()) return false;
+  const pend = Object.keys(_gsPesada.srv).map(function(k){ return _gsPesada.srv[k]; })
+    .filter(function(x){ return x && !x.drive_ok_em && !x.removido_storage_em && /^pdf_/.test(String(x.tipo || '')) && !_gsPesada.drive[x.id]; });
+  const x = pend[0];
+  if(!x) return false;
+  _gsPesada.drive[x.id] = 1;
+  try{
+    const b = await _gsPesadaBaixar(x);
+    const b64 = _gsB64DeBytes(b.bytes);
+    const cls = _gdHistClassificar(x.nome || '') || { nome:x.nome, tipo:(x.tipo === 'pdf_recarga' ? 'recarga' : 'fechamento'), apt:(x.meta || {}).apt, checkin:(x.meta || {}).checkin };
+    const destino = _gdHistDestino(Object.assign({}, cls, { apt:cls.apt || (x.meta || {}).apt, checkin:cls.checkin || (x.meta || {}).checkin }));
+    const r = await _gdComToken(async function(token){
+      const pasta = await _gdGarantirCaminho(token, destino);
+      return await _gdEnviarArquivoBin(token, pasta, x.nome, b64, 'application/pdf');
+    }, false);
+    const c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:(r && r.id) || '' }, 15000);
+    if(c.error) throw new Error(c.error.message);
+    x.drive_ok_em = new Date().toISOString(); _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+    try{ addLogSistema('PDF do aparelho ' + _gsLetraDoDv(x.criado_por) + ' enviado ao Drive pelo responsável: ' + x.nome, { aud:true, acao:'pdf_outro_aparelho_no_drive', alvo:x.nome, origem:'automatico' }); }catch(e){}
+    if(x.gs && x.tipo === 'pdf_fechamento') await _gsPesadaConfirmarDriveDoGs(x.gs);
+    return true;
+  }finally{ delete _gsPesada.drive[x.id]; }
+}
+function _gsLetraDoDv(dv){ return dv === _gsSync.dv ? _gsSyncLetra() : '?'; }
+// as fotos/documentos de um GS vão ao Drive DENTRO do PDF de fechamento: confirmadas junto
+async function _gsPesadaConfirmarDriveDoGs(gs){
+  if(!gs || !gsSouResponsavel()) return 0;
+  let n = 0;
+  const ks = Object.keys(_gsPesada.srv);
+  for(let i = 0; i < ks.length; i++){
+    const x = _gsPesada.srv[ks[i]];
+    if(!x || x.gs !== gs || x.drive_ok_em || /^pdf_/.test(String(x.tipo || ''))) continue;
+    const c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:'pdf:' + gs }, 15000);
+    if(!c.error){ x.drive_ok_em = new Date().toISOString(); n++; }
+  }
+  if(n) _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+  return n;
+}
+// LIMPEZA do servidor (só o responsável): sai só o que chegou a TODOS os destinos
+async function _gsPesadaLimpar(){
+  if(Date.now() - (_gsPesada.limpouEm || 0) < 60000) return false;
+  _gsPesada.limpouEm = Date.now();
+  const r = await _gsSrvRpc('arquivos_para_remover', {}, 15000);
+  const lista = (!r.error && Array.isArray(r.data)) ? r.data : [];
+  if(!lista.length) return false;
+  const st = _gsStorage(); if(!st) return false;
+  const rm = await st.remove(lista.map(function(x){ return x.caminho; }));
+  if(rm.error){ console.warn('[PESADA] limpeza do armazenamento falhou:', rm.error.message); return false; }
+  const c = await _gsSrvRpc('confirmar_remocao', { p_ids:lista.map(function(x){ return x.id; }) }, 15000);
+  if(!c.error){ try{ addLogSistema('Servidor: ' + (c.data && c.data.removidos) + ' arquivo(s) já entregues saíram do armazenamento (trânsito)', { aud:true, acao:'servidor_limpeza_arquivos', origem:'automatico' }); }catch(e){} }
+  return true;
+}
+
+// ── FOTO QUE CHEGA DEPOIS DO CHECK-OUT → PDF COMPLEMENTAR (responsável) ─────
+let _gsComplTimers = {};
+function _gsPesadaComplementarAgendar(gs){
+  if(!gs || !gsSouResponsavel()) return;
+  const h = HOSPEDAGENS[gs]; if(!h || !h.checkout_ts) return;
+  clearTimeout(_gsComplTimers[gs]);
+  _gsComplTimers[gs] = setTimeout(function(){ delete _gsComplTimers[gs]; gsPdfComplementar(gs).catch(function(e){ console.warn('[COMPLEMENTAR]', e && e.message); }); }, 3000);
+}
+async function gsPdfComplementar(gs){
+  const h = HOSPEDAGENS[gs]; if(!h || !h.checkout_ts || !gsSouResponsavel()) return null;
+  const tardias = Object.keys(_gsPesada.srv).map(function(k){ return _gsPesada.srv[k]; }).filter(function(x){
+    return x && x.gs === gs && x.tipo === 'anexo' && !_gsPesada.complementados[x.id] && Date.parse(x.acao_em || 0) > h.checkout_ts;
+  });
+  if(!tardias.length) return null;
+  const itens = [];
+  await _gsArqUsando(['h_' + gs], async function(){
+    for(let i = 0; i < tardias.length; i++){
+      const a = (ANEXOS['h_' + gs] || []).find(function(z){ return z && z.id === tardias[i].id; });
+      const d = a && (a.data !== undefined ? a.data : await _gsArqLerDado(a));
+      if(d) itens.push({ x:tardias[i], data:d, nome:(a && a.name) || tardias[i].nome });
+    }
+  });
+  if(!itens.length) return null;
+  const J = window.jspdf && window.jspdf.jsPDF; if(!J) return null;
+  const doc = new J({ unit:'mm', format:'a4' });
+  doc.setFontSize(14); doc.text('GarageSpot · Complemento do registro', 15, 18);
+  doc.setFontSize(10);
+  doc.text(gs + ' · Apt. ' + (h.apt || '?') + ' · check-out em ' + _dtLocal(h.checkout_ts), 15, 26);
+  doc.text('Foto(s) recebida(s) DEPOIS do check-out - o PDF de fechamento original NÃO foi substituído.', 15, 32);
+  let y = 40;
+  for(let i = 0; i < itens.length; i++){
+    if(y > 200){ doc.addPage(); y = 20; }
+    doc.text((itens[i].nome || 'foto') + ' · ' + _dtLocal(Date.parse(itens[i].x.acao_em)), 15, y);
+    try{ doc.addImage(itens[i].data, /png/i.test(itens[i].data.slice(0, 30)) ? 'PNG' : 'JPEG', 15, y + 3, 120, 80); }catch(e){}
+    y += 90;
+  }
+  const b64 = doc.output('datauristring').split(',')[1];
+  const dd = new Date(); const p2 = function(n){ return String(n).padStart(2, '0'); };
+  const nome = gs + '_apt' + String(h.apt || '').replace(/\W/g, '') + '_complementar_' + p2(dd.getDate()) + '-' + p2(dd.getMonth() + 1) + '-' + String(dd.getFullYear()).slice(-2) + '_' + p2(dd.getHours()) + 'h' + p2(dd.getMinutes()) + '.pdf';
+  await _gdEnviarPDFFechamento(nome, b64, h.apt, h.checkin_ts);
+  for(let i = 0; i < itens.length; i++){
+    _gsPesada.complementados[itens[i].x.id] = nome;
+    const c = await _gsSrvRpc('confirmar_drive', { p_id:itens[i].x.id, p_drive_id:'pdf:' + nome }, 15000);
+    if(!c.error) itens[i].x.drive_ok_em = new Date().toISOString();
+  }
+  _gsPesadaGravarJSON('complementados.json', _gsPesada.complementados);
+  _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+  try{ addLogSistema('PDF COMPLEMENTAR de ' + gs + ' no Drive (' + itens.length + ' foto(s) depois do check-out): ' + nome, { aud:true, acao:'pdf_complementar', alvo:gs, origem:'automatico' }); }catch(e){}
+  return nome;
+}
+
+// ── Gestão → Servidor: responsável pelo Drive, assumir, encerrar no corte ──
+function _gsRespPainelHTML(){
+  if(!gsSrvAtivo()) return '';
+  const sou = gsSouResponsavel(), letra = _gsRespLetra();
+  const n = _gsPesada.fila.length;
+  return '<div id="srv-resp" style="background:#F7F7F7;border:1px solid #ddd;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.45">' +
+    '<strong>☁️ Envio ao Drive</strong><br><span id="srv-resp-txt">' + (sou ? 'Este aparelho é o RESPONSÁVEL pelo envio ao Drive.' : 'O envio ao Drive é feito pelo aparelho ' + _vtEsc(letra) + '.') + '</span>' +
+    '<br><span style="color:#888">' + (n ? n + (n === 1 ? ' arquivo aguardando envio' : ' arquivos aguardando envio') : 'Nenhum arquivo aguardando envio') + '</span>' +
+    (sou ? '' : '<button class="bsv" id="srv-assumir" style="width:100%;margin-top:8px">Assumir o envio ao Drive neste aparelho</button>') +
+    '</div>' +
+    '<button class="bcx" id="srv-corte" style="width:100%;margin-bottom:6px">🗂 Encerrar hospedagens anteriores ao corte</button>';
+}
+function _gsRespLigarPainel(){
+  const a = document.getElementById('srv-assumir');
+  if(a) a.onclick = function(){
+    showEntrarPIN(async function(){
+      showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-ms">Conferindo com o servidor…</div>');
+      const r = await gsAssumirResponsavel();
+      showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-res" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
+        (r.ok ? '✅ Este aparelho passou a fazer o envio ao Drive.' : '⚠️ Não foi possível: ' + _vtEsc(r.erro || 'sem resposta do servidor')) + '</div>' +
+        '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+    });
+  };
+  const c = document.getElementById('srv-corte');
+  if(c) c.onclick = function(){ gsTelaEncerrarCorte(); };
+}
+
+// ── início / parada da fila pesada (junto da sincronização) ─────────────────
+async function _gsPesadaIniciar(){
+  if(_gsPesada.ativo) return;
+  try{ await _gsPesadaCarregar(); }catch(e){ console.warn('[PESADA] não carregou:', e && e.message); return; }
+  _gsPesada.ativo = true;
+  setTimeout(function(){ _gsPesadaVarrer().then(function(){ return _gsPesadaPdfsPendentes(); }).catch(function(e){ console.warn('[PESADA] varredura:', e && e.message); }); }, 2000);
+  clearInterval(_gsPesada.varreduraTimer);
+  _gsPesada.varreduraTimer = setInterval(function(){ if(_gsPesada.ativo) _gsPesadaVarrer().catch(function(){}); }, 30000);
+  _gsPesadaAgendar(1000);
+}
+function _gsPesadaParar(){
+  _gsPesada.ativo = false; _gsPesada.srv = {}; _gsPesada.conhecidos = {}; _gsPesada.fila = [];
+  clearTimeout(_gsPesada.timer); clearInterval(_gsPesada.varreduraTimer);
+  _gsPesada.timer = null;
+}
+function gsFilasDoServidorPendentes(){
+  if(!gsSrvAtivo()) return 0;
+  return ((_gsSync.fila || []).length) + ((_gsPesada.fila || []).length);
+}
+function _gsPesadaRodapeExtra(){
+  if(!_gsPesada.ativo) return '';
+  const n = _gsPesada.fila.length;
+  return n ? ' · ' + n + (n === 1 ? ' arquivo aguardando envio' : ' arquivos aguardando envio') : '';
+}
+
+// ── FUNCIONÁRIOS: ativos primeiro, inativos abaixo, cada grupo em ordem alfabética
+function gsUsrOrdenados(lista){
+  return (lista || []).slice().sort(function(a, b){
+    const ia = a && a.ativo === false ? 1 : 0, ib = b && b.ativo === false ? 1 : 0;
+    if(ia !== ib) return ia - ib;
+    return String((a && a.nome) || '').localeCompare(String((b && b.nome) || ''));
+  });
+}
+
+// ── ENCERRAMENTO ADMINISTRATIVO EM LOTE (corte) ─────────────────────────────
+function gsHospedagensAntesDe(ms){
+  return Object.keys(HOSPEDAGENS).filter(function(gs){ const h = HOSPEDAGENS[gs]; return h && !h.checkout_ts && (h.checkin_ts || 0) < ms; })
+    .sort(function(a, b){ return (HOSPEDAGENS[a].checkin_ts || 0) - (HOSPEDAGENS[b].checkin_ts || 0); });
+}
+function gsTextoCorte(ms){
+  return 'Encerramento administrativo na entrada em operação do servidor (' + _dtLocal(ms) + '). A data de check-out não corresponde à saída real do veículo: ' +
+         'o tablet anterior parou de funcionar e a operação foi registrada em papel até esta data.';
+}
+async function gsEncerrarEmLote(ms, usuarioStr, aoProgresso){
+  const lista = gsHospedagensAntesDe(ms), txt = gsTextoCorte(ms), feitos = [];
+  for(let i = 0; i < lista.length; i++){
+    const gs = lista[i], h = HOSPEDAGENS[gs]; if(!h || h.checkout_ts) continue;
+    const apt = String(h.apt || '');
+    const onde = _gsOndeEsta(gs);
+    const vaga = onde && onde.tipo === 'vaga' ? onde.vaga : '';
+    const histAntes = _gsHistoricoDaHospedagem(apt, gs, h.checkin_ts || null);
+    addHistorico(apt, 'checkout', vaga, 'Checkout — ' + txt, usuarioStr, gs);
+    h.checkout_ts = Date.now(); h.usuario_checkout = usuarioStr; h.encerramento_administrativo = txt;
+    if(vaga){ Object.keys(S).forEach(function(k){ if(S[k] && S[k].hospedagem === gs && S[k].status === 'occupied') _gsVagaLiberar(k); }); }
+    if(PASSEIO[gs]) delete PASSEIO[gs];
+    saveHospedagens(); upd(); saveData();
+    const dv = { model:h.model || '', color:h.color || '', plate:h.plate || '', guest:h.guest || '', obs:txt + (h.obs ? ' · ' + h.obs : ''), size:h.size || 'small', vaga:vaga, hospedagem:gs, apt:apt };
+    try{ _gsDocumentoDeFechamento({ hospNum:gs, apt:apt, vaga:vaga, dv:dv, hist:_gsHistoricoDaHospedagem(apt, gs, h.checkin_ts || null), snapshot:_gsSnapshotAnexosCheckout(vaga, gs), anexos:(ANEXOS['h_' + gs] || []).slice() }); }
+    catch(e){ console.warn('[CORTE] PDF de ' + gs + ' falhou:', e && e.message); }
+    feitos.push(gs);
+    if(typeof aoProgresso === 'function') aoProgresso(feitos.length, lista.length, gs);
+    await _gsEsperarDocumentoPronto(90000);   // um PDF por vez: o próximo só começa com este salvo
+  }
+  try{ _gsSyncAcao('encerramento_em_lote'); }catch(e){}
+  try{ addLogSistema('Encerramento administrativo EM LOTE (corte ' + _dtLocal(ms) + '): ' + feitos.length + ' hospedagem(ns) — ' + feitos.join(', '),
+    { aud:true, acao:'encerramento_em_lote', alvo:String(feitos.length), quem:usuarioStr, origem:'usuario' }); }catch(e){}
+  return feitos;
+}
+// o documento de fechamento mostra os botões (#co-acoes) quando o PDF já foi salvo
+function _gsEsperarDocumentoPronto(tetoMs){
+  const ini = Date.now();
+  return new Promise(function(res){
+    (function olhar(){
+      const ac = document.getElementById('co-acoes');
+      if(!ac || ac.style.display !== 'none' || Date.now() - ini > tetoMs) return setTimeout(res, 150);
+      setTimeout(olhar, 150);
+    })();
+  });
+}
+function gsTelaEncerrarCorte(){
+  showEntrarPIN(function(){
+    const agora = new Date(); const p2 = function(n){ return String(n).padStart(2, '0'); };
+    const val = agora.getFullYear() + '-' + p2(agora.getMonth() + 1) + '-' + p2(agora.getDate()) + 'T' + p2(agora.getHours()) + ':' + p2(agora.getMinutes());
+    showM('<div class="mt">🗂 Encerrar hospedagens anteriores ao corte</div>' +
+      '<div class="ms" style="margin-bottom:8px">Todas as hospedagens ATIVAS com check-in antes deste momento serão encerradas, cada uma com o PDF de fechamento e a observação do encerramento administrativo.</div>' +
+      '<label class="fl">Corte (data e hora)</label><input class="fi" id="corte-quando" type="datetime-local" value="' + val + '">' +
+      '<div id="corte-lista" style="font-size:12px;margin:8px 0;max-height:30vh;overflow:auto"></div>' +
+      '<div class="b2"><button class="bcx" onclick="closeOv()">Cancelar</button><button class="bsv" id="corte-ok">Encerrar</button></div>');
+    const atualizar = function(){
+      const ms = Date.parse(document.getElementById('corte-quando').value);
+      const l = isNaN(ms) ? [] : gsHospedagensAntesDe(ms);
+      document.getElementById('corte-lista').innerHTML = '<strong id="corte-contagem">' + l.length + ' hospedagem(ns)</strong><br>' +
+        l.slice(0, 60).map(function(g){ const h = HOSPEDAGENS[g]; return _vtEsc(g) + ' · Apt ' + _vtEsc(String(h.apt || '?')) + ' · check-in ' + _vtEsc(_dtLocal(h.checkin_ts)); }).join('<br>');
+      return { ms:ms, l:l };
+    };
+    document.getElementById('corte-quando').onchange = atualizar; atualizar();
+    document.getElementById('corte-ok').onclick = function(){
+      const a = atualizar(); if(!a.l.length){ showToast('Nenhuma hospedagem ativa antes desse momento.', 3000); return; }
+      confirmarUsuario('encerrando ' + a.l.length + ' hospedagem(ns) no corte', async function(u){
+        const quem = u ? u.nome + ' · ' + u.cargo : 'Gestor';
+        showM('<div class="mt">🗂 Encerrando…</div><div class="ms" id="corte-prog">0 de ' + a.l.length + '</div>');
+        const f = await gsEncerrarEmLote(a.ms, quem, function(n, t, g){ const e = document.getElementById('corte-prog'); if(e) e.textContent = n + ' de ' + t + ' · ' + g; });
+        showM('<div class="mt">✅ Encerramento concluído</div><div class="ms" id="corte-fim">' + f.length + ' hospedagem(ns) encerrada(s), cada uma com o PDF de fechamento.</div><button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
+      });
+    };
+  });
+}
+
+// ── "registro removido no servidor": pendência explicada (nunca "alteração concorrente" confusa)
+function gsPendEhRemovido(p){ return !!(p && p.dados && p.dados.campos && p.dados.campos._inexistente); }
 
 // ── Bloco G: versão publicada e recarga só com o app ocioso ─────────────────
 function _gsMarcarToque(){ _gsUltimoToque = Date.now(); }
@@ -23784,6 +24391,32 @@ function _gsPinsGarantirHash(){
     if(srv && (!p || p === '1200' || _gsPinHashConfere(srv, p))) localStorage.setItem(GESTAO_PIN_HASH_LS, srv);
     else if(p) localStorage.setItem(GESTAO_PIN_HASH_LS, _gsPinHashNovo(p));
   }
+  _gsPinsApagarTexto();
+}
+// v2.3.0.0 (Bloco I): o PIN em TEXTO sai do aparelho assim que o SERVIDOR já tem o
+// MESMO hash (confirmado na base). Antes disso o texto fica — nunca se perde o acesso.
+function _gsPinsApagarTexto(){
+  if(!gsSrvAtivo()) return 0;
+  const baseF = (_gsSync.base && _gsSync.base.funcionarios) || {};
+  let n = 0;
+  (USUARIOS || []).forEach(function(u, i){
+    if(!u || !u.pin || !u.pin_hash) return;
+    const b = baseF[String(u.id)];
+    if(b && b.d && b.d.pin_hash === u.pin_hash){ const c = Object.assign({}, u); delete c.pin; USUARIOS[i] = c; n++; }
+  });
+  if(n) saveUsuarios();
+  let g = 0;
+  try{
+    const hl = _gsPinHashGestor();
+    const bc = (_gsSync.base && _gsSync.base.config) || {};
+    const hs = bc.gestor_pin_hash && bc.gestor_pin_hash.d && bc.gestor_pin_hash.d.pin_hash;
+    if(hl && hs === hl && localStorage.getItem(GESTAO_PIN_KEY) !== null){ localStorage.removeItem(GESTAO_PIN_KEY); g = 1; }
+  }catch(e){}
+  if(n || g){
+    try{ addLogSistema('PINs convertidos para hash e o texto APAGADO do aparelho: ' + n + ' de funcionário(s)' + (g ? ' + o do gestor' : ''),
+      { aud:true, acao:'pins_texto_apagados', alvo:String(n + g), origem:'automatico' }); }catch(e){}
+  }
+  return n + g;
 }
 function gsPinsEmTexto(){
   let n = 0;
@@ -23796,6 +24429,7 @@ function _gsUsrAplicarRecebido(k, d){
   const atual = i >= 0 ? USUARIOS[i] : null;
   const novo = _gsSyncSem(_gsSyncCopia(d || {}), 'tem_pin');
   delete novo.pin;
+  // o texto só fica se o hash é o mesmo; quem APAGA o texto (com registro na trilha) é `_gsPinsApagarTexto`
   if(atual && atual.pin && (!d.pin_hash || d.pin_hash === atual.pin_hash)) novo.pin = atual.pin;
   if(atual && _gsSyncCanon(_gsSyncSem(atual, 'tem_pin')) === _gsSyncCanon(novo)) return false;
   if(i >= 0) USUARIOS[i] = novo; else USUARIOS.push(novo);
@@ -24206,13 +24840,14 @@ const GS_PEND_ROTULO = {
   alteracao_concorrente:'Alteração concorrente', checkout_recarga_ativa:'Check-out com recarga ativa', possivel_duplicidade:'Possível duplicidade',
   recarga_ponto_ocupado:'Recarga em ponto ocupado', checkout_definitivo:'Check-out definitivo mantido',
 };
+function _gsPendRotulo(p){ return gsPendEhRemovido(p) ? 'Registro removido no servidor' : (GS_PEND_ROTULO[p.tipo] || p.tipo); }
 function gsPendAbrir(pid){
   const p = _gsPend.mapa[pid]; if(!p) return;
   if(p.resolvida_em){ _gsPendAvisoJaResolvida(p); return; }
   _gsPendJanela = pid;
   if(p.tipo === 'conflito_vaga') return gsConflitoAbrir(pid);
   const d = p.dados || {};
-  const cab = '<div class="mt">⚠️ ' + _vtEsc(GS_PEND_ROTULO[p.tipo] || p.tipo) + '</div>';
+  const cab = '<div class="mt">⚠️ ' + _vtEsc(_gsPendRotulo(p)) + '</div>';
   const fechar = '<button class="bcx" id="gs-p-depois" style="width:100%;margin-top:6px">Conferir depois</button>';
   const ligarFechar = function(){ const b = document.getElementById('gs-p-depois'); if(b) b.onclick = function(){ _gsPendJanela = null; closeOv(); }; };
   const comOperador = function(acao, fn){ confirmarUsuario(acao, function(u){ fn(u, u ? u.nome + ' · ' + u.cargo : ''); }); };
@@ -24237,6 +24872,16 @@ function gsPendAbrir(pid){
           upd(); saveData();
         });
         _gsPendJanela = null; closeOv(); }); };
+    return;
+  }
+  // v2.3.0.0 (Bloco G): o registro SUMIU do servidor — explicado como tal, nunca como "alteração concorrente"
+  if(gsPendEhRemovido(p)){
+    showM(cab + '<div class="ms" id="pend-removido" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || p.gs || '')) +
+      ' foi alterado neste aparelho' + (d.aparelho ? ' (aparelho ' + _vtEsc(d.aparelho) + ')' : '') + ', mas <strong>o registro não existe mais no servidor</strong> (foi removido lá). ' +
+      'A alteração não foi aplicada no servidor. Os dados DESTE aparelho continuam como estão — nada foi apagado aqui.</div>' +
+      '<div class="ag"><button class="bsv" id="gs-rem-ok">Entendi — manter este aparelho como está</button></div>' + fechar);
+    ligarFechar();
+    document.getElementById('gs-rem-ok').onclick = function(){ comOperador('confirmando registro removido no servidor', function(){ _gsResolver(pid, { removido_no_servidor:true }, 'registro_removido_ciente'); _gsPendJanela = null; closeOv(); }); };
     return;
   }
   if(p.tipo === 'alteracao_nao_aplicada' || p.tipo === 'alteracao_concorrente'){
@@ -24319,6 +24964,17 @@ function gsUnirDuplicadas(antiga, nova, quem){
   addHistorico(String(hn.apt || '?'), 'edicao', '', 'Hospedagem registrada como DUPLICADA de ' + antiga + ' (mesmo carro)', quem || '', nova);
   addHistorico(String(ha.apt || '?'), 'edicao', '', 'Duplicidade resolvida: ' + nova + ' era o mesmo carro', quem || '', antiga);
   upd(); saveData();
+  // v2.3.0.0 (Bloco G): a hospedagem encerrada como duplicidade TAMBÉM tem PDF de fechamento
+  const txt = 'encerrada como duplicidade de ' + antiga;
+  hn.encerramento_administrativo = txt; saveHospedagens();
+  try{ addLogSistema('Hospedagem ' + nova + ' ' + txt, { aud:true, acao:'duplicidade_encerrada', alvo:nova, quem:quem || '', origem:'usuario' }); }catch(e){}
+  setTimeout(function(){
+    try{
+      const apt = String(hn.apt || '');
+      const dv = { model:hn.model || '', color:hn.color || '', plate:hn.plate || '', guest:hn.guest || '', obs:txt + (hn.obs ? ' · ' + hn.obs : ''), size:hn.size || 'small', vaga:'', hospedagem:nova, apt:apt };
+      _gsDocumentoDeFechamento({ hospNum:nova, apt:apt, vaga:'', dv:dv, hist:_gsHistoricoDaHospedagem(apt, nova, hn.checkin_ts || null), snapshot:_gsSnapshotAnexosCheckout('', nova), anexos:(ANEXOS['h_' + nova] || []).slice() });
+    }catch(e){ console.warn('[DUPLICIDADE] PDF de fechamento falhou:', e && e.message); }
+  }, 80);   // depois de o modal da pendência fechar
 }
 function _gsAbrirEncerrarRecarga(vaga){
   // a tela de Recarga, com o ponto destacado: o encerramento (e a cobrança) é o de sempre
@@ -24339,7 +24995,7 @@ function _gsPendExtrasHTML(){
       const d = p.dados || {};
       const sub = p.tipo === 'conflito_vaga' ? 'Vaga ' + (d.vaga || p.vaga) + ': ' + ((d.atual || {}).gs || '?') + ' × ' + ((d.novo || {}).gs || '?')
         : (p.gs ? p.gs : '') + (p.vaga ? ' · vaga ' + p.vaga : '') + (d.aparelho ? ' · aparelho ' + d.aparelho : '');
-      html += '<div class="gs-pend-card" data-pend="' + _vtEsc(p.id) + '"><div class="cav-titulo">⚠️ ' + _vtEsc(GS_PEND_ROTULO[p.tipo] || p.tipo) + '</div>' +
+      html += '<div class="gs-pend-card" data-pend="' + _vtEsc(p.id) + '"><div class="cav-titulo">⚠️ ' + _vtEsc(_gsPendRotulo(p)) + '</div>' +
         '<div class="cav-subtitulo">' + _vtEsc(sub) + ' · toque para resolver</div></div>';
     });
   }
