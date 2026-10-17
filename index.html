@@ -1365,9 +1365,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.3.1.0';
+const GS_VERSION = 'v2.4.0.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
-const GS_VERSION_CODE = 29;
+const GS_VERSION_CODE = 30;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
 
 // ════════════════════════════════════════════════════════════════════════
@@ -22251,6 +22251,7 @@ function _gsSrvIniciar(){
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); _gsSrvTimerSinal = setInterval(function(){
     if(!gsSouResponsavel() || Date.now() - (_gsSrvUltimoSinal || 0) >= GS_SINAL_RESP_MS - 5000) _gsSrvSinal();
   }, GS_SINAL_OUTROS_MS); }catch(e){}
+  try{ gsSegPlanoLigar(); }catch(e){}   // v2.4.0.0: segundo plano (serviço em primeiro plano, só com login)
   // v2.1.0.0: sincronização (fila, recebimento) e conferência de versão publicada — em segundo plano
   try{ _gsSyncIniciar(); }catch(e){ console.warn('[SYNC] início:', e && e.message); }
   try{ _gsVersaoIniciar(); }catch(e){}
@@ -22312,6 +22313,7 @@ async function gsSrvDesligar(){
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); }catch(e){}
   _gsSrvTimerSinal = null;
   try{ _gsSyncParar(); _gsVersaoParar(); }catch(e){}   // v2.1.0.0 — fila e base ficam nos arquivos
+  try{ gsSegPlanoDesligar(); }catch(e){}   // v2.4.0.0
   _gsSrvMudarEstado('desligado');
   try{ addLogSistema('Servidor DESLIGADO neste aparelho (modo local; nada foi apagado)', { aud:true, acao:'servidor_desligado', origem:'usuario' }); }catch(e){}
 }
@@ -22585,6 +22587,7 @@ function showServidor(){
         b.disabled = false;
         if(!r.ok && r.emUso){ _gsSrvTelaEmUso(r); return; }   // v2.2.0.0 (Bloco J)
         if(!r.ok){ if(msg){ msg.style.color = '#A32D2D'; msg.textContent = '⚠️ ' + r.erro; } return; }
+        if(gsCfgAparelhoOferecerDepoisDoLogin()) return;   // v2.4.0.0 (Bloco C)
         showServidor();
       };
     }, 0);
@@ -22603,6 +22606,7 @@ function showServidor(){
     '<div id="srv-sync">' + _gsSyncPainelHTML() + '</div>' +
     _gsRespPainelHTML() +   // v2.3.0.0 (Blocos E/F/H)
     '<div id="srv-carga-res" style="font-size:12px;margin:4px 0"></div>' +
+    '<button class="bcx" id="srv-cfg-aparelho" style="width:100%;margin-bottom:6px">📱 Configurar este aparelho' + (gsSegPlanoResumo() ? ' · ' + _vtEsc(gsSegPlanoResumo()) : '') + '</button>' +
     '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
   try{ _gsSyncLigarPainel(); }catch(e){}   // v2.1.0.0 — ligado NA HORA (sem janela morta)
@@ -22610,7 +22614,136 @@ function showServidor(){
   setTimeout(function(){
     const d = document.getElementById('srv-desligar');
     if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
+    const c = document.getElementById('srv-cfg-aparelho');
+    if(c) c.onclick = function(){ gsTelaConfigurarAparelho(); };
   }, 0);
+}
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.0.0 — SEGUNDO PLANO (APK vc30) + "CONFIGURAR ESTE APARELHO"
+// ════════════════════════════════════════════════════════════════════════════
+// Com login no servidor, um SERVIÇO EM PRIMEIRO PLANO (tipo specialUse, plugin local GsSegundoPlano)
+// mantém o processo vivo com a tela desligada ou o app minimizado — o Android 14/15 congela app
+// "em cache" e o Doze corta a rede; sem isto o sinal parava e o papel de responsável trocava. O
+// JavaScript que já existe (sinal, filas, tempo real, Drive) segue rodando: nada foi duplicado no
+// nativo. Notificação fixa discreta enquanto ativo. SEM LOGIN: nada disto roda (nem notificação).
+// APK sem o plugin (vc29 ou anterior) ou navegador: nada roda e a tela diz o porquê.
+const GS_CFG_AP_LS = 'garagespot_cfg_aparelho';
+function _gsSegPlano(){
+  try{
+    // o Capacitor só expõe plugins registrados no APK: no vc29 (ou no navegador) ele não existe
+    const C = window.Capacitor;
+    const p = C && C.Plugins && C.Plugins.GsSegundoPlano;
+    if(!p) return null;
+    if(C.isPluginAvailable && C.isNativePlatform && C.isNativePlatform() && !C.isPluginAvailable('GsSegundoPlano')) return null;
+    return p;
+  }catch(e){ return null; }
+}
+let _gsSegPlanoUltimo = null;   // último estado lido (para o resumo no botão)
+async function gsSegPlanoLigar(){
+  const p = _gsSegPlano();
+  if(!p || !gsSrvAtivo()) return false;
+  try{
+    await p.iniciar({ titulo:'GarageSpot · aparelho ' + (_gsSrvLer().letra || '?'), texto:'Sincronização ativa (também com a tela desligada)' });
+    return true;
+  }catch(e){
+    console.warn('[SEGUNDO PLANO] não iniciou:', e && e.message);
+    try{ addLogSistema('Segundo plano não iniciou: ' + ((e && e.message) || e), { aud:true, acao:'segundo_plano_falhou', origem:'automatico' }); }catch(x){}
+    return false;
+  }
+}
+async function gsSegPlanoDesligar(){
+  const p = _gsSegPlano(); if(!p) return false;
+  try{ await p.parar(); return true; }catch(e){ return false; }
+}
+function _gsCfgApLer(){ try{ return JSON.parse(localStorage.getItem(GS_CFG_AP_LS) || 'null') || {}; }catch(e){ return {}; } }
+function _gsCfgApGravar(o){ try{ localStorage.setItem(GS_CFG_AP_LS, JSON.stringify(o)); }catch(e){} }
+async function gsSegPlanoEstado(){
+  const p = _gsSegPlano();
+  if(!p) return null;
+  try{ const e = await p.estado(); _gsSegPlanoUltimo = e; return e; }catch(x){ return null; }
+}
+// itens da lista: ok = true (verde) · false (amarelo) · null (não dá para saber — confira na tela)
+function _gsCfgApItens(e){
+  const m = _gsCfgApLer(), xiaomi = !!(e && e.xiaomi);
+  const itens = [
+    { id:'servico', titulo:'Sincronização em segundo plano', ok:e ? !!e.ativo : false,
+      dica:'Notificação fixa "GarageSpot · sincronização ativa". Liga sozinha com o servidor.', botao:'Ligar', acao:'servico' },
+    { id:'notificacoes', titulo:'Notificações do GarageSpot', ok:e ? !!e.notificacoes : null,
+      dica:'Sem elas a notificação fixa e os alertas de recarga não aparecem.', botao:'Abrir', acao:'notificacoes' },
+    { id:'bateria', titulo:'Bateria sem restrições', ok:e ? (!!e.semOtimizacaoBateria && !e.segundoPlanoRestrito) : null,
+      dica:xiaomi ? 'Na tela da Xiaomi: Economia de bateria → Sem restrições.' : 'Permitir que o app rode sem otimização de bateria.', botao:'Pedir', acao:'bateria' },
+  ];
+  if(!e || xiaomi){
+    itens.push({ id:'autostart', titulo:'Inicialização automática', ok:e ? (e.inicializacaoAutomatica === true ? true : (e.inicializacaoAutomatica === false ? false : null)) : null,
+      dica:'Na lista da Xiaomi, ligar o GarageSpot.' + (e && e.inicializacaoAutomatica == null ? ' (O sistema não informa — confira na tela.)' : ''), botao:'Abrir', acao:'autostart' });
+  }
+  itens.push({ id:'travado', titulo:'App travado nos apps recentes', ok:!!m.travado, manual:true,
+    dica:'Abra os apps recentes, segure o cartão do GarageSpot e toque no cadeado.', botao:'Já fiz', acao:'travado' });
+  itens.push({ id:'limpeza', titulo:'Limpeza automática desligada', ok:!!m.limpeza, manual:true,
+    dica:'App Segurança → Limpeza → engrenagem → desligar a limpeza automática e não incluir o GarageSpot.', botao:'Já fiz', acao:'limpeza' });
+  return itens;
+}
+function gsSegPlanoResumo(){
+  if(!_gsSegPlano()) return '';
+  const e = _gsSegPlanoUltimo; if(!e) return '';
+  const it = _gsCfgApItens(e), ok = it.filter(function(x){ return x.ok === true; }).length;
+  return ok === it.length ? 'tudo ok' : (ok + ' de ' + it.length + ' ok');
+}
+async function gsTelaConfigurarAparelho(opts){
+  opts = opts || {};
+  const p = _gsSegPlano();
+  const e = p ? await gsSegPlanoEstado() : null;
+  const cab = '<div class="mt">📱 Configurar este aparelho</div>';
+  if(!p){
+    showM(cab + '<div class="ms" id="cfg-ap-sem" style="margin-bottom:8px">' +
+      (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
+        ? 'Este aparelho está com um APK antigo, sem a sincronização em segundo plano. <strong>Instale o APK vc30</strong> (v2.4.0.0) para o app continuar sincronizando com a tela desligada.'
+        : 'Esta tela é para os tablets e celulares com o app instalado (Android). No navegador não há o que configurar.') +
+      '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>');
+    return;
+  }
+  const itens = _gsCfgApItens(e);
+  const ok = itens.filter(function(x){ return x.ok === true; }).length;
+  const linha = function(x){
+    const cor = x.ok === true ? '#0F6E56' : (x.ok === false ? '#A32D2D' : '#8A6100');
+    const ic = x.ok === true ? '✅' : (x.ok === false ? '⚠️' : '❔');
+    return '<div class="cfg-ap-item" data-item="' + x.id + '" data-ok="' + (x.ok === true ? '1' : (x.ok === false ? '0' : '?')) + '" style="border:1px solid #e6e6e6;border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center">' +
+      '<div style="flex:1"><div style="font-weight:800;font-size:13px;color:' + cor + '">' + ic + ' ' + _vtEsc(x.titulo) + '</div>' +
+      '<div style="font-size:11px;color:#666">' + _vtEsc(x.dica) + '</div></div>' +
+      (x.ok === true && !x.manual ? '' : '<button class="bcx cfg-ap-btn" data-acao="' + x.acao + '" style="flex:0 0 auto;padding:6px 10px;font-size:12px">' + _vtEsc(x.ok === true ? 'Desfazer' : x.botao) + '</button>') + '</div>';
+  };
+  showM(cab +
+    (opts.primeiraVez ? '<div class="ms" style="margin-bottom:6px">Para o GarageSpot continuar sincronizando com a <strong>tela desligada</strong>, deixe tudo verde. Leva 2 minutos.</div>' : '') +
+    '<div style="font-size:12px;color:#555;margin-bottom:6px" id="cfg-ap-resumo">' + ok + ' de ' + itens.length + ' ok · ' + _vtEsc(String((e && e.fabricante) || '') + ' ' + String((e && e.modelo) || '')) + ' · Android SDK ' + _vtEsc(String((e && e.sdk) || '?')) + '</div>' +
+    itens.map(linha).join('') +
+    '<div style="font-size:11px;color:#888;margin:4px 0 8px">Depois de mudar algo no sistema, volte ao GarageSpot: esta lista se atualiza sozinha.</div>' +
+    '<div class="b2"><button class="bcx" id="cfg-ap-atualizar">Atualizar</button><button class="bsv" id="cfg-ap-fechar">' + (opts.primeiraVez ? 'Continuar' : 'Voltar') + '</button></div>');
+  _gsCfgApTelaAberta = true;
+  document.getElementById('cfg-ap-atualizar').onclick = function(){ gsTelaConfigurarAparelho(opts); };
+  document.getElementById('cfg-ap-fechar').onclick = function(){ _gsCfgApTelaAberta = false; showServidor(); };
+  document.querySelectorAll('.cfg-ap-btn').forEach(function(b){
+    b.onclick = async function(){
+      const a = b.getAttribute('data-acao');
+      if(a === 'travado' || a === 'limpeza'){ const m = _gsCfgApLer(); m[a] = !m[a]; m[a + '_em'] = Date.now(); _gsCfgApGravar(m); return gsTelaConfigurarAparelho(opts); }
+      if(a === 'servico'){ await gsSegPlanoLigar(); return setTimeout(function(){ gsTelaConfigurarAparelho(opts); }, 600); }
+      if(a === 'bateria'){ const r = await p.pedirSemRestricaoBateria().catch(function(){ return { ok:false }; }); if(!r || !r.ok) await p.abrir({ tela:'bateria' }).catch(function(){}); return; }
+      const r = await p.abrir({ tela:a }).catch(function(){ return { ok:false }; });
+      if(!r || !r.ok) showToast('Não consegui abrir essa tela neste aparelho — procure em Configurações → Apps → GarageSpot', 4500);
+    };
+  });
+}
+let _gsCfgApTelaAberta = false;
+// voltou das Configurações do Android: a lista se atualiza sozinha
+document.addEventListener('visibilitychange', function(){
+  try{ if(document.visibilityState === 'visible' && _gsCfgApTelaAberta && document.getElementById('cfg-ap-resumo')) gsTelaConfigurarAparelho(); }catch(e){}
+});
+// "Também aparece uma vez depois do login no servidor" (só no app instalado)
+function gsCfgAparelhoOferecerDepoisDoLogin(){
+  if(!_gsSegPlano() && !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) return false;
+  const m = _gsCfgApLer(); if(m.visto_apos_login) return false;
+  m.visto_apos_login = Date.now(); _gsCfgApGravar(m);
+  gsTelaConfigurarAparelho({ primeiraVez:true });
+  return true;
 }
 async function _gsSrvExecutarCargaNaTela(){
   showM('<div class="mt">📤 Carga inicial</div><div class="ms" id="srv-cg-ms">Montando os dados deste aparelho…</div>' +
@@ -25307,6 +25440,7 @@ function _gsSrvSerieAjustar(serie){
   }catch(e){}
 }
 function _gsSrvMarcarTransferido(info){
+  try{ gsSegPlanoDesligar(); }catch(e){}   // v2.4.0.0
   const s = _gsSrvLer();
   if(s.transferido) return;
   s.transferido = true; s.transferido_em = (info && info.transferido_em) || new Date().toISOString();
