@@ -138,7 +138,8 @@ html.font-large{zoom:1.13}
 .id-lbl.occ{position:absolute;top:2px;left:3px;color:#5A6B7D;font-weight:700;letter-spacing:.2px;line-height:1;font-size:clamp(6px,.72vw,11px);pointer-events:none}
 /* Parte 3 v1.9.4.9: rótulo "check-out" (vermelho sólido) abaixo do número, fonte MENOR
    que o número, clean (sem fundo) e responsivo — para aptos com check-out previsto hoje. */
-.co-lbl.co-atrasado{color:#fff;background:#C53030;border-radius:3px;padding:1px 3px;display:inline-block}
+/* v2.4.2.0 (Bloco D): "check-out atrasado" tem EXATAMENTE a aparência do "check-out" (mesma fonte, cor e posição);
+   a classe co-atrasado fica só para identificar o estado — sem estilo próprio. */
 .co-lbl{display:block;color:#C53030;font-weight:700;line-height:1;text-transform:lowercase;letter-spacing:.2px;margin-top:1px;font-size:clamp(6.5px,.85vw,12px)}
 
 .leg{display:flex;flex-wrap:wrap;gap:6px;flex-shrink:0}
@@ -1368,9 +1369,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.1.0';
+const GS_VERSION = 'v2.4.2.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
-const GS_VERSION_CODE = 31;
+const GS_VERSION_CODE = 32;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2282,6 +2283,78 @@ function occClass(id, apt){
   return 'occ'; // azul padrão (inclui 1D-5D e todos os outros)
 }
 
+// v2.4.2.0 (Bloco D) — HORÁRIOS DA EMPRESA (Gestão → Configurações do Sistema; sincroniza entre os dispositivos
+// pela configuração do servidor). Padrão do Hotel Gumz: check-out 11:00 · check-in 14:00.
+// Hospedagem ativa: antes do dia previsto, nada; no dia previsto até a hora do CHECK-IN, "check-out"; a partir
+// da hora do check-in do dia previsto (ou depois do dia), "check-out atrasado" + Pendências.
+const GS_HORARIOS_LS = 'garagespot_horarios', GS_HORARIOS_PADRAO = { checkout:'11:00', checkin:'14:00' };
+function _gsHHMM(v){ const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').trim()); if(!m) return null; const h = +m[1], mi = +m[2]; return (h < 24 && mi < 60) ? String(h).padStart(2, '0') + ':' + m[2] : null; }
+function gsHorariosEmpresa(){
+  let o = {}; try{ o = JSON.parse(localStorage.getItem(GS_HORARIOS_LS) || 'null') || {}; }catch(e){}
+  return { checkout:_gsHHMM(o.checkout) || GS_HORARIOS_PADRAO.checkout, checkin:_gsHHMM(o.checkin) || GS_HORARIOS_PADRAO.checkin };
+}
+function saveHorarios(o){
+  const v = { checkout:_gsHHMM(o && o.checkout) || GS_HORARIOS_PADRAO.checkout, checkin:_gsHHMM(o && o.checkin) || GS_HORARIOS_PADRAO.checkin };
+  try{ localStorage.setItem(GS_HORARIOS_LS, JSON.stringify(v)); }catch(e){}
+  try{ Object.keys(S).forEach(function(id){ if(S[id] && S[id].status === 'occupied') ref(id); }); upd(); }catch(e){}
+  return v;
+}
+function gsCheckoutEstado(h, agoraMs){
+  if(!h || h.checkout_ts || !h.saida_prevista) return '';
+  const hoje = _hojeLocalISO(); if(!hoje) return '';
+  if(h.saida_prevista > hoje) return '';
+  if(h.saida_prevista < hoje) return 'atrasado';
+  const d = new Date(agoraMs || Date.now());
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  return hm >= gsHorariosEmpresa().checkin ? 'atrasado' : 'dia';
+}
+// a hora do check-in passa sozinha: a cada minuto, se algum estado mudou, redesenha as vagas e os números
+let _gsCoSig = '';
+setInterval(function(){
+  try{
+    const sig = Object.keys(HOSPEDAGENS || {}).map(function(gs){ return gs + ':' + gsCheckoutEstado(HOSPEDAGENS[gs]); }).join('|');
+    if(_gsCoSig && sig !== _gsCoSig){ Object.keys(S).forEach(function(id){ if(S[id] && S[id].status === 'occupied') ref(id); }); upd(); try{ _gsPendAtualizarPainel(); }catch(e){} }
+    _gsCoSig = sig;
+  }catch(e){}
+}, 60000);
+// "Alterar data prevista" (vaga, Pendências): registro na trilha e na movimentação da hospedagem
+function gsAlterarDataPrevista(gs){
+  const h = HOSPEDAGENS[gs]; if(!h || h.checkout_ts) return;
+  const ant = h.saida_prevista || '';
+  showM('<div class="mt">📅 Alterar data prevista de check-out</div>' +
+    '<div class="ms">' + _vtEsc(gs) + ' · Apt ' + _vtEsc(h.apt || '—') + ' · prevista hoje: <strong>' + _vtEsc(ant ? _fmtDataExibicao(ant) : '—') + '</strong></div>' +
+    '<label class="fl">Nova data de check-out</label><input class="fi" id="dp-nova" type="date" value="' + _vtEsc(ant) + '">' +
+    '<div id="dp-msg" style="min-height:16px;font-size:12px;color:#A32D2D;margin:6px 0"></div>' +
+    '<div class="b2"><button class="bcx" onclick="closeOv()">Cancelar</button><button class="bsv" id="dp-salvar">Salvar</button></div>');
+  document.getElementById('dp-salvar').onclick = function(){
+    const nova = String((document.getElementById('dp-nova') || {}).value || '');
+    const msg = document.getElementById('dp-msg');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(nova)){ if(msg) msg.textContent = 'Escolha a nova data.'; return; }
+    if(nova === ant){ if(msg) msg.textContent = 'A data é a mesma.'; return; }
+    confirmarUsuario('alterando a data prevista de check-out', function(usuario){
+      const usuarioStr = usuario ? (usuario.nome + ' · ' + usuario.cargo) : '';
+      const dm = function(iso){ const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : '—'; };
+      const txt = 'Data de check-out prevista alterada de ' + dm(ant) + ' para ' + dm(nova) + ' por ' + (usuario ? usuario.nome : 'não identificado');
+      HOSPEDAGENS[gs].saida_prevista = nova;
+      saveHospedagens();
+      const vaga = _vagaIdDoGs(gs) || '';
+      addHistorico(h.apt, 'data_prevista', vaga, txt, usuarioStr, gs);
+      try{ addLogSistema(txt + ' (' + gs + ', Apt ' + (h.apt || '?') + ')', { aud:true, acao:'data_prevista_alterada', quem:usuarioStr, alvo:gs, origem:'usuario' }); }catch(e){}
+      try{ if(vaga) ref(vaga); upd(); _gsPendAtualizarPainel(); }catch(e){}
+      try{ _hhjMarcar(gs, 'data prevista alterada'); }catch(e){}
+      closeOv();
+      showToast('✅ ' + txt, 4000);
+    });
+  };
+}
+// "Fazer check-out" a partir da pendência: pela vaga, ou a passeio
+function gsAtrasadoCheckout(gs){
+  try{ fecharExpansao(); }catch(e){}
+  const vaga = _vagaIdDoGs(gs);
+  if(vaga) return doChk(vaga);
+  if(PASSEIO[gs] && typeof showPasseioCheckout === 'function') return showPasseioCheckout(gs);
+  if(typeof abrirDetalhesAguardando === 'function') abrirDetalhesAguardando(gs);
+}
 function ref(id){
   const d=S[id],td=getTd(id);
   if(!td)return;
@@ -2305,13 +2378,10 @@ function ref(id){
     let coLbl='';
     try{
       const gs=d.hospedagem; const h=gs?HOSPEDAGENS[gs]:null;
-      const hoje=_hojeLocalISO();
-      if(h && !h.checkout_ts && h.saida_prevista && hoje && h.saida_prevista===hoje){
-        coLbl='<span class="co-lbl">check-out</span>';
-      } else if(h && !h.checkout_ts && h.saida_prevista && hoje && h.saida_prevista<hoje){
-        // v2.4.1.0 (Bloco F): data de saída JÁ PASSOU e o carro segue ativo — alerta na vaga
-        coLbl='<span class="co-lbl co-atrasado">check-out atrasado</span>';
-      }
+      // v2.4.2.0 (Bloco D): pelo HORÁRIO da empresa (gsCheckoutEstado) — mesma aparência, só a palavra a mais
+      const est=gsCheckoutEstado(h);
+      if(est==='dia') coLbl='<span class="co-lbl">check-out</span>';
+      else if(est==='atrasado') coLbl='<span class="co-lbl co-atrasado">check-out atrasado</span>';
     }catch(e){}
     // v1.9.4.16: `occ` leva a identificação da vaga para o canto superior esquerdo
     // com contraste legível (era #ccc empilhado acima do apto).
@@ -3588,9 +3658,14 @@ function showMenu(id){
     }
   }
 
+  // v2.4.2.0 (Bloco D): check-out atrasado → aviso e as duas ações no próprio modal
+  const _hM=d.hospedagem?HOSPEDAGENS[d.hospedagem]:null;
+  const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" style="background:#FDECEC;border:1px solid #C53030;border-radius:6px;padding:6px 10px;font-size:12px;color:#A32D2D;margin-bottom:8px">⏰ <strong>Check-out atrasado</strong> · saída prevista ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}
+      <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="bcx" id="m-atr-chk" style="flex:1;padding:5px 8px;font-size:12px">🚪 Fazer check-out</button><button type="button" class="bcx" id="m-atr-data" style="flex:1;padding:5px 8px;font-size:12px">📅 Alterar data prevista</button></div></div>`:'';
   mc.innerHTML=`
     <div class="mt" id="m-titulo" style="position:relative;padding-right:${trocaBtn?'110px':'0'}">Vaga ${id} — Apt ${_vtEsc(d.apt||'')}${d.hospedagem?' · '+_vtEsc(d.hospedagem):''}${trocaBtn}</div>
     <div class="ms">🅿 Na garagem · ${info}</div>
+    ${atrasoHTML}
     ${dupWarn}
     <div class="ag">
       <button class="ab ao" id="m-out">🛣️ &nbsp;Passeio</button>
@@ -3602,6 +3677,8 @@ function showMenu(id){
   document.getElementById('m-out').onclick=()=>doOut(id);
   document.getElementById('m-det').onclick=()=>showDet(id);
   document.getElementById('m-chk').onclick=()=>doChk(id);
+  const _mac=document.getElementById('m-atr-chk'); if(_mac) _mac.onclick=()=>doChk(id);
+  const _mad=document.getElementById('m-atr-data'); if(_mad) _mad.onclick=()=>gsAlterarDataPrevista(d.hospedagem);
 }
 
 // Trocar carro grande → pequeno (carro fica só na B, libera a A)
@@ -5068,7 +5145,7 @@ function _usrDefinirPin(u, onFim){
   function render(err){
     const titulo = etapa===1 ? (jaTinha?'Redefinir PIN':'Cadastrar PIN') : 'Confirmar PIN';
     const sub = etapa===1
-      ? 'Entregue o aparelho para <strong>'+_vtEsc(u.nome||'')+'</strong> digitar um PIN de 4 dígitos'
+      ? 'Entregue o dispositivo para <strong>'+_vtEsc(u.nome||'')+'</strong> digitar um PIN de 4 dígitos'
       : 'Repita o PIN para confirmar';
     mc.innerHTML=`<div class="mt">🔑 ${titulo}</div>
       <div class="ms">${sub}</div>
@@ -5447,7 +5524,7 @@ function getTurnoAtual(){ return getTurnoDoEvento(Date.now()); }
 function showHistoricoUsuario(userId){
   const u=USUARIOS.find(x=>x.id===userId);
   if(!u){ showToast('Usuário não encontrado'); return; }
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D'};
   const nomeU=u.nome.toLowerCase();
   const allEvts=[];
@@ -5979,7 +6056,7 @@ function renderPainelDia(){
 
   <!-- v1.9.4.2: versão visível no rodapé do Painel + 5 toques abre painel de debug -->
   <div id="gs-versao-rodape" onclick="_debugVersaoTap()" style="text-align:center;font-size:10px;color:#aaa;padding:10px 0 16px;font-family:inherit;cursor:pointer;user-select:none">
-    GarageSpot ${GS_VERSION} · <span id="gs-ambiente-rodape">${_gsAmbiente().rotulo}</span> · build ${GS_BUILD_TS} · versionCode ${GS_VERSION_CODE}
+    GarageSpot ${GS_VERSION} · <span id="gs-ambiente-rodape">${_gsAmbiente().rotulo}</span> · build ${GS_BUILD_TS} · <span id="gs-apk-rodape">${_gsApkRotulo()}</span>
   </div>`;
 
   // v1.9.4.1.3: recalcular contadores dos agrupadores após renderizar
@@ -6021,10 +6098,11 @@ function renderAgrupadoresPainel(){
         hospNaGaragem++;
       }
     }
-    // Check-out previsto hoje (não atrasado)
-    if(h.saida_prevista===hojeISO) checkoutsHoje++;
-    // Check-out atrasado (data passada)
-    if(h.saida_prevista && h.saida_prevista < hojeISO) atrasados++;
+    // v2.4.2.0 (Bloco D): pelo horário da empresa — no dia previsto, até a hora do check-in é "check-out";
+    // a partir dela (ou depois do dia), atrasado
+    const coEst=gsCheckoutEstado(h);
+    if(coEst==='dia') checkoutsHoje++;
+    if(coEst==='atrasado') atrasados++;
   }
 
   // Assinaturas pendentes (em hospedagens ainda ativas)
@@ -6284,7 +6362,7 @@ function renderExpansaoHoje(filtro){
         const cls=click?' clicavel':'';
         html+='<div class="exp-item'+cls+'"'+click+'>'+
           '<div class="exp-item-titulo">'+_vtEsc(tLabel[e.tipo]||e.tipo)+' · Apt '+_vtEsc(e._apt||'')+'</div>'+
-          '<div class="exp-item-sub">'+(e.vaga?'Vaga '+_vtEsc(e.vaga)+' · ':'')+_vtEsc(e.usuario||'')+' · '+hora+'</div>'+
+          '<div class="exp-item-sub">'+(e.vaga?'Vaga '+_vtEsc(e.vaga)+' · ':'')+_vtEsc(_gsEvQuem(e))+' · '+hora+'</div>'+
           '</div>';
       }
     }
@@ -6385,10 +6463,10 @@ function renderExpansaoPendencias(){
   }
 
   // v2.4.1.0 (Bloco F): check-out atrasado (data de saída anterior a hoje, carro ainda ativo)
-  const atrasadosCo=[], hojeCo=_hojeLocalISO();
+  const atrasadosCo=[];
   for(const gs in HOSPEDAGENS){
     const h=HOSPEDAGENS[gs]; if(!h || (typeof gsSrvForaHosp==='function' && gsSrvForaHosp(gs))) continue;
-    if(!h.checkout_ts && h.saida_prevista && hojeCo && h.saida_prevista<hojeCo) atrasadosCo.push(Object.assign({_gs:gs},h));
+    if(gsCheckoutEstado(h)==='atrasado') atrasadosCo.push(Object.assign({_gs:gs},h));   // v2.4.2.0 (Bloco D)
   }
   atrasadosCo.sort(function(a,b){ return String(a.saida_prevista).localeCompare(String(b.saida_prevista)); });
   if(semVaga.length===0 && semAssin.length===0 && atrasadosCo.length===0){
@@ -6404,6 +6482,9 @@ function renderExpansaoPendencias(){
       html+='<div class="card-co-atrasado card-pend-assin" style="cursor:pointer" data-gs="'+_vtEsc(h._gs||'')+'" data-vaga="'+_vtEsc(vagaId||'')+'" data-action="card-assin">'+
         '<div class="cav-titulo">⏰ Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
         '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · '+(vagaId?'Vaga '+_vtEsc(vagaId):(PASSEIO[h._gs]?'A passeio':'Sem vaga'))+' · saída prevista '+_vtEsc(_fmtDataExibicao(h.saida_prevista))+' · toque para abrir</div>'+
+        // v2.4.2.0 (Bloco D): as duas ações direto na pendência
+        '<div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="bcx co-atr-chk" style="flex:1;padding:5px 8px;font-size:12px" onclick="event.stopPropagation();gsAtrasadoCheckout(\''+_vtEsc(h._gs||'')+'\')">🚪 Fazer check-out</button>'+
+        '<button type="button" class="bcx co-atr-data" style="flex:1;padding:5px 8px;font-size:12px" onclick="event.stopPropagation();fecharExpansao();gsAlterarDataPrevista(\''+_vtEsc(h._gs||'')+'\')">📅 Alterar data prevista</button></div>'+
         '</div>';
     }
   }
@@ -6636,7 +6717,7 @@ function _gsPinGravar(pin){
   try{ localStorage.setItem(GESTAO_PIN_KEY,String(pin)); return true; }
   catch(e){
     console.error('[PIN] não foi possível gravar o PIN do gestor:',e&&e.message);
-    if(typeof showToast==='function') showToast('⚠️ Não foi possível gravar o PIN — libere espaço no aparelho',5000);
+    if(typeof showToast==='function') showToast('⚠️ Não foi possível gravar o PIN — libere espaço no dispositivo',5000);
     return false;
   }
 }
@@ -6936,6 +7017,8 @@ function addLogSistema(msg, meta){
       // Drive: sem isso, "o app desconectou sozinho" vira discussão de memória em vez
       // de fato auditável. Campo opcional — nada antigo muda.
       if(meta.origem) ent.origem=String(meta.origem);
+      // v2.4.2.0 (Bloco E): de qual dispositivo (com login no servidor)
+      try{ const dr=gsDispRotulo(); if(dr) ent.disp=dr+' ('+gsDispNome()+')'; }catch(eD){}
     }
     log.push(ent);
     log=_logPodar(log);
@@ -7020,7 +7103,7 @@ function _mostrarAuditoria(){
             '<span style="font-size:12px;font-weight:700;color:#111">'+_vtEsc(acao)+'</span>'+
             '<span style="font-size:10px;color:#888;white-space:nowrap">'+quando+'</span>'+
           '</div>'+
-          '<div style="font-size:11px;color:#888;margin-top:1px">por '+quem+'</div>'+alvo+
+          '<div style="font-size:11px;color:#888;margin-top:1px">por '+quem+(e.disp?' · '+_vtEsc(e.disp):'')+'</div>'+alvo+
         '</div>';
       }).join('');
   showM('<div class="mt">🛡 Trilha de auditoria</div>'+
@@ -8437,7 +8520,7 @@ function _nciRenderPagina(){
     if(window.matchMedia&&window.matchMedia('(orientation: portrait)').matches
        && !localStorage.getItem('garagespot_orientacao_aviso_visto')){
       setTimeout(function(){
-        showToast('Vire o aparelho na horizontal para melhor experiência',3000);
+        showToast('Vire o dispositivo na horizontal para melhor experiência',3000);
         try{ localStorage.setItem('garagespot_orientacao_aviso_visto','1'); }catch(e){}
       },500);
     }
@@ -9438,7 +9521,7 @@ function _nciFinalizarCont(){
         titulo:'Erro ao finalizar vistoria',
         texto:(e && e.message==='GS_EXISTENTE')
           ? 'O número desta hospedagem já pertence a outra hospedagem. Nada foi sobrescrito. Tente confirmar de novo.'
-          : 'Não foi possível gerar o documento. Tente novamente. Se persistir, verifique o espaço disponível no aparelho.',
+          : 'Não foi possível gerar o documento. Tente novamente. Se persistir, verifique o espaço disponível no dispositivo.',
         botoes:[{label:'OK',cls:'primary',action:'close'}]
       });
     }
@@ -11443,7 +11526,7 @@ async function fazerBackupLocal(motivo, opts){
     // chamou a oferecer a exportação sem fotos em vez de só reclamar.
     const memoria = _gsFalhaDeMemoria(e);
     if(typeof addLogSistema === 'function') addLogSistema('Erro backup: '+(e && e.message)+
-      (memoria ? ' [memória — o aparelho não deu conta de montar o arquivo]' : ''));
+      (memoria ? ' [memória — o dispositivo não deu conta de montar o arquivo]' : ''));
     return {ok:false, erro:(e && e.message) || String(e), memoria:memoria};
   }
 }
@@ -11926,7 +12009,7 @@ async function _gsPodaExecutarPDFs(){
     _gsPDFsSalvar(_gsPDFsRegistro().filter(function(p){ return !(p && fora[p.nome]); }));
   }catch(e){ console.warn('[PODA] registro de PDFs não atualizado:', e && e.message); }
   apagados.forEach(function(a){
-    try{ addLogSistema('Limpeza: documento do aparelho apagado — ' + a.nome + ' (' + a.motivo + ')',
+    try{ addLogSistema('Limpeza: documento do dispositivo apagado — ' + a.nome + ' (' + a.motivo + ')',
       {aud:true, acao:'poda_pdf_local', alvo:a.nome}); }catch(e){}
   });
   if(erro){
@@ -12068,7 +12151,7 @@ async function _gsPodaRodarSeLigada(){
     // v1.9.6.6: os PDFs do APARELHO, com a mesma regra. Só o aparelho — a cópia da
     // nuvem nunca é tocada por caminho nenhum.
     const rp = await _gsPodaExecutarPDFs();
-    if(rp && rp.apagados) console.log('[PODA] documentos do aparelho:', rp.apagados, 'arquivo(s)');
+    if(rp && rp.apagados) console.log('[PODA] documentos do dispositivo:', rp.apagados, 'arquivo(s)');
     const cfg = _gsPodaConfig();
     if(cfg.nuvem){
       const rn = await _gdPodaExecutarNuvem();
@@ -12085,11 +12168,11 @@ function _renderPodaStatus(){
   return `<div id="poda-box" style="background:#f8f7f3;border-radius:8px;padding:12px;font-size:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
       <div><div style="font-weight:600;color:${c.ligada?'#0F6E56':'#555'}">Limpeza automática: ${c.ligada?'LIGADA':'DESLIGADA'}</div>
-      <div style="color:#999">${n} cópia(s) no registro do aparelho</div></div>
+      <div style="color:#999">${n} cópia(s) no registro do dispositivo</div></div>
       <span style="font-size:18px;color:${c.ligada?'#0F6E56':'#aaa'}">${c.ligada?'●':'○'}</span>
     </div>
     <div style="color:#666;line-height:1.55;margin-bottom:8px">
-      Um backup do aparelho só é apagado depois de <strong>confirmado na nuvem</strong> e de passados
+      Um backup do dispositivo só é apagado depois de <strong>confirmado na nuvem</strong> e de passados
       <strong>${GS_PODA_DIAS_LOCAL} dias dessa confirmação</strong>. Sem confirmação, ele fica — por mais velho que seja.
       O <strong>mais recente nunca sai</strong>.
     </div>
@@ -12101,7 +12184,7 @@ function _renderPodaStatus(){
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:6px;padding:8px 10px;color:#0F6E56;font-size:11px;line-height:1.5;margin-bottom:8px">
       <strong>Na nuvem, nenhum documento é apagado — nunca.</strong> PDFs de fechamento e relatórios de
       recarga ficam lá para sempre.<br>
-      <span style="color:#155">No aparelho</span>, esses documentos seguem a mesma regra dos backups:
+      <span style="color:#155">No dispositivo</span>, esses documentos seguem a mesma regra dos backups:
       saem <strong>só depois de confirmados na nuvem</strong> e de passados <strong>${GS_PODA_DIAS_LOCAL} dias
       dessa confirmação</strong>. Sem confirmação, ficam.
     </div>
@@ -12153,18 +12236,18 @@ async function simularLimpeza(){
        Simulação <strong>somente leitura</strong> — nenhum arquivo foi tocado. A limpeza está
        <strong>${_gsPodaLigada()?'LIGADA':'DESLIGADA'}</strong>.
      </div>
-     <div class="gestao-menu-sep" style="margin-top:12px">Backups no aparelho</div>
+     <div class="gestao-menu-sep" style="margin-top:12px">Backups no dispositivo</div>
      ${bloco('Sairiam', '#A32D2D', local.remover, 'Nada seria apagado agora.')}
      ${local.truncado?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${local.teto} por execução: outros ${local.excedente} ficariam para a próxima.</div>`:''}
      ${bloco('Ficariam', '#0F6E56', local.manter, 'Nenhuma cópia registrada.')}
-     <div class="gestao-menu-sep" style="margin-top:14px">Documentos no aparelho</div>
+     <div class="gestao-menu-sep" style="margin-top:14px">Documentos no dispositivo</div>
      <div style="color:#666;font-size:11px;line-height:1.5;padding:2px 0">
        PDFs de fechamento e relatórios de recarga. A cópia da <strong>nuvem nunca é apagada</strong> —
-       aqui só se decide o que sai <strong>do aparelho</strong>.
+       aqui só se decide o que sai <strong>do dispositivo</strong>.
      </div>
-     ${bloco('Sairiam do aparelho', '#A32D2D', pdfs.remover, 'Nenhum documento seria apagado agora.')}
+     ${bloco('Sairiam do dispositivo', '#A32D2D', pdfs.remover, 'Nenhum documento seria apagado agora.')}
      ${pdfs.truncado?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${pdfs.teto} por execução: outros ${pdfs.excedente} ficariam para a próxima.</div>`:''}
-     ${bloco('Ficariam no aparelho', '#0F6E56', pdfs.manter, 'Nenhum documento registrado.')}
+     ${bloco('Ficariam no dispositivo', '#0F6E56', pdfs.manter, 'Nenhum documento registrado.')}
      <div class="gestao-menu-sep" style="margin-top:14px">Na nuvem</div>
      ${nuvem.indisponivel?'<div style="color:#999;font-size:11px;padding:4px 0">Drive não conectado — nada a analisar.</div>':''}
      ${nuvem.erro?`<div style="color:#A32D2D;font-size:11px;padding:4px 0">Não deu para listar: ${_vtEsc(nuvem.erro)}</div>`:''}
@@ -12249,7 +12332,7 @@ async function _gsExportar(opts){
     const _fs = window.Capacitor?.Plugins?.Filesystem || null;
     const _share = window.Capacitor?.Plugins?.Share || null;
     const gravador = (_fs && _share) ? _gsGravadorEmAnexos(_fs, 'GarageSpot/'+nome) : null;
-    if(gravador) etapa = 'gravar no aparelho';
+    if(gravador) etapa = 'gravar no dispositivo';
     const pac = await _gsSnapshotParaBlob(snap, gravador ? gravador.aoLote : null);
 
     // ⚠️ v1.9.9.1 — NO APARELHO, O DOWNLOAD NÃO É REDE DE SEGURANÇA.
@@ -12267,7 +12350,7 @@ async function _gsExportar(opts){
     // exportação sem fotos.
     let compartilhou = false;
     if(gravador){
-      etapa = 'gravar no aparelho';
+      etapa = 'gravar no dispositivo';
       await gravador.finalizar();
       etapa = 'compartilhar';
       const {uri} = await _fs.getUri({path:'GarageSpot/'+nome, directory:'DOCUMENTS'});
@@ -12323,7 +12406,7 @@ function _gsOferecerSemFotos(oQueFalhou){
   try{
     if(typeof showM !== 'function') return;
     showM('<div class="mt">⚠️ '+_vtEsc(String(oQueFalhou))+' não passou</div>'+
-      '<div class="ms" style="margin-bottom:10px">O aparelho não deu conta de montar o arquivo com as fotos. '+
+      '<div class="ms" style="margin-bottom:10px">O dispositivo não deu conta de montar o arquivo com as fotos. '+
       '<strong>Nada foi apagado</strong> — os dados continuam aqui.</div>'+
       '<div style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:9px 11px;font-size:12px;color:#633806;line-height:1.5;margin-bottom:12px">'+
       'Dá para tirar os <strong>registros</strong> daqui agora mesmo, sem as imagens: hospedagens, vistorias, '+
@@ -13046,7 +13129,7 @@ async function _gsSubstituirPorBackup(obj, origem){
   catch(e){
     // Sem rede de segurança não se derruba nada. Abortar aqui é o comportamento
     // seguro: o aparelho continua exatamente como está.
-    res.erro = 'não foi possível preparar a cópia de segurança do aparelho: ' + ((e && e.message) || e);
+    res.erro = 'não foi possível preparar a cópia de segurança do dispositivo: ' + ((e && e.message) || e);
     console.error('[SUBSTITUIR] ABORTADO —', res.erro);
     try{ addLogSistema('Restauração (substituir) ABORTADA antes de tocar nos dados: ' + res.erro,
       {aud:true, acao:'restauracao_substituir_abortada', alvo:String(origem||'arquivo')}); }catch(e2){}
@@ -13091,7 +13174,7 @@ async function _gsSubstituirPorBackup(obj, origem){
       console.error('[SUBSTITUIR] o rollback também falhou:', e2);
       res.erro += ' | rollback também falhou: ' + ((e2 && e2.message) || e2);
     }
-    try{ addLogSistema('Restauração (substituir) FALHOU' + (res.revertido ? ' — aparelho revertido ao estado anterior' : ' E O ROLLBACK TAMBÉM FALHOU') + ': ' + res.erro,
+    try{ addLogSistema('Restauração (substituir) FALHOU' + (res.revertido ? ' — dispositivo revertido ao estado anterior' : ' E O ROLLBACK TAMBÉM FALHOU') + ': ' + res.erro,
       {aud:true, acao:'restauracao_substituir_falhou', alvo:String(origem||'arquivo')}); }catch(e3){}
     return res;
   }
@@ -13104,7 +13187,7 @@ async function _gsSubstituirPorBackup(obj, origem){
   res.historico    = _gsContarItens(HISTORICO);
   try{ res.mapaVagas = Object.keys(S).filter(function(k){ return S[k] && S[k].status==='occupied'; }).length; }catch(e){}
 
-  try{ addLogSistema('Restauração SUBSTITUIR (' + (origem||'arquivo') + '): o aparelho passou a ser idêntico ao backup — '
+  try{ addLogSistema('Restauração SUBSTITUIR (' + (origem||'arquivo') + '): o dispositivo passou a ser idêntico ao backup — '
     + res.hospedagens + ' hosp., ' + res.usuarios + ' func., ' + res.vistorias + ' vist., '
     + res.anexosItens + ' anexos, ' + res.mapaVagas + ' vaga(s) ocupada(s)',
     {aud:true, acao:'dados_substituidos', alvo:String(origem||'arquivo')}); }catch(e){}
@@ -13158,7 +13241,7 @@ function _gsConfirmarImportacao(obj, nomeArq){
     </div>
     ${avisoIDB}
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:9px 12px;font-size:12px;color:#0F6E56;margin-top:8px">
-      ✅ A importação <strong>SOMA</strong> o que falta. Nada do que está no aparelho é apagado ou sobrescrito.
+      ✅ A importação <strong>SOMA</strong> o que falta. Nada do que está no dispositivo é apagado ou sobrescrito.
     </div>
     <div class="b2">
       <button class="bcx" onclick="closeOv()">Cancelar</button>
@@ -13306,6 +13389,7 @@ function _gdErroDeRede(e){
     if(e.gdAuth) return false;                       // veio com status HTTP → é do Google
     if(e.gdDet && e.gdDet.status) return false;      // idem
     if(e.gdTimeout) return true;                     // estourou o teto: tratar como transitório
+    if(e.gdTransitorio) return true;                 // v2.4.2.0: a renovação silenciosa só foi adiada (rede, Play Services ocupado)
     const m = String(e.message || e).toLowerCase();
     return e instanceof TypeError ||
       m.indexOf('failed to fetch') >= 0 || m.indexOf('networkerror') >= 0 ||
@@ -13419,7 +13503,7 @@ async function _gdEscoposDoToken(token){
 
 async function _gdInicializar(){
   const p = _gdPlugin();
-  if(!p) throw new Error('login Google indisponível neste aparelho');
+  if(!p) throw new Error('login Google indisponível neste dispositivo');
   if(_gdIniciado) return;
   // O Android Client ID NÃO entra aqui de propósito: no Android o Google resolve o
   // cliente pelo nome do pacote + SHA-1 da assinatura, registrados no Console. O que
@@ -13446,10 +13530,72 @@ async function _gdLoginInterativo(){
 
 // Token válido, renovando em silêncio quando dá. `interativo=false` nunca abre tela
 // (é o caminho do backup automático — não pode roubar o foco de quem está operando).
+// v2.4.2.0 — TOKEN SEM TELA. Medido em 17/10 (celular A): às 09:25, ~1 h depois da conexão, o token expirou,
+// a renovação do plugin de login falhou (ela usa o Credential Manager, que precisa de tela, e com o token de
+// identidade vencido ainda apaga a sessão) e o dispositivo ficou 10 min com "drive não" até alguém tocar em
+// "backup agora". No APK vc32 o token vem do Google Play Services para a CONTA conectada (sem tela, funciona
+// com a tela bloqueada); se falhar, o caminho antigo continua valendo.
+// v2.4.2.0 (ajuste 1) — DRIVE SEM PEDIR RECONEXÃO. Com a conta autorizada uma vez, o acesso é renovado SEMPRE em
+// silêncio pelo Google Play Services (APK vc32). O caminho do plugin de login (refresh/getAuthorizationCode) NÃO
+// entra mais no automático quando o APK sabe renovar sozinho: era ele que abria a confirmação do Google na tela
+// (Credential Manager) e, com o token de identidade vencido, ainda apagava a sessão. Ao usuário só se pede quando o
+// GOOGLE recusa de verdade (acesso revogado, senha trocada, conta removida do aparelho) — e uma vez só.
+// O registro de diagnóstico conta as renovações silenciosas e os pedidos ao usuário.
+const GS_DRIVE_RENOV_LS = 'gs-drive-renovacao';
+let _gdNativoFalhaTs = 0;
+function gsDriveRenovLer(){ try{ return JSON.parse(localStorage.getItem(GS_DRIVE_RENOV_LS) || 'null') || { silenciosas:0, pedidos:0 }; }catch(e){ return { silenciosas:0, pedidos:0 }; } }
+function _gsDriveRenovSomar(campo, extra){
+  try{ const o = gsDriveRenovLer(); o[campo] = (o[campo] || 0) + 1; Object.assign(o, extra || {}); localStorage.setItem(GS_DRIVE_RENOV_LS, JSON.stringify(o)); return o; }catch(e){ return null; }
+}
+// o APK sabe renovar sozinho? (vc32: o plugin GsSegundoPlano informa "sobreposicao" no estado)
+function _gdRenovaSozinho(){ try{ return !!(_gsSegPlano() && _gsApkInfo && _gsApkInfo.vc >= 32); }catch(e){ return false; } }
+// recusa DE VERDADE do Google × atraso passageiro (rede, Play Services ocupado)
+function _gdRecusaDoGoogle(e){
+  const c = String((e && e.code) || ''), m = String((e && e.message) || e || '');
+  if(c === 'INTERACAO' || /confirmação na tela|INTERACAO/.test(m)) return true;
+  return /\b(4|16|17)\s*:|SIGN_IN_REQUIRED|CANCELED|API_NOT_CONNECTED|account.*(not found|removed|missing)|conta.*(removida|inexistente)/i.test(m);
+}
+async function _gdTokenNativoDet(){
+  const sp = _gsSegPlano(); if(!sp || !sp.driveToken) return { nada:true };
+  const email = String((DRIVE_STATUS && DRIVE_STATUS.nuvem_email) || '').trim();
+  if(!email || !(DRIVE_STATUS && DRIVE_STATUS.nuvem_conectada)) return { nada:true };
+  try{
+    const r = await _gdComTeto(sp.driveToken({ email:email }), 'ao renovar o acesso ao Drive (Play Services)', GD_TIMEOUT_TOKEN_MS);
+    if(r && r.token){
+      _gdTokenVia = 'play_services'; _gdTokenCache = { token:r.token, ts:Date.now() }; _gdNativoFalhaTs = 0;
+      const o = _gsDriveRenovSomar('silenciosas', { ultima_ok:Date.now() });
+      try{ gsDiag('drive', 'acesso renovado em silêncio (Play Services) · #' + (o ? o.silenciosas : '?')); }catch(x){}
+      if(DRIVE_STATUS.nuvem_reconectar){
+        DRIVE_STATUS.nuvem_reconectar = false; saveDriveStatus();
+        try{ addLogSistema('Google Drive: autorização renovada sozinha, sem tela (Play Services) — ' + email, { aud:true, acao:'drive_renovado_sozinho', alvo:email, origem:'automatico' }); }catch(e){}
+      }
+      return { token:r.token };
+    }
+    return { transitorio:true, msg:'o Google não devolveu token' };
+  }catch(e){
+    const msg = String((e && e.message) || e).slice(0, 120);
+    if(_gdRecusaDoGoogle(e)){ try{ gsDiag('drive', 'o Google RECUSOU a renovação: ' + msg); }catch(x){} return { recusa:true, msg:msg }; }
+    _gdNativoFalhaTs = Date.now();
+    try{ gsDiag('drive', 'renovação silenciosa adiada (tenta de novo): ' + msg); }catch(x){}
+    return { transitorio:true, msg:msg };
+  }
+}
+async function _gdTokenNativo(){ const r = await _gdTokenNativoDet(); return r.token || null; }
 async function _gdObterToken(interativo){
   if(_gdTokenCache && (Date.now() - _gdTokenCache.ts) < GD_TOKEN_TTL) return _gdTokenCache.token;
+  if(_gsSegPlano() && !_gsApkInfo){ try{ await gsApkDetectar(); }catch(e){} }   // sabe renovar sozinho? (uma consulta só)
+  if(_gdRenovaSozinho()){
+    if(!interativo && Date.now() - _gdNativoFalhaTs < 60000){ const ea = new Error('renovação silenciosa do Drive adiada (tenta de novo em instantes)'); ea.gdTransitorio = true; throw ea; }
+    const r = await _gdTokenNativoDet();
+    if(r.token) return r.token;
+    if(!interativo){
+      if(r.recusa){ const e = _gdErroReconectar(); e.gdRecusaGoogle = true; throw e; }
+      const e2 = new Error('renovação silenciosa do Drive adiada: ' + (r.msg || 'sem resposta')); e2.gdTransitorio = true; throw e2;
+    }
+    // interativo (o usuário tocou em Conectar/Reconectar): segue para o login do Google
+  } else { const nat = await _gdTokenNativo(); if(nat) return nat; }
   const p = _gdPlugin();
-  if(!p) throw new Error('login Google indisponível neste aparelho');
+  if(!p) throw new Error('login Google indisponível neste dispositivo');
   await _gdInicializar();
   // No Android o SO cacheia o token; `getAuthorizationCode` é o caminho recomendado
   // pelo plugin para obter um token válido sem interação.
@@ -13872,6 +14018,12 @@ function conectarGoogleDrive(){
         addLogSistema('Google Drive conectado' + (r.email ? ' (' + r.email + ')' : ''),
           {aud:true, acao:'drive_conectado', alvo:(r.email||'—')});
         showToast('✅ Google Drive conectado' + (r.email ? ' · ' + r.email : ''), 4000);
+        // v2.4.2.0 (Blocos B/C): o servidor fica sabendo NA HORA (conta e Drive) — se ninguém apto estava
+        // enviando, este dispositivo assume e leva os pendentes; conta diferente da oficial é avisada
+        if(typeof gsSrvAtivo === 'function' && gsSrvAtivo()){
+          try{ const of = _gsRespLer().conta_oficial; if(of && r.email && String(r.email).toLowerCase() !== String(of).toLowerCase()) showToast('⚠️ Esta não é a conta oficial do Drive (' + of + ') — os envios deste dispositivo não serão aceitos', 7000); }catch(e){}
+          try{ _gsSrvSinal().then(function(){ try{ _gsPesadaAgendar(500); }catch(e){} }); }catch(e){}
+        }
       }catch(e){
         const m = (e && e.message) || String(e);
         _gdMarcarFalha(m);
@@ -13919,6 +14071,10 @@ function _gdDesvincularConta(origem, antes){
 // diferentes e o card precisa dizer qual é qual.
 function _gdMarcarPrecisaReconectar(msg){
   try{
+    if(DRIVE_STATUS.nuvem_reconectar) return;   // v2.4.2.0: pede ao usuário UMA vez (não a cada falha)
+    if(_gdRenovaSozinho()) msg = 'o Google recusou o acesso ao Drive desta conta (acesso revogado, senha trocada ou conta removida do dispositivo) — reconecte em Gestão → Backup e Conexões';
+    _gsDriveRenovSomar('pedidos', { ultimo_pedido:Date.now() });
+    try{ gsDiag('drive', 'PEDIDO AO USUÁRIO: reconectar o Drive (' + String(msg || '').slice(0, 80) + ')'); }catch(x){}
     DRIVE_STATUS.nuvem_reconectar = true;
     saveDriveStatus();
     addLogSistema('Google Drive precisa ser reconectado: ' + (msg || 'autorização indisponível'),
@@ -13954,7 +14110,7 @@ async function _gdEnviarBackup(nome, json, motivo, interativo, nomeLocal){
   // v2.3.0.0 (Bloco E): o backup COMPLETO só sobe com as filas leve E pesada vazias — senão o
   // arquivo da nuvem ficaria atrás do que este aparelho ainda não entregou ao servidor.
   if(gsFilasDoServidorPendentes()){ _gdAdiarEnvio('filas do servidor ainda não vazias'); return {ok:false, adiado:true, erro:'aguardando o envio ao servidor terminar (' + gsFilasDoServidorPendentes() + ' item(ns) nas filas)'}; }
-  if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste aparelho'};
+  if(!_gdDisponivel()) return {ok:false, erro:'nuvem indisponível neste dispositivo'};
   if(!_gdConectado())  return {ok:false, erro:'Google Drive não conectado'};
   if(_gdEnviando)      return {ok:false, erro:'já há um envio em andamento'};
   _gdEnviando = true;
@@ -14959,7 +15115,7 @@ async function _gdHistVarrer(){
   est.total = (est.enviados || []).length + est.pendentes.length;
   _gdHistSalvar(est);
   if(novos.length){
-    addLogSistema('Histórico: ' + novos.length + ' documento(s) do aparelho na fila para a nuvem' +
+    addLogSistema('Histórico: ' + novos.length + ' documento(s) do dispositivo na fila para a nuvem' +
       (semData ? ' (' + semData + ' sem data de check-in recuperável)' : ''),
       {aud:true, acao:'historico_varrido', alvo:String(novos.length)});
   }
@@ -15166,11 +15322,11 @@ function _gdHistProgressoHTML(){
         ? `<div style="color:#854F0B;margin-top:3px">${e.semData} sem data de check-in — foram para <strong>${_vtEsc(GD_PASTA_SEM_DATA)}</strong>.</div>`
         : '';
       return `<div id="hist-progresso" style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:6px;padding:7px 9px;margin-top:6px;color:#0F6E56;font-size:11px;line-height:1.5">
-        ✅ Histórico do aparelho enviado — <strong>${env}</strong> documento(s). Os originais continuam no aparelho.${aviso}</div>`;
+        ✅ Histórico do dispositivo enviado — <strong>${env}</strong> documento(s). Os originais continuam no dispositivo.${aviso}</div>`;
     }
     const total = env + pend;
     return `<div id="hist-progresso" style="background:#F1F5FA;border:1px solid #2E6DB4;border-radius:6px;padding:7px 9px;margin-top:6px;color:#153E6B;font-size:11px;line-height:1.5">
-      ⬆️ Enviando histórico: <strong>${env} de ${total}</strong>. Continua sozinho, aos poucos — nada é apagado do aparelho.</div>`;
+      ⬆️ Enviando histórico: <strong>${env} de ${total}</strong>. Continua sozinho, aos poucos — nada é apagado do dispositivo.</div>`;
   }catch(e){ return ''; }
 }
 
@@ -15442,10 +15598,10 @@ async function _gdTentarPendente(){
 
 async function fazerBackupNuvemAgora(){
   try{ if(gsSrvAtivo() && gsSouResponsavel() && _gsPesada.ativo){ gsPesadaConsultarServidor('backup agora').then(function(){ return gsPesadaDrenar('backup agora', 120000); }); } }catch(e){}   // v2.4.1.0 (Bloco C)
-  if(_gsDriveSoA('backup na nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return {ok:false, erro:_gsDriveMsg()}; }   // v2.1.0.0
+  if(_gsDriveSoA('backup na nuvem')){ showToast('☁️ O envio ao Drive é feito pelo dispositivo ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return {ok:false, erro:_gsDriveMsg()}; }   // v2.1.0.0
   if(!_gdDisponivel()){
     showToast('☁️ A nuvem só funciona no aplicativo instalado (APK).', 5000);
-    return {ok:false, erro:'nuvem indisponível neste aparelho'};
+    return {ok:false, erro:'nuvem indisponível neste dispositivo'};
   }
   if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return {ok:false, erro:'Google Drive não conectado'}; }
   showToast('Enviando backup para o Google Drive…', 3000);
@@ -15465,7 +15621,7 @@ async function fazerBackupNuvemAgora(){
     const mem = _gsFalhaDeMemoria(eMem);
     if(typeof addLogSistema === 'function') addLogSistema('Envio à nuvem abortado ao montar o arquivo: ' +
       ((eMem && eMem.message) || eMem) + (mem ? ' [memória]' : ''));
-    showToast('⚠️ Não deu para montar o arquivo do backup neste aparelho. O backup local está intacto.', 6500);
+    showToast('⚠️ Não deu para montar o arquivo do backup neste dispositivo. O backup local está intacto.', 6500);
     _gsOferecerSemFotos('o envio para a nuvem');
     return {ok:false, erro:((eMem && eMem.message) || String(eMem)), memoria:mem};
   }
@@ -15584,7 +15740,7 @@ function _gdEscolherModoRestauracao(obj, nome){
   const qtdVst  = _gsContar(n.vistorias || {});
   const qtdAnx  = _gsContarItens(n.anexos || {});
   const avisoIDB = n.temIndexedDB ? '' :
-    `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos</strong> (backup leve / formato antigo). Em <strong>Substituir</strong>, o aparelho ficaria sem elas.</div>`;
+    `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos</strong> (backup leve / formato antigo). Em <strong>Substituir</strong>, o dispositivo ficaria sem elas.</div>`;
   showM(`<div class="mt">☁️ Restaurar da nuvem</div>
     <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
     <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
@@ -15595,9 +15751,9 @@ function _gdEscolherModoRestauracao(obj, nome){
     ${avisoIDB}
     <div class="ag" style="margin-top:10px">
       <button class="bsv" id="rst-somar">➕ Somar (mesclar)</button>
-      <div style="font-size:11px;color:#888;margin:2px 0 8px">Acrescenta só o que falta. Nada do que está no aparelho é apagado. <strong>Padrão.</strong></div>
+      <div style="font-size:11px;color:#888;margin:2px 0 8px">Acrescenta só o que falta. Nada do que está no dispositivo é apagado. <strong>Padrão.</strong></div>
       <button class="ab ao" id="rst-subst" style="margin-top:0">♻️ Substituir (recuperação)</button>
-      <div style="font-size:11px;color:#888;margin:2px 0 0">Deixa o aparelho <strong>idêntico a este backup</strong>. Os dados atuais do aparelho são descartados.</div>
+      <div style="font-size:11px;color:#888;margin:2px 0 0">Deixa o dispositivo <strong>idêntico a este backup</strong>. Os dados atuais do dispositivo são descartados.</div>
       <button class="bcx" onclick="closeOv()" style="margin-top:10px">Cancelar</button>
     </div>`);
   // Handlers ligados NA HORA, sem `setTimeout`. `showM` é síncrono (`innerHTML` +
@@ -15619,18 +15775,18 @@ function _gdConfirmarSubstituir(obj, nome, n, dataArq, qtdHosp, qtdVst, qtdAnx){
   showM(`<div class="mt">♻️ Substituir tudo pelo backup?</div>
     <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
     <div class="vst-warn-box" style="font-size:12px">
-      O aparelho vai ficar <strong>idêntico a este backup</strong>.<br>
-      Tudo o que está no aparelho hoje e <strong>não</strong> está no backup <strong>será descartado</strong>.
+      O dispositivo vai ficar <strong>idêntico a este backup</strong>.<br>
+      Tudo o que está no dispositivo hoje e <strong>não</strong> está no backup <strong>será descartado</strong>.
     </div>
     <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7;margin-top:8px">
       <div><strong>Backup de ${_vtEsc(String(dataArq))}</strong></div>
       <div>• ${qtdHosp} hospedagens · ${qtdVst} vistorias · ${qtdAnx} anexos</div>
-      <div style="margin-top:6px;color:#A32D2D"><strong>Aparelho hoje (será descartado)</strong></div>
+      <div style="margin-top:6px;color:#A32D2D"><strong>Dispositivo hoje (será descartado)</strong></div>
       <div>• ${atual.h} hospedagens · ${atual.v} vistorias · ${atual.a} anexos</div>
     </div>
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:9px 12px;font-size:12px;color:#0F6E56;margin-top:8px">
       ✅ Nada é apagado <strong>na nuvem</strong> — ela é só leitura aqui.<br>
-      ✅ Os <strong>PDFs de fechamento</strong> já salvos no aparelho <strong>não</strong> são apagados.
+      ✅ Os <strong>PDFs de fechamento</strong> já salvos no dispositivo <strong>não</strong> são apagados.
     </div>
     <div class="ag" style="margin-top:10px">
       <button class="bcx" onclick="closeOv()">Cancelar</button>
@@ -15650,9 +15806,9 @@ async function _gdAplicarRestauracao(obj, nome, modo){
         <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
         <div class="vst-warn-box" style="font-size:12px">
           ${res.revertido
-            ? 'A substituição falhou e o aparelho foi <strong>revertido ao estado anterior</strong>. Nada foi perdido.'
+            ? 'A substituição falhou e o dispositivo foi <strong>revertido ao estado anterior</strong>. Nada foi perdido.'
             : (res.erro && res.erro.indexOf('cópia de segurança')>=0
-              ? 'Nada foi tocado: não deu para preparar a cópia de segurança do aparelho, e sem ela a substituição não começa.'
+              ? 'Nada foi tocado: não deu para preparar a cópia de segurança do dispositivo, e sem ela a substituição não começa.'
               : '<strong>ATENÇÃO:</strong> a substituição falhou e a reversão também. Não use o app antes de conferir os dados.')}
           <br><small>${_vtEsc(String(res.erro||''))}</small>
         </div>
@@ -15661,7 +15817,7 @@ async function _gdAplicarRestauracao(obj, nome, modo){
     }
     addLogSistema('Restauração da nuvem (substituir): ' + nome,
       {aud:true, acao:'drive_restaurado', alvo:String(nome)});
-    showM(`<div class="mt">✅ Aparelho substituído pelo backup</div>
+    showM(`<div class="mt">✅ Dispositivo substituído pelo backup</div>
       <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
       <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
         <div>${res.hospedagens} hospedagens</div>
@@ -15670,7 +15826,7 @@ async function _gdAplicarRestauracao(obj, nome, modo){
         <div>${res.anexosItens} anexos (em ${res.anexosChaves} chaves)</div>
         <div>${res.historico} eventos de histórico</div>
         <div>🗺 ${res.mapaVagas} vaga(s) ocupada(s)</div>
-        <div style="color:#888;margin-top:6px">O aparelho agora é idêntico a este backup.</div>
+        <div style="color:#888;margin-top:6px">O dispositivo agora é idêntico a este backup.</div>
       </div>
       <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
     return;
@@ -16150,7 +16306,7 @@ async function _rcRenderEstadoNotif(){
     if(exato === false){
       el.style.color = '#B26A00';
       el.innerHTML = '⚠️ <strong>Alerta ativo, mas sem horário exato.</strong> ' +
-        'O aviso pode atrasar alguns minutos quando o aparelho está em repouso. ' +
+        'O aviso pode atrasar alguns minutos quando o dispositivo está em repouso. ' +
         'Para ativar: Ajustes do Android → Aplicativos → GarageSpot → Alarmes e lembretes.';
     } else {
       el.style.color = '#0F6E56';
@@ -16164,7 +16320,7 @@ async function _rcRenderEstadoNotif(){
       el.innerHTML = '✓ <strong>Som, vibração e notificação ativos, inclusive com o app fechado.</strong> ' +
         'A notificação não some com um deslize e se repete de 5 em 5 minutos por até 1 hora, ' +
         'até a recarga ser encerrada ou prolongada. Toque nela para abrir a tela de Recarga. ' +
-        '<span style="color:#6C7885">O som usa o volume de notificação do aparelho.</span>';
+        '<span style="color:#6C7885">O som usa o volume de notificação do dispositivo.</span>';
     }
   } else {
     el.style.color = '#A32D2D';
@@ -18304,12 +18460,29 @@ function showConfiguracoesSistema(){
     </div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>
     <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
+    <div class="gestao-menu-sep" style="margin-top:14px">Horários da empresa</div>
+    <div class="gestao-menu-item" id="cfg-horarios" onclick="showHorarios()">🕑 <span>Check-out ${gsHorariosEmpresa().checkout} · Check-in ${gsHorariosEmpresa().checkin}</span></div>
     <div class="gestao-menu-sep" style="margin-top:14px">Aparência</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showTema')">🎨 <span>Cor do tema</span></div>
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
 }
 
+// v2.4.2.0 (Bloco D): horários da empresa (já dentro da Gestão, com o PIN do gestor)
+function showHorarios(){
+  const h = gsHorariosEmpresa();
+  showM('<div class="mt">🕑 Horários da empresa</div>' +
+    '<div class="ms" style="margin-bottom:8px">Valem para todos os dispositivos. No dia previsto, a partir da <strong>hora do check-in</strong> a hospedagem que não saiu vira <strong>check-out atrasado</strong> e entra em Pendências.</div>' +
+    '<label class="fl">Hora do check-out</label><input class="fi" id="hor-checkout" type="time" value="' + h.checkout + '">' +
+    '<label class="fl">Hora do check-in</label><input class="fi" id="hor-checkin" type="time" value="' + h.checkin + '">' +
+    '<div class="b2" style="margin-top:10px"><button class="bcx" onclick="showConfiguracoesSistema()">Voltar</button><button class="bsv" id="hor-salvar">Salvar</button></div>');
+  document.getElementById('hor-salvar').onclick = function(){
+    const v = saveHorarios({ checkout:document.getElementById('hor-checkout').value, checkin:document.getElementById('hor-checkin').value });
+    try{ addLogSistema('Horários da empresa: check-out ' + v.checkout + ' · check-in ' + v.checkin, { aud:true, acao:'horarios_empresa', alvo:v.checkout + '/' + v.checkin, origem:'usuario' }); }catch(e){}
+    showToast('✅ Horários salvos: check-out ' + v.checkout + ' · check-in ' + v.checkin, 3500);
+    showConfiguracoesSistema();
+  };
+}
 function _renderBackupStatus(){
   const ult=DRIVE_STATUS.ultimo_backup;
   const ultStr=ult?fmtDt(ult):'Nunca';
@@ -18588,7 +18761,7 @@ async function _gdReenviarPendentes(motivo, opts_progresso){
 // v1.9.9.0 — e RECONECTA, quando é disso que a nuvem precisa, e esvazia as filas.
 function _gdForcarPeloRodape(){
   try{
-    if(_gsDriveSoA('rodapé da nuvem')){ showToast('☁️ O envio ao Drive é feito pelo aparelho ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return Promise.resolve(); }   // v2.1.0.0
+    if(_gsDriveSoA('rodapé da nuvem')){ showToast('☁️ O envio ao Drive é feito pelo dispositivo ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return Promise.resolve(); }   // v2.1.0.0
     if(!_gdDisponivel()){
       showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
       return Promise.resolve();
@@ -18748,7 +18921,7 @@ function _renderNuvemStatus(){
     ${_gsDriveSoA('') ? '<button class="bsv" id="btn-nuvem-agora" disabled aria-disabled="true" style="width:100%;margin-top:8px;background:#bdbdbd;border-color:#bdbdbd;color:#fff;cursor:not-allowed">☁️ Fazer backup na nuvem agora</button><div id="drive-so-a" style="font-size:11px;color:#777;margin-top:4px;text-align:center">' + _gsDriveMsg() + '</div>' : '<button class="bsv" id="btn-nuvem-agora" onclick="fazerBackupNuvemAgora()" style="width:100%;margin-top:8px">☁️ Fazer backup na nuvem agora</button>'}
     ${gsSrvAtivo() ? _gsBotaoBloqueado('btn-nuvem-restaurar', '📥 Restaurar da nuvem') : '<button class="bcx" id="btn-nuvem-restaurar" onclick="abrirRestaurarNuvem()" style="width:100%;margin-top:6px">📥 Restaurar da nuvem</button>'}
     <button class="bcx" id="btn-drive-desconectar" onclick="desconectarGoogleDrive()" style="width:100%;margin-top:6px">Desconectar</button>
-    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. <strong>Na nuvem, nenhum documento é apagado</strong>; no aparelho, PDFs saem só depois de confirmados na nuvem e de passados ${GS_PODA_DIAS_LOCAL} dias.</div>
+    <div style="color:#aaa;font-size:11px;line-height:1.5;margin-top:8px">O backup <strong>local continua igual</strong> — a nuvem é adicional. <strong>Na nuvem, nenhum documento é apagado</strong>; no dispositivo, PDFs saem só depois de confirmados na nuvem e de passados ${GS_PODA_DIAS_LOCAL} dias.</div>
   </div>`;
 }
 
@@ -18800,10 +18973,10 @@ function showConexoes(){
     <button class="bcx" id="btn-exportar-sem-fotos" onclick="exportarBackupSemFotos()" style="width:100%;margin-top:6px">📄 Exportar sem fotos (emergência)</button>
     ${gsSrvAtivo() ? _gsBotaoBloqueado('btn-importar-dados', '📥 Importar / Restaurar dados') : '<button class="bcx" id="btn-importar-dados" onclick="abrirImportarDados()" style="width:100%;margin-top:6px">📥 Importar / Restaurar dados</button>'}
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:8px 11px;font-size:11px;color:#0F6E56;margin-top:8px;line-height:1.5">
-      O backup completo inclui <strong>fotos, vistorias, funcionários</strong> e todo o resto. A importação <strong>soma</strong> — nunca apaga o que está no aparelho.
+      O backup completo inclui <strong>fotos, vistorias, funcionários</strong> e todo o resto. A importação <strong>soma</strong> — nunca apaga o que está no dispositivo.
     </div>
     <div id="aviso-sem-fotos" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:8px 11px;font-size:11px;color:#633806;margin-top:6px;line-height:1.5">
-      📄 <strong>Exportar sem fotos</strong> é a saída de emergência para aparelho apertado de memória: leva hospedagens, vistorias, histórico, funcionários e configurações, e é <strong>importável</strong> como qualquer backup.
+      📄 <strong>Exportar sem fotos</strong> é a saída de emergência para dispositivo apertado de memória: leva hospedagens, vistorias, histórico, funcionários e configurações, e é <strong>importável</strong> como qualquer backup.
       <br><strong>NÃO inclui fotos nem os documentos de vistoria em imagem</strong> — ele não substitui o backup completo.
     </div>
     <div class="gestao-menu-sep" style="margin-top:14px">Google Drive (nuvem)</div>
@@ -18843,7 +19016,7 @@ function _relWrap(titulo, bodyHTML){
 }
 
 function buildRelMovimentacoesHTML(evts, deVal, ateVal){
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const ci=evts.filter(e=>e.tipo==='checkin').length, co=evts.filter(e=>e.tipo==='checkout').length;
   const pass=evts.filter(e=>e.tipo==='saida_passeio'||e.tipo==='retorno_passeio').length;
@@ -18853,7 +19026,7 @@ function buildRelMovimentacoesHTML(evts, deVal, ateVal){
   const eventsHTML=evts.length===0?'<p style="color:#aaa;font-style:italic;padding:8px 0">Nenhuma movimentação no período.</p>':
     evts.slice(0,300).map(ev=>`<div style="border-radius:6px;padding:8px 12px;margin:5px 0;color:#fff;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:${tColor[ev.tipo]||'#888'};page-break-inside:avoid">
       <div><div style="font-weight:700;font-size:12px">${tLabel[ev.tipo]||ev.tipo}</div>
-      <div style="font-size:11px;opacity:.88;margin-top:2px">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}${ev.usuario?' · '+ev.usuario:''}</div>
+      <div style="font-size:11px;opacity:.88;margin-top:2px">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}${_gsEvQuem(ev)?' · '+_vtEsc(_gsEvQuem(ev)):''}</div>
       ${ev.extra?`<div style="font-size:10px;opacity:.75;margin-top:1px">${ev.extra}</div>`:''}</div>
       <div style="font-size:10px;opacity:.88;white-space:nowrap;text-align:right;flex-shrink:0">${fmtDt(ev.ts)}</div>
     </div>`).join('');
@@ -19019,7 +19192,7 @@ function showRelatorios(){
 
 function showRelMovimentacoes(){
   const mc=document.getElementById('mc');
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const allEvts=[];
   Object.entries(HISTORICO).forEach(([apt,evts])=>evts.forEach(ev=>allEvts.push({apt,...ev})));
@@ -19041,7 +19214,7 @@ function showRelMovimentacoes(){
         <span class="painel-badge" style="background:${tColor[ev.tipo]||'#888'};font-size:9px">${tLabel[ev.tipo]||ev.tipo}</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}</div>
-          <div style="color:#888;font-size:10px">${fmtDt(ev.ts)}${ev.usuario?' · '+ev.usuario:''}</div>
+          <div style="color:#888;font-size:10px">${fmtDt(ev.ts)}${_gsEvQuem(ev)?' · '+_vtEsc(_gsEvQuem(ev)):''}</div>
           ${ev.extra?`<div style="color:#888;font-size:10px">${ev.extra}</div>`:''}
         </div>
       </div>`).join('');
@@ -19219,7 +19392,7 @@ function showRelPorApto(){
 
 function showRelTurno(){
   const mc=document.getElementById('mc');
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const allEvts=[];
   Object.entries(HISTORICO).forEach(([apt,evts])=>evts.forEach(ev=>allEvts.push({apt,...ev})));
@@ -19243,7 +19416,7 @@ function showRelTurno(){
           <span class="painel-badge" style="background:${tColor[ev.tipo]||'#888'};font-size:9px">${tLabel[ev.tipo]||ev.tipo}</span>
           <div style="flex:1;min-width:0">
             <div style="font-weight:700">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}</div>
-            <div style="color:#888;font-size:10px">${fmtDt(ev.ts)}${ev.usuario?' · '+ev.usuario:''}</div>
+            <div style="color:#888;font-size:10px">${fmtDt(ev.ts)}${_gsEvQuem(ev)?' · '+_vtEsc(_gsEvQuem(ev)):''}</div>
           </div>
         </div>`).join('');
       return `<div style="margin-bottom:10px">
@@ -19308,7 +19481,7 @@ function showRelProdutividade(){
   const hoje=new Date();
   const td=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
   const actionTypes=['checkin','checkout','saida_passeio','retorno_passeio','edicao','movimentacao_vaga','tornar_grande','tornar_pequeno','merge_lateral','desfaz_merge_lateral'];
-  const tLabel={checkin:'Check-in',checkout:'Check-out',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',checkout:'Check-out',data_prevista:'Data prevista alterada',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito'};
 
   function dts(s){if(!s)return 0;const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).getTime();}
   function dte(s){if(!s)return Infinity;const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,23,59,59,999).getTime();}
@@ -19383,7 +19556,7 @@ function showRelProdutividade(){
 }
 
 function buildRelProdutividadeHTML(metricas, deVal, ateVal, usrFiltro){
-  const tLabel={checkin:'Check-in',checkout:'Check-out',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',checkout:'Check-out',data_prevista:'Data prevista alterada',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito'};
   const actionTypes=['checkin','checkout','saida_passeio','retorno_passeio','edicao','movimentacao_vaga','tornar_grande','tornar_pequeno','merge_lateral','desfaz_merge_lateral'];
   const totalGeral=metricas.reduce((s,m)=>s+m.total,0);
   const linhasTabela=metricas.map(m=>{
@@ -19406,7 +19579,7 @@ function buildRelProdutividadeHTML(metricas, deVal, ateVal, usrFiltro){
 }
 
 function buildRelTurnoHTML(evts, deVal, ateVal, turnosSel){
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const grupos={};
   TURNOS.filter(t=>!turnosSel||turnosSel.includes(t.nome)).forEach(t=>grupos[t.nome]=[]);
@@ -19419,7 +19592,7 @@ function buildRelTurnoHTML(evts, deVal, ateVal, turnosSel){
         <td style="padding:4px 6px"><span style="background:${tColor[ev.tipo]||'#888'};color:#fff;border-radius:3px;padding:2px 5px;font-size:9px">${tLabel[ev.tipo]||ev.tipo}</span></td>
         <td style="padding:4px 6px;font-weight:700">Apt. ${ev.apt}${ev.hospedagem?' · '+ev.hospedagem:''}</td>
         <td style="padding:4px 6px;color:#555">${fmtDt(ev.ts)}</td>
-        <td style="padding:4px 6px;color:#888;font-size:10px">${ev.usuario||''}</td>
+        <td style="padding:4px 6px;color:#888;font-size:10px">${_vtEsc(_gsEvQuem(ev))}</td>
       </tr>`).join('');
     return `<div style="margin-bottom:16px">
       <div style="background:#185FA5;color:#fff;padding:6px 10px;border-radius:6px 6px 0 0;font-weight:700;display:flex;justify-content:space-between">
@@ -19470,7 +19643,7 @@ function showHistoricoModal(apt, hospedagem, detId, detFp){
   // apto agora acumula todas as hospedagens que passaram por ele).
   const _hMod=hospedagem?HOSPEDAGENS[hospedagem]:null;
   const hist=(hospedagem?_gsHistoricoDaHospedagem(apt, hospedagem, (_hMod&&_hMod.checkin_ts)||null):getHistorico(apt)).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D',recarga_iniciada:'#BA7517',recarga_encerrada:'#1F9A5F',recarga_editada:'#185FA5',exclusao_anexo:'#A32D2D'};
   const titulo=hospedagem?`ℹ️ Apt. ${apt} · ${hospedagem}`:`ℹ️ Apt. ${apt}`;
   const cardsHTML=hist.length===0
@@ -19479,7 +19652,7 @@ function showHistoricoModal(apt, hospedagem, detId, detFp){
         <div class="hist-tipo">${tLabel[ev.tipo]||ev.tipo}</div>
         <div class="hist-info">${fmtDt(ev.ts)}</div>
         ${ev.vaga?'<div class="hist-info">Vaga: '+ev.vaga+'</div>':''}
-        <div class="hist-info">Por: ${ev.usuario||'Não identificado'}</div>
+        <div class="hist-info">Por: ${_vtEsc(_gsEvQuem(ev))||'Não identificado'}</div>
         ${ev.extra?'<div class="hist-info">'+ev.extra+'</div>':''}
       </div>`).join('');
   const voltarOnclick = detId ? `showDet('${detId}',${detFp?1:0})` : 'closeOv()';
@@ -19508,6 +19681,23 @@ function fmtElapsed(ts){
   return h+'h'+(m>0?' '+m+'min':'');
 }
 
+// v2.4.2.0 (Bloco E) — DE QUAL DISPOSITIVO foi feita cada movimentação (letra e nome), além do funcionário:
+// vai no evento (chega aos outros pelo servidor), na trilha, no histórico do GS e no PDF ("· dispositivo A").
+// Sem login no servidor (um dispositivo só), nada é acrescentado.
+const GS_DISP_NOME_LS = 'gs-disp-nome';
+function gsDispRotulo(){ try{ if(!gsSrvAtivo()) return ''; const l = _gsSrvLer().letra; return l ? 'dispositivo ' + l : ''; }catch(e){ return ''; } }
+function gsDispNome(){
+  try{
+    const n = localStorage.getItem(GS_DISP_NOME_LS); if(n) return n;
+    const ua = String(navigator.userAgent || '');
+    return 'navegador' + (/Windows/.test(ua) ? ' (Windows)' : /Android/.test(ua) ? ' (Android)' : /Mac/.test(ua) ? ' (Mac)' : '');
+  }catch(e){ return ''; }
+}
+function _gsEvQuem(ev){
+  if(!ev) return '';
+  const d = ev.disp ? ev.disp + (ev.disp_nome ? ' (' + ev.disp_nome + ')' : '') : '';
+  return (ev.usuario || '') + (d ? (ev.usuario ? ' · ' : '') + d : '');
+}
 function addHistorico(apt, tipo, vaga, extra, usuario, hospedagem){
   if(!apt) return;
   // v1.9.9.3: todo evento novo leva o GS. Quem chama sem ele mas com a VAGA tem
@@ -19520,8 +19710,9 @@ function addHistorico(apt, tipo, vaga, extra, usuario, hospedagem){
     }catch(e){}
   }
   if(!HISTORICO[apt]) HISTORICO[apt]=[];
-  HISTORICO[apt].push({tipo, ts:Date.now(), vaga:vaga||'', extra:extra||'',
-    usuario:usuario||'', hospedagem:hospedagem||''});
+  const _ev={tipo, ts:Date.now(), vaga:vaga||'', extra:extra||'', usuario:usuario||'', hospedagem:hospedagem||''};
+  const _dr=gsDispRotulo(); if(_dr){ _ev.disp=_dr; _ev.disp_nome=gsDispNome(); }   // v2.4.2.0 (Bloco E)
+  HISTORICO[apt].push(_ev);
   saveHistorico();
 }
 
@@ -19547,8 +19738,9 @@ function loadHistorico(){
 function iniciarHistorico(apt, vaga, hospedagem, usuario){
   if(!apt) return;
   if(!Array.isArray(HISTORICO[apt])) HISTORICO[apt]=[];
-  HISTORICO[apt].push({tipo:'checkin', ts:Date.now(), vaga:vaga, extra:'',
-    usuario:usuario||'', hospedagem:hospedagem||'', inicio:1});
+  const _ev={tipo:'checkin', ts:Date.now(), vaga:vaga, extra:'', usuario:usuario||'', hospedagem:hospedagem||'', inicio:1};
+  const _dr=gsDispRotulo(); if(_dr){ _ev.disp=_dr; _ev.disp_nome=gsDispNome(); }   // v2.4.2.0 (Bloco E)
+  HISTORICO[apt].push(_ev);
   saveHistorico();
 }
 
@@ -19800,7 +19992,7 @@ function buildRegistroHTML(apt,dv,hist,anexos){
           <div>
             <div class="evento-tipo">${tLabel[ev.tipo]||ev.tipo}</div>
             ${ev.vaga?`<div class="evento-vaga">Vaga: ${ev.vaga}</div>`:''}
-            <div class="evento-vaga">Por: ${ev.usuario||'Não identificado'}</div>
+            <div class="evento-vaga">Por: ${_vtEsc(_gsEvQuem(ev))||'Não identificado'}</div>
           </div>
           <div class="evento-hora">${fmtDt(ev.ts)}</div>
         </div>`).join('')
@@ -20354,7 +20546,7 @@ function _pdfFooter(doc){
 // fallback `ev.tipo`, imprimindo a string interna crua ("vistoria_criada").
 // Aqui está a lista COMPLETA e acentuada, com a cor do marcador por tipo.
 const MOV_LABEL = {
-  checkin:'Check-in', checkout:'Check-out',
+  checkin:'Check-in', checkout:'Check-out', data_prevista:'Data prevista alterada',
   saida_passeio:'Saída a passeio', retorno_passeio:'Retorno do passeio',
   // v1.9.9.0: 'Informação alterada' diz o que a linha É. O detalhe
   // (`<campo>: antigo → novo`) agora é RENDERIZADO ao lado — antes ficava só no
@@ -20509,7 +20701,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
     startY:y,
     head:[['Hosp.','Data / Hora','Movimentação','Vaga','Responsável']],
     body:movs.map(function(ev){
-      const resp=[ev.usuario||'—',ev.cargo||''].filter(Boolean).join(' · ');
+      const resp=[ev.usuario||'—',ev.cargo||'',ev.disp||''].filter(Boolean).join(' · ');   // v2.4.2.0 (Bloco E): "· dispositivo A"
       const via=(ev.tipo==='exclusao_anexo')?' (via PIN)':'';
       // A TROCA DE APARTAMENTO mantém a redação ' para ' no lugar da seta: além de
       // ler melhor em português, é o contrato que a spec da v1.9.6.8 trancou.
@@ -20823,7 +21015,7 @@ function buildRelMovimentacoesDoc(evts, deVal, ateVal){
   doc.autoTable({
     startY:y,
     head:[['Data / Hora','Movimentação','Apt','Hospedagem','Responsável']],
-    body:evts.map(ev=>[fmtDt(ev.ts),_movLabel(ev.tipo),'Apt. '+(ev.apt||''),ev.hospedagem||'',ev.usuario||'']),
+    body:evts.map(ev=>[fmtDt(ev.ts),_movLabel(ev.tipo),'Apt. '+(ev.apt||''),ev.hospedagem||'',_gsEvQuem(ev)]),
     theme:'striped',
     headStyles:{fillColor:[24,95,165],textColor:255,fontSize:8},
     styles:{fontSize:7.5,cellPadding:2},
@@ -20897,7 +21089,7 @@ function buildRelTurnoDoc(evts, deVal, ateVal, turnosSel){
     doc.autoTable({
       startY:y, didDrawPage:(d)=>{ y=d.cursor.y; },
       head:[['Data / Hora','Movimentação','Apt','Responsável']],
-      body:evsTurno.map(ev=>[fmtDt(ev.ts),_movLabel(ev.tipo),'Apt. '+(ev.apt||''),ev.usuario||'']),
+      body:evsTurno.map(ev=>[fmtDt(ev.ts),_movLabel(ev.tipo),'Apt. '+(ev.apt||''),_gsEvQuem(ev)]),
       theme:'striped',
       headStyles:{fillColor:[230,240,252],textColor:[24,95,165],fontSize:7.5,fontStyle:'bold'},
       styles:{fontSize:7.5,cellPadding:2},
@@ -21376,7 +21568,7 @@ function renderAnexosArea(id, fromPasseio, containerId){
         const ph = document.createElement('div');
         ph.className = 'attach-thumb gs-foto-chegando';
         ph.style.cssText = 'display:flex;align-items:center;justify-content:center;background:#f3f3f3;border:1px dashed #bbb;color:#888;font-size:10px;text-align:center;line-height:1.2';
-        ph.textContent = '⏳ chegando do outro aparelho';
+        ph.textContent = '⏳ chegando do outro dispositivo';
         grid.appendChild(ph);
       }
     }
@@ -21593,7 +21785,7 @@ function _gsSetItemSeguro(key, str, rotulo){
     if(_gsEhErroDeCota(e)){
       // NÃO remover nada: o valor anterior de `key` continua lá, íntegro.
       console.error('[COTA] localStorage cheio ao gravar ' + (rotulo || key) + ' — dado ANTERIOR preservado:', e.message);
-      if(typeof showToast === 'function') showToast('⚠️ Armazenamento cheio. O dado anterior foi preservado — libere espaço no aparelho.', 6000);
+      if(typeof showToast === 'function') showToast('⚠️ Armazenamento cheio. O dado anterior foi preservado — libere espaço no dispositivo.', 6000);
       if(typeof addLogSistema === 'function') addLogSistema('Cota do armazenamento excedida ao gravar ' + (rotulo || key) + ' (dado anterior preservado)');
     } else {
       console.error('[STORAGE] falha gravando ' + (rotulo || key) + ':', e && e.message);
@@ -21622,7 +21814,7 @@ function _gsGravarColecao(key, dados, tipo, opts){
     const obtido   = _gsContar(JSON.parse(devolta));
     if(obtido !== esperado){
       console.error('[STORAGE] validação falhou em ' + tipo + ': gravou ' + obtido + ', esperado ' + esperado);
-      if(typeof showToast === 'function') showToast('⚠️ Falha ao gravar ' + tipo + ' — confira o espaço do aparelho', 5000);
+      if(typeof showToast === 'function') showToast('⚠️ Falha ao gravar ' + tipo + ' — confira o espaço do dispositivo', 5000);
       return false;
     }
   } catch(e){
@@ -22218,8 +22410,8 @@ function _gsSrvMudarEstado(e){
 function _gsSrvRodapeTexto(){
   if(!_gsSrvLigado()) return '';
   const s = _gsSrvLer();
-  const ap = s.letra ? ' · aparelho ' + s.letra : '';
-  if(s.transferido) return 'Servidor: esta conta foi transferida para outro aparelho' + ap;   // v2.2.0.0 (Bloco J)
+  const ap = s.letra ? ' · dispositivo ' + s.letra : '';
+  if(s.transferido) return 'Servidor: esta conta foi transferida para outro dispositivo' + ap;   // v2.2.0.0 (Bloco J)
   const sx = (typeof _gsSyncRodapeExtra === 'function') ? _gsSyncRodapeExtra() : '';   // v2.1.0.0
   if(_gsSrvEstado === 'conectado') return 'Servidor: conectado' + ap + sx;
   if(_gsSrvEstado === 'reconectar') return 'Servidor: reconectar ao servidor' + ap + sx;
@@ -22231,7 +22423,7 @@ function _gsSrvRodapeHTML(){
   const t = _gsSrvRodapeTexto();
   if(!t) return '';
   const cor = _gsSrvEstado === 'conectado' ? '#0F6E56' : (_gsSrvEstado === 'reconectar' ? '#A32D2D' : '#B26A00');
-  return '<div id="rodape-servidor" data-estado="' + _gsSrvEstado + '" style="font-size:10px;color:' + cor + ';font-weight:700;margin-top:2px">' + _vtEsc(t) + '</div>';
+  return '<div id="rodape-servidor" data-estado="' + _gsSrvEstado + '" style="font-size:10px;color:' + cor + ';font-weight:700;margin-top:2px">' + _vtEsc(t) + _gsRodapeDriveBotao() + '</div>';
 }
 function _gsSrvAtualizarRodape(){
   const el = document.getElementById('rodape-servidor');
@@ -22252,8 +22444,17 @@ async function _gsSrvSinal(){
   if(!_gsSrvLigado() || _gsSrvLer().transferido) return;
   _gsSrvUltimoSinal = Date.now();
   const driveOk = _gsDriveOkParaSinal();   // v2.4.1.0 (008): só é responsável quem tem o Drive conectado
-  const r = await _gsSrvRpc('sinal', { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:(_gsPesada.fila || []).length, p_relogio_ms:Date.now(), p_aparelho_id:await gsAparelhoId(), p_drive_ok:driveOk }, 8000);
-  try{ gsDiag('sinal', r.error ? 'ERRO ' + String(r.error.message || r.error).slice(0, 80) : 'ok · responsável ' + (((r.data || {}).responsavel || {}).letra || '—') + (((r.data || {}).responsavel || {}).sou ? ' (ESTE)' : '') + ' · drive ' + (driveOk ? 'sim' : 'não')); }catch(e){}
+  const args = { p_versao:GS_VERSION, p_fila_leve:(_gsSync.fila || []).length, p_fila_pesada:(_gsPesada.fila || []).length, p_relogio_ms:Date.now(), p_aparelho_id:await gsAparelhoId(), p_drive_ok:driveOk };
+  if(_gsSrv009 !== false) args.p_drive_conta = _gsDriveContaParaSinal();   // v2.4.2.0 (009): QUAL conta está no Drive
+  let r = await _gsSrvRpc('sinal', args, 8000);
+  if(r.error && args.p_drive_conta !== undefined && _gsSrvFuncaoAusente(r.error)){ _gsSrv009 = false; delete args.p_drive_conta; r = await _gsSrvRpc('sinal', args, 8000); }
+  // v2.4.2.0: rede ainda não pronta (logo depois de abrir/recarregar a página): uma nova tentativa em 2 s
+  if(r.error && !_gsDescarregando && _gsSrvErroRede(r.error)){ await new Promise(function(res){ setTimeout(res, 2000); }); r = await _gsSrvRpc('sinal', args, 8000); }
+  if(!r.error && args.p_drive_conta !== undefined) _gsSrv009 = true;
+  try{ gsDiag('sinal', r.error ? (_gsDescarregando ? 'cancelado: a página estava sendo recarregada (não é falha de rede)' : 'ERRO ' + String(r.error.message || r.error).slice(0, 80))
+    : 'ok · responsável ' + (((r.data || {}).responsavel || {}).letra || '—') + (((r.data || {}).responsavel || {}).sou ? ' (ESTE)' : '') + ' · drive ' + (driveOk ? 'sim' : 'não')
+      + (((r.data || {}).responsavel || {}).pend_drive ? ' · ' + r.data.responsavel.pend_drive + ' aguardando o Drive' : '')); }catch(e){}
+  if(r.error && _gsDescarregando) return;
   if(!r.error && r.data && Array.isArray(r.data.aparelhos)) _gsAparelhos = { lista:r.data.aparelhos, em:Date.now(), aviso_min:((r.data.responsavel || {}).aviso_calado_min) || 10 };
   if(!r.error && r.data && r.data.transferido){ _gsSrvMarcarTransferido(r.data); return; }   // v2.2.0.0 (Bloco J)
   if(!r.error){
@@ -22275,6 +22476,7 @@ function _gsSrvIniciar(){
       if(!cli){ _gsSrvMudarEstado('nao_configurado'); return; }
       const ses = await cli.auth.getSession();
       if(!ses || !ses.data || !ses.data.session){ _gsSrvMudarEstado('reconectar'); return; }
+      await _gsEsperarRede(8000);   // v2.4.2.0: o primeiro sinal espera a rede (página recém-carregada)
       await _gsSrvSinal();
     }catch(e){ _gsSrvMudarEstado('sem_conexao'); }
   })();
@@ -22308,7 +22510,7 @@ async function gsSrvEntrar(email, senha){
   if(!d.error && d.data && d.data.em_uso){
     _gsSrvMudarEstado('desligado');
     return { ok:false, emUso:{ letra:d.data.letra, ultimo_sinal:d.data.ultimo_sinal, fila_leve:d.data.fila_leve || 0 }, email:String(email || '').trim(),
-             erro:'Esta conta já está em uso no aparelho ' + d.data.letra + ' (último sinal ' + (d.data.ultimo_sinal ? _dtLocal(Date.parse(d.data.ultimo_sinal)) : '—') + ')' };
+             erro:'Esta conta já está em uso no dispositivo ' + d.data.letra + ' (último sinal ' + (d.data.ultimo_sinal ? _dtLocal(Date.parse(d.data.ultimo_sinal)) : '—') + ')' };
   }
   return _gsSrvConcluirEntrada(email, d);
 }
@@ -22316,7 +22518,7 @@ async function gsSrvEntrar(email, senha){
 async function gsSrvTransferir(email){
   const d = await _gsSrvRpc('transferir_dispositivo', { p_aparelho_id:await gsAparelhoId(), p_nome:'GarageSpot ' + _gsSrvAmbiente(), p_versao:GS_VERSION }, 10000);
   const r = await _gsSrvConcluirEntrada(email, d);
-  if(r.ok){ try{ addLogSistema('Conta do servidor TRANSFERIDA para este aparelho — letra ' + r.letra, { aud:true, acao:'servidor_conta_transferida_para_ca', alvo:r.letra, origem:'usuario' }); }catch(e){} }
+  if(r.ok){ try{ addLogSistema('Conta do servidor TRANSFERIDA para este dispositivo — letra ' + r.letra, { aud:true, acao:'servidor_conta_transferida_para_ca', alvo:r.letra, origem:'usuario' }); }catch(e){} }
   return r;
 }
 async function gsSrvCancelarEntrada(){
@@ -22328,13 +22530,13 @@ async function _gsSrvConcluirEntrada(email, d){
   if(d.error || !d.data || !/^[A-Z]$/.test(String(d.data.letra || ''))){
     try{ await cli.auth.signOut({ scope:'local' }); }catch(e){}
     _gsSrvMudarEstado('desligado');
-    return { ok:false, erro:'o servidor não registrou este aparelho: ' + ((d.error && d.error.message) || 'sem letra') };
+    return { ok:false, erro:'o servidor não registrou este dispositivo: ' + ((d.error && d.error.message) || 'sem letra') };
   }
   _gsSrvGravar({ ligado:true, email:String(email || '').trim(), letra:d.data.letra, dispositivo_id:d.data.id,
                  empresa:d.data.empresa, empresa_id:d.data.empresa_id, ambiente:_gsSrvAmbiente(), desde:Date.now() });
   _gsSrvSerieAjustar(d.data.serie);   // v2.2.0.0: a série offline continua do maior que o servidor conhece
   _gsSrvMudarEstado('conectado');
-  try{ addLogSistema('Servidor conectado neste aparelho — letra ' + d.data.letra + ' · empresa ' + d.data.empresa,
+  try{ addLogSistema('Servidor conectado neste dispositivo — letra ' + d.data.letra + ' · empresa ' + d.data.empresa,
     { aud:true, acao:'servidor_conectado', alvo:d.data.letra, origem:'usuario' }); }catch(e){}
   _gsSrvIniciar();
   return { ok:true, letra:d.data.letra, empresa:d.data.empresa };
@@ -22349,7 +22551,7 @@ async function gsSrvDesligar(){
   try{ _gsSyncParar(); _gsVersaoParar(); }catch(e){}   // v2.1.0.0 — fila e base ficam nos arquivos
   try{ gsSegPlanoDesligar(); }catch(e){}   // v2.4.0.0
   _gsSrvMudarEstado('desligado');
-  try{ addLogSistema('Servidor DESLIGADO neste aparelho (modo local; nada foi apagado)', { aud:true, acao:'servidor_desligado', origem:'usuario' }); }catch(e){}
+  try{ addLogSistema('Servidor DESLIGADO neste dispositivo (modo local; nada foi apagado)', { aud:true, acao:'servidor_desligado', origem:'usuario' }); }catch(e){}
 }
 
 // ── GS e número de vistoria (Bloco E) ───────────────────────────────────────
@@ -22402,7 +22604,7 @@ async function _gsSrvReservar(tipos){
         else if(r.error) _gsSrvMudarEstado('sem_conexao');
       }
     }
-    if(v && ((t === 'gs' && HOSPEDAGENS[v]) || (t === 'vist' && VISTORIAS[v]))){ motivo = 'número do servidor já existe no aparelho (' + v + ')'; v = null; origem = 'série offline'; }
+    if(v && ((t === 'gs' && HOSPEDAGENS[v]) || (t === 'vist' && VISTORIAS[v]))){ motivo = 'número do servidor já existe no dispositivo (' + v + ')'; v = null; origem = 'série offline'; }
     if(!v) v = _gsSrvSerieProximo(t);
     _gsSrvSlot[t] = { valor:v, origem:origem, motivo:motivo };
     out[t] = _gsSrvSlot[t];
@@ -22415,7 +22617,7 @@ function _gsSrvConsumir(tipo){
   _gsSrvSlot[tipo] = null;
   if(!s) s = { valor:_gsSrvSerieProximo(tipo), origem:'série offline', motivo:'sem reserva prévia' };
   try{ addLogSistema('Número ' + s.valor + ' (' + (tipo === 'gs' ? 'hospedagem' : 'vistoria') + ') emitido pela ' +
-    (s.origem === 'servidor' ? 'servidor' : 'série offline do aparelho') + (s.motivo ? ' — ' + s.motivo : ''),
+    (s.origem === 'servidor' ? 'servidor' : 'série offline do dispositivo') + (s.motivo ? ' — ' + s.motivo : ''),
     { aud:true, acao:'numero_emitido', alvo:s.valor + ' · ' + s.origem, origem:'automatico' }); }catch(e){}
   return s.valor;
 }
@@ -22523,7 +22725,7 @@ async function gsSrvCargaInicial(aoProgresso){
   const prog = typeof aoProgresso === 'function' ? aoProgresso : function(){};
   if(!gsSrvAtivo()) return { ok:false, erro:'faça login no servidor primeiro' };
   let st = {}; try{ st = JSON.parse(localStorage.getItem(GS_SRV_CARGA_LS) || 'null') || {}; }catch(e){}
-  if(st.estado === 'concluida') return { ok:false, erro:'a carga inicial deste aparelho já foi concluída' };
+  if(st.estado === 'concluida') return { ok:false, erro:'a carga inicial deste dispositivo já foi concluída' };
   if(!st.carga_id){
     const c0 = await _gsSrvRpc('contagens_empresa', {}, 10000);
     if(c0.error) return { ok:false, erro:'servidor indisponível: ' + c0.error.message };
@@ -22576,18 +22778,18 @@ async function gsSrvCargaInicial(aoProgresso){
 // v2.2.0.0 (Bloco J): a mesma conta já está noutro aparelho
 function _gsSrvTelaEmUso(r){
   const u = r.emUso || {};
-  showM('<div class="mt">🛰 Conta em uso</div><div class="ms" id="srv-em-uso" style="margin-bottom:8px">Esta conta já está em uso no aparelho <strong>' + _vtEsc(u.letra || '?') + '</strong>' +
+  showM('<div class="mt">🛰 Conta em uso</div><div class="ms" id="srv-em-uso" style="margin-bottom:8px">Esta conta já está em uso no dispositivo <strong>' + _vtEsc(u.letra || '?') + '</strong>' +
     ' (último sinal ' + _vtEsc(u.ultimo_sinal ? _dtLocal(Date.parse(u.ultimo_sinal)) : '—') + ').</div>' +
-    (u.fila_leve ? '<div class="warn-box" style="font-size:12px">No último sinal, o aparelho ' + _vtEsc(u.letra || '?') + ' tinha <strong>' + u.fila_leve + ' ação(ões) sem enviar</strong>. Se possível, deixe-o enviar antes de transferir.</div>' : '') +
-    '<div class="ms" style="font-size:12px;margin-bottom:8px">Transferir faz este aparelho ficar com a letra ' + _vtEsc(u.letra || '?') + '. O aparelho antigo para de sincronizar no próximo sinal — os dados dele ficam intactos.</div>' +
-    '<div class="b2"><button class="bcx" id="srv-cancelar-uso">Cancelar</button><button class="bsv" id="srv-transferir">Transferir para este aparelho</button></div>');
+    (u.fila_leve ? '<div class="warn-box" style="font-size:12px">No último sinal, o dispositivo ' + _vtEsc(u.letra || '?') + ' tinha <strong>' + u.fila_leve + ' ação(ões) sem enviar</strong>. Se possível, deixe-o enviar antes de transferir.</div>' : '') +
+    '<div class="ms" style="font-size:12px;margin-bottom:8px">Transferir faz este dispositivo ficar com a letra ' + _vtEsc(u.letra || '?') + '. O dispositivo antigo para de sincronizar no próximo sinal — os dados dele ficam intactos.</div>' +
+    '<div class="b2"><button class="bcx" id="srv-cancelar-uso">Cancelar</button><button class="bsv" id="srv-transferir">Transferir para este dispositivo</button></div>');
   document.getElementById('srv-cancelar-uso').onclick = async function(){ await gsSrvCancelarEntrada(); showServidor(); };
   document.getElementById('srv-transferir').onclick = function(){
     showEntrarPIN(async function(){
       showM('<div class="mt">🛰 Transferindo…</div>');
       const t = await gsSrvTransferir(r.email);
       if(!t.ok){ showM('<div class="mt">⚠️ Não transferiu</div><div class="ms">' + _vtEsc(t.erro || '') + '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>'); return; }
-      showToast('✅ Conta transferida para este aparelho — letra ' + t.letra, 4000);
+      showToast('✅ Conta transferida para este dispositivo — letra ' + t.letra, 4000);
       showServidor();
     });
   };
@@ -22595,19 +22797,19 @@ function _gsSrvTelaEmUso(r){
 function showServidor(){
   const s = _gsSrvLer();
   if(s.ligado && s.transferido){
-    showM('<div class="mt">🛰 Servidor</div><div class="ms" id="srv-transferido" style="margin-bottom:8px">Esta conta foi transferida para outro aparelho' + (s.transferido_em ? ' em ' + _vtEsc(_dtLocal(Date.parse(s.transferido_em))) : '') +
-      '. Este aparelho parou de sincronizar; os dados dele ficam intactos.</div>' +
-      '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
+    showM('<div class="mt">🛰 Servidor</div><div class="ms" id="srv-transferido" style="margin-bottom:8px">Esta conta foi transferida para outro dispositivo' + (s.transferido_em ? ' em ' + _vtEsc(_dtLocal(Date.parse(s.transferido_em))) : '') +
+      '. Este dispositivo parou de sincronizar; os dados dele ficam intactos.</div>' +
+      '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste dispositivo</button>' +
       '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
-    document.getElementById('srv-desligar').onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
+    document.getElementById('srv-desligar').onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o dispositivo segue no modo local', 3500); showServidor(); };
     return;
   }
   const cfg = GS_SRV_CONFIG[_gsSrvAmbiente()];
   const projeto = _gsSrvAmbiente() === 'dev' ? 'garagespot-dev' : 'garagespot-prod';
   if(!_gsSrvLigado()){
     showM('<div class="mt">🛰 Servidor</div>' +
-      '<div class="ms" style="margin-bottom:8px">Este aparelho trabalha só localmente. Entre com a conta DESTE aparelho (criada pelo administrador) no projeto <strong>' + projeto + '</strong>.</div>' +
-      '<label class="fl">E-mail do aparelho</label><input class="fi" id="srv-email" type="email" autocomplete="off" value="' + _vtEsc(s.email || '') + '">' +
+      '<div class="ms" style="margin-bottom:8px">Este dispositivo trabalha só localmente. Entre com a conta DESTE dispositivo (criada pelo administrador) no projeto <strong>' + projeto + '</strong>.</div>' +
+      '<label class="fl">E-mail do dispositivo</label><input class="fi" id="srv-email" type="email" autocomplete="off" value="' + _vtEsc(s.email || '') + '">' +
       '<label class="fl">Senha</label><input class="fi" id="srv-senha" type="password" autocomplete="off">' +
       '<div id="srv-msg" style="min-height:16px;font-size:12px;color:#A32D2D;margin:6px 0"></div>' +
       '<div class="b2"><button class="bcx" onclick="closeOv()">Fechar</button><button class="bsv" id="srv-entrar">Entrar</button></div>');
@@ -22632,7 +22834,7 @@ function showServidor(){
                  : (carga.estado === 'em_andamento' ? '⏳ Carga inicial em andamento (pode retomar)' : 'Carga inicial ainda não feita');
   showM('<div class="mt">🛰 Servidor</div>' +
     '<div style="background:#EEF6FF;border:1px solid #B9D6F2;border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
-      '<div style="font-size:22px;font-weight:800;color:#185FA5">Aparelho ' + _vtEsc(s.letra || '?') + '</div>' +
+      '<div style="font-size:22px;font-weight:800;color:#185FA5">Dispositivo ' + _vtEsc(s.letra || '?') + '</div>' +
       '<div style="font-size:12px;color:#555">' + _vtEsc(s.email || '') + ' · empresa ' + _vtEsc(s.empresa || '') + ' · ' + projeto + '</div>' +
       '<div style="font-size:12px;margin-top:4px" id="srv-estado">' + _vtEsc(_gsSrvRodapeTexto()) + '</div>' +
     '</div>' +
@@ -22640,14 +22842,14 @@ function showServidor(){
     '<div id="srv-sync">' + _gsSyncPainelHTML() + '</div>' +
     _gsRespPainelHTML() +   // v2.3.0.0 (Blocos E/F/H)
     '<div id="srv-carga-res" style="font-size:12px;margin:4px 0"></div>' +
-    '<button class="bcx" id="srv-cfg-aparelho" style="width:100%;margin-bottom:6px">📱 Configurar este aparelho' + (gsSegPlanoResumo() ? ' · ' + _vtEsc(gsSegPlanoResumo()) : '') + '</button>' +
-    '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste aparelho</button>' +
+    '<button class="bcx" id="srv-cfg-aparelho" style="width:100%;margin-bottom:6px">📱 Configurar este dispositivo' + (gsSegPlanoResumo() ? ' · ' + _vtEsc(gsSegPlanoResumo()) : '') + '</button>' +
+    '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste dispositivo</button>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
   try{ _gsSyncLigarPainel(); }catch(e){}   // v2.1.0.0 — ligado NA HORA (sem janela morta)
   try{ _gsRespLigarPainel(); }catch(e){}   // v2.3.0.0
   setTimeout(function(){
     const d = document.getElementById('srv-desligar');
-    if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o aparelho segue no modo local', 3500); showServidor(); };
+    if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o dispositivo segue no modo local', 3500); showServidor(); };
     const c = document.getElementById('srv-cfg-aparelho');
     if(c) c.onclick = function(){ gsTelaConfigurarAparelho(); };
   }, 0);
@@ -22665,15 +22867,17 @@ const GS_CFG_AP_LS = 'garagespot_cfg_aparelho';
 // v2.4.1.0 — FUNCIONAMENTO COMPLETO COM A TELA BLOQUEADA. O serviço nativo chama gsTiqueNativo a cada
 // 60 s por evaluateJavascript (não sofre a limitação de timers de página oculta). Cada tique faz o ciclo
 // INTEIRO: sinal, recebimento, fila leve, fila de arquivos e — no responsável — envio ao Drive.
-let _gsTiqueRodando = false, _gsTiqueN = 0, _gsTiqueUltConsulta = 0;
+let _gsTiqueRodando = false, _gsTiqueN = 0, _gsTiqueUltConsulta = 0, _gsTiqueUltDriveRec = 0;
 async function gsSegPlanoBatimento(){
   const p = _gsSegPlano(); if(!p || !gsSrvAtivo()) return;
   try{
     const cfg = GS_SRV_CONFIG[_gsSrvAmbiente()] || {};
     let token = null;
     try{ const cli = _gsSrvCliente(); const ses = cli && await cli.auth.getSession(); token = ses && ses.data && ses.data.session ? ses.data.session.access_token : null; }catch(e){}
-    await p.batimento({ url:cfg.url, chave:cfg.chave, token:token, aparelho_id:await gsAparelhoId(), versao:GS_VERSION,
+    const rb = await p.batimento({ url:cfg.url, chave:cfg.chave, token:token, aparelho_id:await gsAparelhoId(), versao:GS_VERSION,
                         fila_leve:(_gsSync.fila || []).length, fila_pesada:(_gsPesada.fila || []).length, drive_ok:_gsDriveOkParaSinal() });
+    // v2.4.2.0: a página pode ter (re)carregado com a tela oculta — o nativo diz a verdade
+    if(rb && typeof rb.tela_visivel === 'boolean' && rb.tela_visivel !== _gsTelaNat) window.gsTelaNativa(rb.tela_visivel);
   }catch(e){}
 }
 async function gsTiqueNativo(origem){
@@ -22682,6 +22886,16 @@ async function gsTiqueNativo(origem){
   const t0 = Date.now(); let passos = 0;
   try{
     await gsSegPlanoBatimento();
+    // v2.4.2.0: Drive marcado "reconectar" (token vencido, 17/10 09:25) → tenta renovar sem tela antes do sinal
+    if(typeof DRIVE_STATUS !== 'undefined' && DRIVE_STATUS.nuvem_conectada && DRIVE_STATUS.nuvem_reconectar && Date.now() - _gsTiqueUltDriveRec > 120000){
+      _gsTiqueUltDriveRec = Date.now();
+      try{ _gdTokenCache = null; await _gdTokenNativo(); }catch(e){}
+    }
+    // v2.4.2.0 (ajuste 1): renovação PREVENTIVA — o acesso ao Drive nunca chega a vencer (tela bloqueada, horas sem uso)
+    if(typeof DRIVE_STATUS !== 'undefined' && DRIVE_STATUS.nuvem_conectada && !DRIVE_STATUS.nuvem_reconectar && _gdRenovaSozinho()
+       && (!_gdTokenCache || Date.now() - _gdTokenCache.ts > GD_TOKEN_TTL - 10 * 60000)){
+      try{ _gdTokenCache = null; await _gdObterToken(false); }catch(e){ if(e && e.gdRecusaGoogle) _gdMarcarPrecisaReconectar(e.message); }
+    }
     if(Date.now() - (_gsSrvUltimoSinal || 0) > 50000) await _gsSrvSinal();
     if(_gsSync.estado === 'ativo'){
       try{ await _gsSyncReceber('tique ' + (origem || '')); }catch(e){}
@@ -22700,6 +22914,39 @@ async function gsTiqueNativo(origem){
   }
 }
 window.gsTiqueNativo = gsTiqueNativo;
+// v2.4.2.0 (Bloco 0) — A PÁGINA NÃO CONGELA. O registro de 17/10 mostrou o tique do serviço chegando à página
+// (o batimento subia) mas o resto parando com a tela oculta: fetch, timers e retorno dos plugins só voltavam ao
+// acender a tela ("tique · 137115 ms"). No APK vc32 o WebView continua "visível" para o Chromium enquanto o
+// serviço vive, e a visibilidade REAL chega por aqui (MainActivity.onStart/onStop) — document.hidden e
+// visibilityState passam a dizer a verdade da TELA, e o resto do app (fila ociosa, recebimento ao reabrir)
+// continua funcionando como antes. No navegador nada disto é instalado.
+let _gsTelaNat = null, _gsVisInst = false, _gsDescarregando = false;
+function _gsVisInstalar(){
+  if(_gsVisInst) return; _gsVisInst = true;
+  try{
+    Object.defineProperty(document, 'hidden', { configurable:true, get:function(){ return _gsTelaNat === false; } });
+    Object.defineProperty(document, 'visibilityState', { configurable:true, get:function(){ return _gsTelaNat === false ? 'hidden' : 'visible'; } });
+  }catch(e){}
+}
+window.gsTelaNativa = function(vis){
+  const novo = !!vis, ant = _gsTelaNat;
+  _gsVisInstalar(); _gsTelaNat = novo;
+  if(ant !== novo && (ant !== null || !novo)){ try{ document.dispatchEvent(new Event('visibilitychange')); }catch(e){} }
+};
+document.addEventListener('freeze', function(){ try{ if(gsSrvAtivo()) gsDiag('pagina', 'CONGELADA pelo navegador'); }catch(e){} });
+document.addEventListener('resume', function(){ try{ if(gsSrvAtivo()) gsDiag('pagina', 'descongelada'); }catch(e){} });
+// a página antiga, ao ser recarregada, aborta o que estava em andamento: não é falha de rede
+window.addEventListener('pagehide', function(){ _gsDescarregando = true; });
+function _gsEsperarRede(ms){
+  return new Promise(function(res){
+    if(navigator.onLine !== false) return res(true);
+    const f = function(){ clearTimeout(t); res(true); };
+    const t = setTimeout(function(){ window.removeEventListener('online', f); res(false); }, ms || 8000);
+    window.addEventListener('online', f, { once:true });
+  });
+}
+function _gsSrvFuncaoAusente(err){ return /PGRST202|could not find the function|function .* does not exist|schema cache/i.test(String((err && (err.message || err.code)) || '') + ' ' + String((err && err.code) || '')); }
+function _gsSrvErroRede(err){ return /failed to fetch|networkerror|network request failed|load failed|sem resposta em/i.test(String((err && err.message) || err || '')); }
 // ── REGISTRO DE DIAGNÓSTICO (JS): no nativo vai para o MESMO arquivo do serviço; no navegador, localStorage ──
 const GS_DIAG_LS = 'garagespot_diag';
 function gsDiag(tipo, detalhe){
@@ -22714,7 +22961,9 @@ function gsDiag(tipo, detalhe){
 }
 async function gsDiagTexto(){
   const p = _gsSegPlano();
-  let cab = 'GarageSpot ' + GS_VERSION + ' (versionCode ' + GS_VERSION_CODE + ') · aparelho ' + (_gsSrvLer().letra || '?') + ' · ' + _dtLocal(Date.now()) + '\n';
+  try{ await gsApkDetectar(); }catch(e){}
+  let cab = 'GarageSpot ' + GS_VERSION + ' · ' + _gsApkRotulo() + ' · dispositivo ' + (_gsSrvLer().letra || '?') + ' · ' + _dtLocal(Date.now()) + '\n';
+  try{ const dr = gsDriveRenovLer(); cab += 'Drive: ' + (dr.silenciosas || 0) + ' renovação(ões) silenciosa(s) · ' + (dr.pedidos || 0) + ' pedido(s) ao usuário' + (dr.ultima_ok ? ' · última renovação ' + _dtLocal(dr.ultima_ok) : '') + '\n'; }catch(e){}
   try{ const e = p ? await p.estado() : null; if(e) cab += 'Android SDK ' + e.sdk + ' · ' + e.fabricante + ' ' + e.modelo + ' · serviço ' + (e.ativo ? 'ATIVO' : 'parado') + ' · bateria sem restrição ' + (e.semOtimizacaoBateria ? 'sim' : 'NÃO') + '\n'; }catch(x){}
   cab += 'N = nativo (serviço/tela do app) · J = JavaScript (página)\n\n';
   if(p && p.diagnostico){ try{ const r = await p.diagnostico({ ultimas:2000 }); return cab + (r.texto || '(vazio)'); }catch(e){} }
@@ -22746,6 +22995,9 @@ window.addEventListener('online', function(){ try{ if(gsSrvAtivo()) gsDiag('rede
 window.addEventListener('offline', function(){ try{ if(gsSrvAtivo()) gsDiag('rede', 'OFFLINE'); }catch(e){} });
 // Drive conectado para o servidor (008): no aparelho com o Drive ligado e sem "reconectar"
 function _gsDriveOkParaSinal(){ try{ return !!(_gdDisponivel() && _gdConectado() && !DRIVE_STATUS.nuvem_reconectar); }catch(e){ return false; } }
+// v2.4.2.0 (009): a CONTA conectada no Drive deste dispositivo ('' = nenhuma) — o servidor confere com a oficial
+let _gsSrv009 = null;
+function _gsDriveContaParaSinal(){ try{ return _gdConectado() ? String(DRIVE_STATUS.nuvem_email || '').trim().toLowerCase() : ''; }catch(e){ return ''; } }
 // ── D: aviso de aparelho calado (segundos medidos no relógio do SERVIDOR) ──
 let _gsAparelhos = null;
 function gsAparelhosCalados(){
@@ -22754,13 +23006,83 @@ function gsAparelhosCalados(){
   return a.lista.filter(function(x){ if(!x || x.letra === minha || x.seg_sem_sinal == null) return false; const s = x.seg_sem_sinal + passou; return s > lim && s < 86400; })
     .map(function(x){ return { letra:x.letra, min:Math.floor((x.seg_sem_sinal + passou) / 60) }; });
 }
-function _gsAlertasServidorTexto(){
-  if(!gsSrvAtivo() || _gsSrvEstado !== 'conectado') return '';   // sem conexão a lista de aparelhos está velha: não alerta
-  let t = '';
-  gsAparelhosCalados().forEach(function(c){ t += ' · ⚠️ Aparelho ' + c.letra + ' sem sinal há ' + c.min + ' min — verifique se o app está aberto'; });
+// v2.4.2.0 (Bloco B): dispositivos com o Drive conectado numa conta DIFERENTE da oficial (o servidor diz)
+function gsDispositivosContaErrada(){
+  const a = _gsAparelhos; if(!a || !Array.isArray(a.lista)) return [];
+  const minha = String(_gsSrvLer().letra || '');
+  return a.lista.filter(function(x){ return x && x.conta_ok === false; })
+    .map(function(x){ return { letra:x.letra, conta:x.drive_conta || '', eu:x.letra === minha }; });
+}
+// v2.4.2.0 (Bloco C): o que o SERVIDOR tem aguardando o Drive (vale para todos os dispositivos)
+function gsDrivePendentesServidor(){
   const r = _gsRespLer();
-  if(r && r.algum_com_drive === false) t += ' · ⚠️ Nenhum aparelho com o Google Drive conectado — os PDFs esperam no servidor';
+  const n = Number(r && r.pend_drive) || 0;
+  const desde = r && r.pend_drive_desde ? Date.parse(r.pend_drive_desde) : null;
+  const semApto = !!r && (r.algum_apto === false || (r.algum_apto === undefined && r.algum_com_drive === false));
+  return { n:n, desde:desde, semApto:semApto, oficial:(r && r.conta_oficial) || null };
+}
+function _gsHoraCurta(ms){ try{ const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }catch(e){ return '--:--'; } }
+// v2.4.2.0 (ajuste 2) — AVISO SÓ QUANDO IMPORTA:
+//  • dispositivo que NÃO é o responsável, sem sinal: nenhum aviso (aparece só na lista de Gestão → Servidor);
+//  • RESPONSÁVEL sem sinal: aviso nos outros só depois de 30 min no hotel (10 min nas outras empresas), UMA vez, com
+//    "Ciente"; volta a avisar só depois de 1 h. A troca automática continua no servidor (2 h no hotel);
+//  • imediatos só o que exige ação: responsável sem Drive/conta errada, este dispositivo na conta errada, nenhum
+//    dispositivo apto, arquivos aguardando o Drive há mais de 30 min.
+//  O navegador (PC/notebook) nunca é o responsável (não tem Drive) — logo nunca gera aviso de sem sinal.
+const GS_AVISO_RESP_MIN = { hotelgumz:30 }, GS_AVISO_RESP_PADRAO_MIN = 10, GS_AVISO_RESP_DE_NOVO_MIN = 60, GS_PEND_DRIVE_AVISO_MIN = 30;
+const GS_AVISO_CIENTE_LS = 'gs-aviso-resp-ciente';
+function _gsAvisoRespMin(){ const e = String(_gsSrvLer().empresa || ''); return GS_AVISO_RESP_MIN[e] || GS_AVISO_RESP_PADRAO_MIN; }
+function gsResponsavelCalado(){
+  const a = _gsAparelhos; if(!a || !Array.isArray(a.lista)) return null;
+  const minha = String(_gsSrvLer().letra || ''), passou = (Date.now() - a.em) / 1000;
+  const x = a.lista.find(function(d){ return d && d.responsavel && d.letra !== minha && d.seg_sem_sinal != null; });
+  if(!x) return null;
+  const seg = x.seg_sem_sinal + passou, min = Math.floor(seg / 60);
+  if(min < _gsAvisoRespMin() || seg >= 86400) return null;
+  return { letra:x.letra, min:min, nivel:min >= GS_AVISO_RESP_DE_NOVO_MIN ? 2 : 1, sinal:x.ultimo_sinal || '' };
+}
+function _gsAvisoRespAtivo(){
+  const c = gsResponsavelCalado();
+  if(!c){ try{ localStorage.removeItem(GS_AVISO_CIENTE_LS); }catch(e){} return null; }   // voltou a sinalizar: o próximo silêncio avisa de novo
+  let k = {}; try{ k = JSON.parse(localStorage.getItem(GS_AVISO_CIENTE_LS) || 'null') || {}; }catch(e){}
+  if(k.letra === c.letra && (k.nivel || 0) >= c.nivel) return null;
+  return c;
+}
+window.gsAvisoRespCiente = function(){
+  const c = gsResponsavelCalado(); if(!c) return;
+  try{ localStorage.setItem(GS_AVISO_CIENTE_LS, JSON.stringify({ letra:c.letra, sinal:c.sinal, nivel:c.nivel, em:Date.now() })); }catch(e){}
+  try{ _gsSyncRodapeUlt = ''; _gsSyncAtualizarRodape(); }catch(e){}
+};
+function _gsAlertasServidorTexto(){
+  if(!gsSrvAtivo() || _gsSrvEstado !== 'conectado') return '';   // sem conexão a lista de dispositivos está velha: não alerta
+  let t = '';
+  const c = _gsAvisoRespAtivo();
+  if(c) t += ' · ⚠️ Dispositivo responsável (' + c.letra + ') sem sinal há ' + c.min + ' min — verifique se o app está aberto nele';
+  if(gsDispositivosContaErrada().some(function(x){ return x.eu; })) t += ' · ⚠️ Este dispositivo está com o Drive conectado na conta errada';
+  const r = _gsRespLer(), p = gsDrivePendentesServidor();
+  if(p.n > 0 && p.semApto){
+    t += ' · ⚠️ ' + p.n + (p.n === 1 ? ' arquivo aguardando' : ' arquivos aguardando') + ' envio ao Drive desde ' + _gsHoraCurta(p.desde) + ' — conecte o Drive ' + (_gdDisponivel() ? 'neste dispositivo' : 'num dispositivo com o app instalado') + ' para enviar';
+  } else if(p.semApto){
+    t += ' · ⚠️ Nenhum dispositivo com o Google Drive ' + (p.oficial ? 'na conta oficial' : 'conectado') + ' — os PDFs esperam no servidor';
+  } else {
+    if(r && r.letra && r.apto === false && !r.sou) t += ' · ⚠️ O dispositivo responsável (' + r.letra + ') está sem o Google Drive na conta oficial';
+    if(p.n > 0 && p.desde && Date.now() - p.desde > GS_PEND_DRIVE_AVISO_MIN * 60000)
+      t += ' · ⚠️ ' + p.n + (p.n === 1 ? ' arquivo aguardando' : ' arquivos aguardando') + ' o Drive desde ' + _gsHoraCurta(p.desde);
+  }
   return t;
+}
+// botão "Conectar o Drive neste dispositivo" no rodapé, quando ninguém apto pode enviar
+function _gsRodapeDriveBotao(){
+  let ciente = '';
+  try{ if(gsSrvAtivo() && _gsSrvEstado === 'conectado' && _gsAvisoRespAtivo()) ciente = ' <button type="button" id="rodape-aviso-ciente" onclick="event.stopPropagation();gsAvisoRespCiente()" style="margin-left:4px;font-size:10px;padding:1px 6px;border:1px solid #B26A00;border-radius:4px;background:#fff;color:#B26A00;font-weight:700;cursor:pointer;font-family:inherit">Ciente</button>'; }catch(e){}
+  return ciente + _gsRodapeDriveBotaoConectar();
+}
+function _gsRodapeDriveBotaoConectar(){
+  try{
+    if(!gsSrvAtivo() || _gsSrvEstado !== 'conectado' || _gsDriveOkParaSinal() || !_gdDisponivel()) return '';   // no navegador não há como conectar
+    const p = gsDrivePendentesServidor(); if(!p.semApto || !(p.n > 0)) return '';
+    return ' <button type="button" id="rodape-drive-conectar" onclick="event.stopPropagation();conectarGoogleDrive()" style="margin-left:4px;font-size:10px;padding:1px 6px;border:1px solid #A32D2D;border-radius:4px;background:#fff;color:#A32D2D;font-weight:700;cursor:pointer;font-family:inherit">🔗 Conectar o Drive neste dispositivo</button>';
+  }catch(e){ return ''; }
 }
 function _gsSegPlano(){
   try{
@@ -22773,11 +23095,53 @@ function _gsSegPlano(){
   }catch(e){ return null; }
 }
 let _gsSegPlanoUltimo = null;   // último estado lido (para o resumo no botão)
+// v2.4.2.0 (ajuste 3) — VERSÃO DO APK INSTALADO, ao lado da do HTML ("v2.4.2.0 · APK vc32"). O HTML vem do servidor e o
+// APK é instalado à mão: um pode estar atualizado e o outro não. O APK vc32 não informa o próprio número, então ele é
+// reconhecido pelo que sabe fazer: vc32 = estado com "sobreposicao"; vc31 = tem o registro de diagnóstico; vc30 = tem
+// o segundo plano; sem o plugin = vc29 ou anterior. No navegador não há APK.
+let _gsApkInfo = null;
+function _gsApkRotulo(){
+  try{
+    const nat = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    if(_gsApkInfo) return _gsApkInfo.rotulo;
+    if(!nat && !_gsSegPlano()) return 'navegador (sem APK)';
+    return 'APK …';
+  }catch(e){ return 'APK ?'; }
+}
+async function gsApkDetectar(){
+  if(_gsApkInfo) return _gsApkInfo;
+  let vc = 0, rotulo = '';
+  try{
+    const nat = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    const p = _gsSegPlano();
+    // sem chamar o plugin (sem login nada é chamado nele): a lista de métodos que o Capacitor injeta na página
+    const ph = (window.Capacitor && Array.isArray(window.Capacitor.PluginHeaders)) ? window.Capacitor.PluginHeaders.find(function(x){ return x && x.name === 'GsSegundoPlano'; }) : null;
+    if(ph){ const ms = (ph.methods || []).map(function(m){ return m && m.name; }); vc = ms.indexOf('driveToken') >= 0 ? 32 : (ms.indexOf('diagnostico') >= 0 ? 31 : 30); rotulo = 'APK vc' + vc; }
+    else if(!p){ rotulo = nat ? 'APK vc29 ou anterior' : 'navegador (sem APK)'; }
+    else if(!gsSrvAtivo()){ return { vc:0, rotulo:'APK' }; }   // sem login: não consulta o plugin (tenta de novo depois)
+    else {
+      const e = await p.estado().catch(function(){ return null; });
+      if(e && typeof e.versionCode === 'number'){ vc = e.versionCode; }
+      else if(e && e.sobreposicao !== undefined){ vc = 32; }
+      else { let diag = false; try{ await p.diagnostico({ ultimas:1 }); diag = true; }catch(x){} vc = diag ? 31 : 30; }
+      rotulo = 'APK vc' + vc;
+    }
+  }catch(e){ rotulo = 'APK ?'; }
+  _gsApkInfo = { vc:vc, rotulo:rotulo };
+  try{ const el = document.getElementById('gs-apk-rodape'); if(el) el.textContent = rotulo; }catch(e){}
+  return _gsApkInfo;
+}
+setTimeout(function(){ gsApkDetectar().catch(function(){}); }, 0);
 async function gsSegPlanoLigar(){
   const p = _gsSegPlano();
   if(!p || !gsSrvAtivo()) return false;
   try{
-    await p.iniciar({ titulo:'GarageSpot · aparelho ' + (_gsSrvLer().letra || '?'), texto:'Sincronização ativa (também com a tela desligada)' });
+    await p.iniciar({ titulo:'GarageSpot · dispositivo ' + (_gsSrvLer().letra || '?'), texto:'Sincronização ativa (também com a tela desligada)' });
+    // v2.4.2.0: nome do dispositivo (Bloco E) e a visibilidade real da tela (Bloco 0)
+    gsSegPlanoEstado().then(function(e){
+      try{ if(e && (e.fabricante || e.modelo)) localStorage.setItem(GS_DISP_NOME_LS, (String(e.fabricante || '') + ' ' + String(e.modelo || '')).trim()); }catch(x){}
+      try{ if(e && typeof e.telaVisivel === 'boolean' && e.telaVisivel !== _gsTelaNat) window.gsTelaNativa(e.telaVisivel); }catch(x){}
+    }).catch(function(){});
     return true;
   }catch(e){
     console.warn('[SEGUNDO PLANO] não iniciou:', e && e.message);
@@ -22811,9 +23175,20 @@ function _gsCfgApItens(e){
     itens.push({ id:'autostart', titulo:'Inicialização automática', ok:e ? (e.inicializacaoAutomatica === true ? true : (e.inicializacaoAutomatica === false ? false : null)) : null,
       dica:'Na lista da Xiaomi, ligar o GarageSpot.' + (e && e.inicializacaoAutomatica == null ? ' (O sistema não informa — confira na tela.)' : ''), botao:'Abrir', acao:'autostart' });
   }
+  // v2.4.2.0 (vc32): o serviço reabre a tela do app se ela for destruída (ex.: removida dos recentes) — o Android
+  // só deixa com "Exibir sobre outros apps" (e, na Xiaomi, "Abrir novas janelas em segundo plano")
+  if(e && e.sobreposicao !== undefined){
+    itens.push({ id:'sobreposicao', titulo:'Exibir sobre outros apps', ok:!!e.sobreposicao,
+      dica:'Permite ao GarageSpot voltar sozinho se a tela dele for fechada (ex.: removido dos recentes). Na tela do Android, ligar o GarageSpot.', botao:'Abrir', acao:'sobreposicao' });
+  }
+  if(e && xiaomi && e.sobreposicao !== undefined){
+    itens.push({ id:'janelas', titulo:'Abrir janelas em segundo plano (Xiaomi)', ok:e.janelasSegundoPlano === true ? true : (e.janelasSegundoPlano === false ? false : (m.janelas ? true : null)), manual:e.janelasSegundoPlano == null,
+      dica:'Na tela de permissões da Xiaomi: "Abrir novas janelas durante a execução em segundo plano" → Permitir.' + (e.janelasSegundoPlano == null ? ' (O sistema não informa — confira na tela e toque em Já fiz.)' : ''),
+      botao:e.janelasSegundoPlano == null ? 'Já fiz' : 'Abrir', acao:e.janelasSegundoPlano == null ? 'janelas_feito' : 'janelas', abrir:e.janelasSegundoPlano == null ? 'janelas' : undefined });
+  }
   // v2.4.1.0 (Bloco H): no HyperOS 2 não há cadeado nos recentes — vale o BLOQUEIO em Otimizar velocidade
   itens.push({ id:'travado', titulo:'App protegido (Otimizar velocidade → Bloquear apps)', ok:!!m.travado, manual:true,
-    dica:'App Segurança → Otimizar velocidade → Bloquear apps → ligar o GarageSpot. (Em aparelhos com cadeado nos recentes, travar o cartão do GarageSpot também vale.)', botao:'Já fiz', acao:'travado', abrir:'seguranca' });
+    dica:'App Segurança → Otimizar velocidade → Bloquear apps → ligar o GarageSpot. (Em dispositivos com cadeado nos recentes, travar o cartão do GarageSpot também vale.)', botao:'Já fiz', acao:'travado', abrir:'seguranca' });
   itens.push({ id:'limpeza', titulo:'Limpeza do HyperOS', ok:!!m.limpeza, manual:true,
     dica:'A limpeza de arquivos do HyperOS não alcança os dados do GarageSpot (eles ficam na área privada do app desde a v1.9.9.5). Basta o bloqueio em Otimizar velocidade, no item acima.', botao:'Entendi', acao:'limpeza' });
   return itens;
@@ -22828,11 +23203,11 @@ async function gsTelaConfigurarAparelho(opts){
   opts = opts || {};
   const p = _gsSegPlano();
   const e = p ? await gsSegPlanoEstado() : null;
-  const cab = '<div class="mt">📱 Configurar este aparelho</div>';
+  const cab = '<div class="mt">📱 Configurar este dispositivo</div>';
   if(!p){
     showM(cab + '<div class="ms" id="cfg-ap-sem" style="margin-bottom:8px">' +
       (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
-        ? 'Este aparelho está com um APK antigo, sem a sincronização em segundo plano. <strong>Instale o APK vc30</strong> (v2.4.0.0) para o app continuar sincronizando com a tela desligada.'
+        ? 'Este dispositivo está com um APK antigo, sem a sincronização em segundo plano. <strong>Instale o APK vc32</strong> (v2.4.2.0) para o app continuar sincronizando com a tela desligada.'
         : 'Esta tela é para os tablets e celulares com o app instalado (Android). No navegador não há o que configurar.') +
       '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>');
     return;
@@ -22850,6 +23225,8 @@ async function gsTelaConfigurarAparelho(opts){
   };
   showM(cab +
     (opts.primeiraVez ? '<div class="ms" style="margin-bottom:6px">Para o GarageSpot continuar sincronizando com a <strong>tela desligada</strong>, deixe tudo verde. Leva 2 minutos.</div>' : '') +
+    // v2.4.2.0: APK vc31 ou anterior — a página congela com a tela bloqueada e o token do Drive não renova sozinho
+    (e && e.sobreposicao === undefined ? '<div class="ms" id="cfg-ap-vc32" style="margin-bottom:6px;font-weight:700;color:#A32D2D">⚠️ APK antigo: instale o APK vc32 (v2.4.2.0) para o app trabalhar sem atraso com a tela bloqueada.</div>' : '') +
     '<div style="font-size:12px;color:#555;margin-bottom:6px" id="cfg-ap-resumo">' + ok + ' de ' + itens.length + ' ok · ' + _vtEsc(String((e && e.fabricante) || '') + ' ' + String((e && e.modelo) || '')) + ' · Android SDK ' + _vtEsc(String((e && e.sdk) || '?')) + '</div>' +
     itens.map(linha).join('') +
     '<div style="font-size:11px;color:#888;margin:4px 0 8px">Depois de mudar algo no sistema, volte ao GarageSpot: esta lista se atualiza sozinha.</div>' +
@@ -22860,11 +23237,11 @@ async function gsTelaConfigurarAparelho(opts){
   document.querySelectorAll('.cfg-ap-btn').forEach(function(b){
     b.onclick = async function(){
       const a = b.getAttribute('data-acao');
-      if(a === 'travado' || a === 'limpeza'){ const m = _gsCfgApLer(); m[a] = !m[a]; m[a + '_em'] = Date.now(); _gsCfgApGravar(m); return gsTelaConfigurarAparelho(opts); }
+      if(a === 'travado' || a === 'limpeza' || a === 'janelas_feito'){ const k = a === 'janelas_feito' ? 'janelas' : a; const m = _gsCfgApLer(); m[k] = !m[k]; m[k + '_em'] = Date.now(); _gsCfgApGravar(m); return gsTelaConfigurarAparelho(opts); }
       if(a === 'servico'){ await gsSegPlanoLigar(); return setTimeout(function(){ gsTelaConfigurarAparelho(opts); }, 600); }
       if(a === 'bateria'){ const r = await p.pedirSemRestricaoBateria().catch(function(){ return { ok:false }; }); if(!r || !r.ok) await p.abrir({ tela:'bateria' }).catch(function(){}); return; }
       const r = await p.abrir({ tela:a }).catch(function(){ return { ok:false }; });
-      if(!r || !r.ok) showToast('Não consegui abrir essa tela neste aparelho — procure em Configurações → Apps → GarageSpot', 4500);
+      if(!r || !r.ok) showToast('Não consegui abrir essa tela neste dispositivo — procure em Configurações → Apps → GarageSpot', 4500);
     };
   });
 }
@@ -22882,9 +23259,9 @@ function gsCfgAparelhoOferecerDepoisDoLogin(){
   return true;
 }
 async function _gsSrvExecutarCargaNaTela(){
-  showM('<div class="mt">📤 Carga inicial</div><div class="ms" id="srv-cg-ms">Montando os dados deste aparelho…</div>' +
+  showM('<div class="mt">📤 Carga inicial</div><div class="ms" id="srv-cg-ms">Montando os dados deste dispositivo…</div>' +
     '<div style="background:#eee;border-radius:6px;height:6px;overflow:hidden;margin:8px 0"><div id="srv-cg-bar" style="background:#185FA5;height:100%;width:0%"></div></div>' +
-    '<div style="font-size:11px;color:#888">Fotos e PDFs não sobem nesta etapa. Nada no aparelho é alterado.</div>');
+    '<div style="font-size:11px;color:#888">Fotos e PDFs não sobem nesta etapa. Nada no dispositivo é alterado.</div>');
   const r = await gsSrvCargaInicial(function(f, t, tab){
     const ms = document.getElementById('srv-cg-ms'); if(ms) ms.textContent = 'Enviando ' + tab + '… (' + f + ' de ' + t + ')';
     const b = document.getElementById('srv-cg-bar'); if(b) b.style.width = Math.round(100 * f / Math.max(1, t)) + '%';
@@ -22897,8 +23274,8 @@ async function _gsSrvExecutarCargaNaTela(){
   const orf = (r.orfas || []).length ? '<div style="margin-top:8px;font-size:11px;color:#633806"><strong>' + r.orfas.length + ' hospedagem(ns) órfã(s)</strong> (ativas, sem vaga e sem passeio) — apenas listadas, a decisão vem depois:<br>' +
     r.orfas.slice(0, 20).map(function(o){ return _vtEsc(o.gs) + ' · Apt. ' + _vtEsc(String(o.apt)); }).join('<br>') + '</div>' : '';
   showM('<div class="mt">📤 Carga inicial</div>' +
-    '<div class="ms" style="color:' + (r.ok ? '#0F6E56' : '#A32D2D') + ';font-weight:700">' + (r.ok ? '✅ Concluída — as contagens do aparelho e do servidor batem.' : '⚠️ ' + _vtEsc(r.erro || 'não concluída')) + '</div>' +
-    (linhas ? '<div style="overflow-x:auto"><table id="srv-cg-tabela" style="font-size:12px;border-collapse:collapse;margin-top:6px"><tr><th style="text-align:left">tabela</th><th>aparelho</th><th>servidor</th><th></th></tr>' + linhas + '</table></div>' : '') +
+    '<div class="ms" style="color:' + (r.ok ? '#0F6E56' : '#A32D2D') + ';font-weight:700">' + (r.ok ? '✅ Concluída — as contagens do dispositivo e do servidor batem.' : '⚠️ ' + _vtEsc(r.erro || 'não concluída')) + '</div>' +
+    (linhas ? '<div style="overflow-x:auto"><table id="srv-cg-tabela" style="font-size:12px;border-collapse:collapse;margin-top:6px"><tr><th style="text-align:left">tabela</th><th>dispositivo</th><th>servidor</th><th></th></tr>' + linhas + '</table></div>' : '') +
     orf + '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
 }
 
@@ -22938,7 +23315,7 @@ const GS_SYNC_MAX_OPS = 80;                         // ops por ação (adoção 
 const GS_SYNC_PULL_MS = 30000;                      // reserva do tempo real
 const GS_VERSAO_MS = 5 * 60 * 1000;                 // conferência de versão publicada
 const GS_OCIOSO_MS = 60000;                         // sem toque há 60 s
-const GS_DRIVE_SO_A_MSG = 'o envio ao Drive é feito pelo aparelho A';
+const GS_DRIVE_SO_A_MSG = 'o envio ao Drive é feito pelo dispositivo A';
 
 const _gsSync = {
   estado: 'parado',          // parado | preparando | decisao | adotando | ativo
@@ -23499,7 +23876,7 @@ function _gsSyncAvisarModal(tokens){
     const d = document.createElement('div');
     d.id = 'srv-atualizado';
     d.style.cssText = 'background:#FFF6E0;border:1px solid #E8C77A;color:#7A5300;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:700;margin-bottom:6px';
-    d.textContent = '🔄 Atualizado no outro aparelho — os dados novos aparecem ao fechar';
+    d.textContent = '🔄 Atualizado no outro dispositivo — os dados novos aparecem ao fechar';
     mc.insertBefore(d, mc.firstChild);
   }catch(e){}
 }
@@ -23673,7 +24050,7 @@ async function _gsSyncIniciar(){
   if(!gsSrvAtivo()) return;
   if(['preparando', 'adotando', 'ativo'].indexOf(_gsSync.estado) >= 0) return;
   clearTimeout(_gsSync.timerRetentar);
-  if(!_gsArqBackend()){ _gsSync.estado = 'parado'; _gsSync.motivo = 'sem armazenamento de arquivos neste aparelho'; return; }
+  if(!_gsArqBackend()){ _gsSync.estado = 'parado'; _gsSync.motivo = 'sem armazenamento de arquivos neste dispositivo'; return; }
   _gsSync.estado = 'preparando'; _gsSync.motivo = ''; _gsSync.decisao = null;
   _gsSyncAtualizarRodape();
   try{
@@ -23740,7 +24117,7 @@ async function _gsSyncAdotar(modo, aoProgresso){
   }
   if(modo === 'baixar' && _gsSyncAparelhoTemDados()){
     _gsSync.estado = 'decisao'; _gsSync.decisao = 'misturaria'; _gsSyncAtualizarRodape();
-    return { ok:false, erro:'este aparelho passou a ter dados próprios — nada foi misturado' };
+    return { ok:false, erro:'este dispositivo passou a ter dados próprios — nada foi misturado' };
   }
   GS_SYNC_TABS.forEach(function(t){ _gsSync.base[t] = {}; _gsSync.sombra[t] = {}; _gsSync.raw[t] = {}; });
   _gsSync.guardados = [];
@@ -23773,7 +24150,7 @@ async function _gsSyncAdotar(modo, aoProgresso){
   if(_gsSync.guardados.length){ _gsSyncGravarGuardados(); _gsSyncAvisarAtualizar(); }
   if(m.pend) _gsPendDepoisDeMudar(m);
   if(m.algo){ _gsSyncPersistirLocal(m); _gsSyncRedesenhar(m); }
-  try{ addLogSistema('Sincronização com o servidor LIGADA (' + ({ origem:'aparelho da carga inicial', vazio:'servidor e aparelho vazios', baixar:'dados baixados do servidor' })[modo] +
+  try{ addLogSistema('Sincronização com o servidor LIGADA (' + ({ origem:'dispositivo da carga inicial', vazio:'servidor e dispositivo vazios', baixar:'dados baixados do servidor' })[modo] +
     ') — ' + total + ' registro(s) do servidor, ponto ' + _gsSync.cursor, { aud:true, acao:'sync_iniciada', alvo:modo, origem:modo === 'baixar' ? 'usuario' : 'automatico' }); }catch(e){}
   _gsSyncAtivar();
   return { ok:true, total:total, cursor:_gsSync.cursor };
@@ -23865,7 +24242,7 @@ function _gsSyncInstalarGanchos(){
   _gsSyncEnvolver('addLogSistema', null, function(a){ if(a[1] && a[1].aud) _gsSyncMarcarSuja('trilha'); });
   // v2.2.0.0: o autor de cada evento leva também o ID do funcionário
   _gsSyncEnvolver('saveUsuarios', null, function(){ _gsSyncMarcarSuja('funcionarios'); });
-  ['saveTurnos', 'saveEscala', 'saveRecargaCfg', 'saveConfigPontos', 'saveModulos', 'savePlantaoManual', 'savePlantaoOverride', 'saveTema', '_gsPodaSalvarConfig']
+  ['saveTurnos', 'saveEscala', 'saveRecargaCfg', 'saveConfigPontos', 'saveModulos', 'savePlantaoManual', 'savePlantaoOverride', 'saveTema', '_gsPodaSalvarConfig', 'saveHorarios']
     .forEach(function(n){ _gsSyncEnvolver(n, null, function(){ _gsSyncMarcarSuja('config'); }); });
   // v2.2.0.0 (Blocos C/D): vaga com dois carros se divide; o toque nela abre a resolução
   _gsSyncEnvolver('ref', null, function(a){ try{ if(_gsConflitoDaVaga(a[0])) _gsConflitoDesenhar(a[0]); else { const td = getTd(a[0]); if(td) td.classList.remove('vaga-conflito'); } }catch(e){} });
@@ -23961,19 +24338,19 @@ function _gsSyncPainelHTML(){
       ' · tempo real: ' + (_gsSync.rt === 'SUBSCRIBED' ? 'conectado' : 'consulta a cada 30 s') +
       (_gsSync.recusadas ? '<br><span style="color:#A32D2D">' + _gsSync.recusadas + ' ação(ões) recusada(s) pelo servidor, guardada(s) para conferência</span>' : '') +
       (_gsSync.guardados.length ? '<br><span style="color:#A32D2D">Há dados de uma versão mais nova — atualize o app</span>' : '') +
-      '<div style="color:#888;font-size:11px;margin-top:3px">Fotos e PDFs ainda não viajam entre aparelhos.</div>');
+      '<div style="color:#888;font-size:11px;margin-top:3px">Fotos e PDFs ainda não viajam entre dispositivos.</div>');
   }
   if(e === 'decisao' && _gsSync.decisao === 'baixar'){
-    return caixa('#B9D6F2', '#EEF6FF', '<strong>O servidor já tem os dados da empresa</strong> e este aparelho está vazio.<br>Baixe os dados para este aparelho passar a sincronizar (fotos não descem nesta versão).' +
+    return caixa('#B9D6F2', '#EEF6FF', '<strong>O servidor já tem os dados da empresa</strong> e este dispositivo está vazio.<br>Baixe os dados para este dispositivo passar a sincronizar (fotos não descem nesta versão).' +
       '<button class="bsv" id="srv-baixar" style="width:100%;margin-top:8px">⬇️ Baixar dados do servidor</button>');
   }
   if(e === 'decisao' && _gsSync.decisao === 'misturaria'){
-    return caixa('#E8A8A8', '#FFF1F1', '<strong>Este aparelho tem dados próprios, e o servidor já tem os dados da empresa</strong> (enviados por outro aparelho).<br>' +
-      'Para não misturar os dois, nada é sincronizado. Juntar os dados será decidido numa próxima etapa.<br>Neste aparelho, a única opção agora é <strong>desligar o servidor</strong> e seguir no modo local — nada é apagado.');
+    return caixa('#E8A8A8', '#FFF1F1', '<strong>Este dispositivo tem dados próprios, e o servidor já tem os dados da empresa</strong> (enviados por outro dispositivo).<br>' +
+      'Para não misturar os dois, nada é sincronizado. Juntar os dados será decidido numa próxima etapa.<br>Neste dispositivo, a única opção agora é <strong>desligar o servidor</strong> e seguir no modo local — nada é apagado.');
   }
   if(e === 'decisao' && _gsSync.decisao === 'carga'){
-    return caixa('#E8C77A', '#FFF8E8', '<strong>Envie os dados deste aparelho (carga inicial)</strong> para começar a sincronizar.' +
-      (_gsSyncCargaLocal().estado !== 'concluida' ? '<button class="bsv" id="srv-carga" style="width:100%;margin-top:8px">📤 Enviar dados deste aparelho para o servidor (carga inicial)</button>' : ''));
+    return caixa('#E8C77A', '#FFF8E8', '<strong>Envie os dados deste dispositivo (carga inicial)</strong> para começar a sincronizar.' +
+      (_gsSyncCargaLocal().estado !== 'concluida' ? '<button class="bsv" id="srv-carga" style="width:100%;margin-top:8px">📤 Enviar dados deste dispositivo para o servidor (carga inicial)</button>' : ''));
   }
   if(e === 'preparando' || e === 'adotando') return caixa('#ddd', '#f7f7f7', '⏳ Preparando a sincronização…');
   return caixa('#ddd', '#f7f7f7', 'Sincronização parada' + (_gsSync.motivo ? ' — ' + _vtEsc(_gsSync.motivo) + ' (tenta de novo sozinha)' : '') + '.');
@@ -23991,7 +24368,7 @@ async function _gsSyncBaixarNaTela(){
   const r = await _gsSyncAdotar('baixar', function(n, tab){ const ms = document.getElementById('srv-bx-ms'); if(ms) ms.textContent = 'Baixando ' + tab + '… (' + n + ' registro(s))'; });
   showM('<div class="mt">⬇️ Baixar dados do servidor</div>' +
     '<div class="ms" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
-    (r.ok ? '✅ ' + r.total + ' registro(s) baixado(s). Este aparelho passa a sincronizar.' : '⚠️ ' + _vtEsc(r.erro || 'não concluído')) + '</div>' +
+    (r.ok ? '✅ ' + r.total + ' registro(s) baixado(s). Este dispositivo passa a sincronizar.' : '⚠️ ' + _vtEsc(r.erro || 'não concluído')) + '</div>' +
     '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
 }
 
@@ -24028,10 +24405,13 @@ function _gsRespGravar(r){
   if(!r) return;
   const ant = _gsRespLer();
   const novo = { letra:r.letra || null, sou:!!r.sou, limite_min:r.limite_min || null, ts:Date.now(),
-                 drive_ok:r.drive_ok, algum_com_drive:r.algum_com_drive, meu_drive_ok:r.meu_drive_ok };   // v2.4.1.0 (008)
+                 drive_ok:r.drive_ok, algum_com_drive:r.algum_com_drive, meu_drive_ok:r.meu_drive_ok,   // v2.4.1.0 (008)
+                 apto:r.apto, meu_apto:r.meu_apto, algum_apto:r.algum_apto, conta_oficial:r.conta_oficial || null,   // v2.4.2.0 (009)
+                 minha_conta:r.minha_conta || null, pend_drive:r.pend_drive == null ? null : Number(r.pend_drive) || 0,
+                 pend_drive_desde:r.pend_drive_desde || null };
   try{ localStorage.setItem(GS_RESP_LS, JSON.stringify(novo)); }catch(e){}
   if(ant.sou !== novo.sou || ant.letra !== novo.letra){
-    try{ addLogSistema('Envio ao Drive: responsável agora é o aparelho ' + (novo.letra || '?') + (novo.sou ? ' (ESTE aparelho)' : ''),
+    try{ addLogSistema('Envio ao Drive: responsável agora é o dispositivo ' + (novo.letra || '?') + (novo.sou ? ' (ESTE dispositivo)' : ''),
       { aud:true, acao:'responsavel_visto', alvo:String(novo.letra || ''), origem:'servidor' }); }catch(e){}
     try{ _gsSrvAtualizarRodape(); }catch(e){}
     if(novo.sou) setTimeout(function(){ try{ gsPesadaConsultarServidor('assumiu'); _gsPesadaAgendar(500); }catch(e){} }, 0);   // v2.4.1.0 (Bloco C)
@@ -24042,16 +24422,18 @@ function _gsRespGravar(r){
 function gsSouResponsavel(){
   if(!gsSrvAtivo()) return true;
   const r = _gsRespLer();
-  if(r.letra) return !!r.sou;
+  // v2.4.2.0: o servidor JÁ respondeu (ts) — vale o que ele disse, inclusive "ninguém" (ninguém apto: conta errada,
+  // sem Drive). Antes, sem letra, o A se achava responsável e tentava escrever no Drive.
+  if(r.letra || r.ts) return !!r.sou;
   return String(_gsSrvLer().letra || '') === 'A';
 }
 function _gsRespLetra(){ const r = _gsRespLer(); return r.letra || (gsSrvAtivo() && String(_gsSrvLer().letra || '') === 'A' ? 'A' : null) || 'responsável'; }
-function _gsDriveMsg(){ return 'o envio ao Drive é feito pelo aparelho ' + _gsRespLetra(); }
+function _gsDriveMsg(){ return 'o envio ao Drive é feito pelo dispositivo ' + _gsRespLetra(); }
 async function gsAssumirResponsavel(){
   const r = await _gsSrvRpc('assumir_responsavel', {}, 10000);
   if(r.error) return { ok:false, erro:r.error.message };
   _gsRespGravar(r.data);
-  try{ addLogSistema('Envio ao Drive ASSUMIDO por este aparelho (PIN do gestor)', { aud:true, acao:'responsavel_assumido', alvo:String((r.data || {}).letra || ''), origem:'usuario' }); }catch(e){}
+  try{ addLogSistema('Envio ao Drive ASSUMIDO por este dispositivo (PIN do gestor)', { aud:true, acao:'responsavel_assumido', alvo:String((r.data || {}).letra || ''), origem:'usuario' }); }catch(e){}
   return { ok:true, letra:(r.data || {}).letra };
 }
 
@@ -24081,7 +24463,8 @@ function _gsSenhaEmergenciaLigar(aoAceitar){
 
 // ── FILA PESADA (fotos, documentos, assinaturas, PDFs) ──────────────────────
 const _gsPesada = { fila:[], n:0, conhecidos:{}, srv:{}, complementados:{}, baixando:false, enviando:false, falhas:0, prox:0, timer:null,
-                    ativo:false, carregado:false, gravacao:Promise.resolve(), drive:{}, esperaDesde:0, varrerLogoTimer:null, hashMemo:{} };
+                    ativo:false, carregado:false, gravacao:Promise.resolve(), drive:{}, esperaDesde:0, varrerLogoTimer:null, hashMemo:{},
+                    driveEnviados:{}, driveEspera:{} };   // v2.4.2.0 (Bloco A)
 // v2.3.1.0 (Bloco A) — TEMPOS DA FILA PESADA, medidos no teste do Douglas (16/10/2026): a 3ª foto
 // da GS078 ficou 165 s parada no celular porque a fila só andava com a tela OCIOSA e o operador
 // seguiu usando o app; não havia teto. Agora:
@@ -24112,6 +24495,7 @@ async function _gsPesadaCarregar(){
   _gsPesada.conhecidos = (await _gsArqLerJSON(dir + '/conhecidos.json')) || {};
   _gsPesada.srv = Object.assign((await _gsArqLerJSON(dir + '/srv.json')) || {}, _gsPesada.srv || {});   // o que chegou no baixar-tudo vale por cima
   _gsPesada.complementados = (await _gsArqLerJSON(dir + '/complementados.json')) || {};
+  _gsPesada.driveEnviados = (await _gsArqLerJSON(dir + '/drive-enviados.json')) || {};   // v2.4.2.0 (Bloco A)
   const nomes = (await B.listar(dir + '/fila')).filter(function(n){ return /\.json$/.test(n); }).sort();
   for(let i = 0; i < nomes.length; i++){
     const meta = await _gsArqLerJSON(dir + '/fila/' + nomes[i]);
@@ -24306,9 +24690,20 @@ async function _gsPesadaEnviarUm(){
   return true;
 }
 // Linha `arquivos` recebida do servidor (mudanças / baixar tudo)
+// v2.4.2.0 (Bloco A) — CAUSA DO REENVIO DO GS072 (17/10 09:19): a consulta ao servidor TROCAVA o objeto do
+// arquivo no meio do envio; o envio terminava, marcava "no Drive" no objeto ANTIGO e o novo (ainda sem a
+// confirmação) voltava à fila. Agora o objeto é o mesmo e a confirmação local nunca é desfeita.
+function _gsPesadaSrvJuntar(d){
+  const ant = _gsPesada.srv[d.id];
+  if(!ant){ _gsPesada.srv[d.id] = d; return d; }
+  const okLocal = ant.drive_ok_em;
+  Object.assign(ant, d);
+  if(okLocal && !d.drive_ok_em) ant.drive_ok_em = okLocal;
+  return ant;
+}
 function _gsPesadaRowRecebida(d, m){
   if(!d || !d.id) return;
-  _gsPesada.srv[d.id] = d;
+  _gsPesadaSrvJuntar(d);
   // v2.4.1.0 (Bloco E): alguém pediu o reenvio de um arquivo que este aparelho tem
   try{ if(d.reenvio_pedido_em && d.removido_storage_em && _gsPesadaTemLocal(d)) _gsPesadaReenviar(d); }catch(e){}
   _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
@@ -24376,7 +24771,7 @@ async function _gsPesadaReenviar(x){
                arquivo:dir + '/fila/' + String(_gsPesada.n).padStart(10, '0') + '-' + x.id + '.json', dado:dir + '/fila/' + x.id + '.dat', gravadoOk:false, reenviar:true };
   _gsPesada.fila.push(it);
   try{ await _gsArqGravarSeguro(it.dado, _gsB64DeData(data), false); await _gsArqGravarSeguro(it.arquivo, JSON.stringify(it.meta), false); it.gravadoOk = true; }catch(e){}
-  try{ gsDiag('reenvio', 'reenviando ' + x.tipo + ' ' + x.gs + ' (pedido de outro aparelho)'); }catch(e){}
+  try{ gsDiag('reenvio', 'reenviando ' + x.tipo + ' ' + x.gs + ' (pedido de outro dispositivo)'); }catch(e){}
   _gsPesadaAgendar(400);
   return true;
 }
@@ -24388,7 +24783,7 @@ async function gsPesadaConsultarServidor(motivo){
   if(!_gsPesada.ativo || !gsSrvAtivo()) return 0;
   const cli = _gsSrvCliente(); if(!cli || !cli.from) return 0;
   let n = 0;
-  const juntar = function(lst){ (lst || []).forEach(function(x){ if(!x || !x.id) return; _gsPesada.srv[x.id] = Object.assign({}, _gsPesada.srv[x.id] || {}, _gsArqDaLinhaRest(x)); n++; }); };
+  const juntar = function(lst){ (lst || []).forEach(function(x){ if(!x || !x.id) return; _gsPesadaSrvJuntar(_gsArqDaLinhaRest(x)); n++; }); };
   try{
     if(gsSouResponsavel()){
       const r = await cli.from('arquivos').select(GS_ARQ_COLUNAS).is('drive_ok_em', null).is('removido_storage_em', null).like('tipo', 'pdf_%').limit(1000);
@@ -24466,32 +24861,83 @@ async function _gsPesadaBaixarUm(){
   return true;
 }
 // RESPONSÁVEL: PDFs dos outros aparelhos → Drive; fotos/vistorias de hospedagens já fechadas → confirmadas
+// v2.4.2.0 (Bloco A) — NENHUM ARQUIVO VAI DUAS VEZES AO DRIVE:
+//  1. o servidor RESERVA o envio (drive_reservar, 009): só um dispositivo/página envia cada arquivo; o que o
+//     servidor já tem como "no Drive" é só marcado aqui, sem enviar;
+//  2. o id do arquivo criado no Drive é GRAVADO antes da confirmação — se a confirmação falhar, a próxima
+//     volta só confirma (não envia de novo);
+//  3. a pasta é conferida pelo NOME antes de enviar (v2.4.1.0), para quem caiu entre enviar e confirmar.
+// Servidor ainda sem o 009: segue sem a reserva (como na v2.4.1.0).
 async function _gsPesadaDriveUm(){
   if(_gsDriveSoA('envio ao Drive') || !_gdDisponivel() || !_gdConectado()) return false;
+  const agora = Date.now();
   const pend = Object.keys(_gsPesada.srv).map(function(k){ return _gsPesada.srv[k]; })
-    .filter(function(x){ return x && !x.drive_ok_em && !x.removido_storage_em && /^pdf_/.test(String(x.tipo || '')) && !_gsPesada.drive[x.id]; });
+    .filter(function(x){ return x && !x.drive_ok_em && !x.removido_storage_em && /^pdf_/.test(String(x.tipo || '')) && !_gsPesada.drive[x.id]
+                                && !(_gsPesada.driveEspera[x.id] > agora); });
   const x = pend[0];
   if(!x) return false;
   _gsPesada.drive[x.id] = 1;
   try{
-    const b = await _gsPesadaBaixar(x);
-    const b64 = _gsB64DeBytes(b.bytes);
-    const cls = _gdHistClassificar(x.nome || '') || { nome:x.nome, tipo:(x.tipo === 'pdf_recarga' ? 'recarga' : 'fechamento'), apt:(x.meta || {}).apt, checkin:(x.meta || {}).checkin };
-    const destino = _gdHistDestino(Object.assign({}, cls, { apt:cls.apt || (x.meta || {}).apt, checkin:cls.checkin || (x.meta || {}).checkin }));
-    const r = await _gdComToken(async function(token){
-      const pasta = await _gdGarantirCaminho(token, destino);
-      const ja = await _hhjAcharPorNome(token, pasta, x.nome);   // v2.4.1.0: já está lá? confirma sem duplicar
-      if(ja){ gsDiag('drive', 'já estava no Drive: ' + x.nome); return ja; }
-      return await _gdEnviarArquivoBin(token, pasta, x.nome, b64, 'application/pdf');
-    }, false);
-    try{ gsDiag('drive', 'PDF no Drive: ' + x.nome + ' (do aparelho ' + _gsLetraDoDv(x.criado_por) + ')'); }catch(e){}
-    const c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:(r && r.id) || '' }, 15000);
+    let r = _gsPesada.driveEnviados[x.id] || null, pastaTxt = (r && r.pasta) || '';
+    if(r) gsDiag('drive', 'já enviado por este dispositivo, só confirmando: ' + x.nome);
+    if(!r){
+      const rs = await _gsSrvRpc('drive_reservar', { p_id:x.id }, 15000);
+      if(!rs.error && rs.data && rs.data.ja){
+        _gsPesadaMarcarNoDrive(x, rs.data.drive_ok_em);
+        gsDiag('drive', 'o servidor já tem no Drive (não reenviado): ' + x.nome);
+        return true;
+      }
+      if(!rs.error && rs.data && rs.data.ok === false){
+        _gsPesada.driveEspera[x.id] = Date.now() + 60000;
+        gsDiag('drive', 'aguardando: ' + (rs.data.motivo || 'reserva recusada') + ' — ' + x.nome);
+        return false;
+      }
+      if(rs.error && !_gsSrvFuncaoAusente(rs.error)) throw new Error('reserva do envio: ' + rs.error.message);
+      const b = await _gsPesadaBaixar(x);
+      const b64 = _gsB64DeBytes(b.bytes);
+      const cls = _gdHistClassificar(x.nome || '') || { nome:x.nome, tipo:(x.tipo === 'pdf_recarga' ? 'recarga' : 'fechamento'), apt:(x.meta || {}).apt, checkin:(x.meta || {}).checkin };
+      const destino = _gdHistDestino(Object.assign({}, cls, { apt:cls.apt || (x.meta || {}).apt, checkin:cls.checkin || (x.meta || {}).checkin }));
+      pastaTxt = Array.isArray(destino) ? destino.join('/') : String(destino || '');
+      let ja = null;
+      r = await _gdComToken(async function(token){
+        const pasta = await _gdGarantirCaminho(token, destino);
+        ja = await _hhjAcharPorNome(token, pasta, x.nome);   // v2.4.1.0: já está lá? confirma sem duplicar
+        if(ja) return ja;
+        return await _gdEnviarArquivoBin(token, pasta, x.nome, b64, 'application/pdf');
+      }, false);
+      _gsPesada.driveEnviados[x.id] = { id:(r && r.id) || '', pasta:pastaTxt, em:Date.now() };
+      await _gsPesadaGravarJSON('drive-enviados.json', _gsPesada.driveEnviados);
+      try{ gsDiag('drive', (ja ? 'já estava no Drive (não reenviado): ' : 'PDF enviado ao Drive: ') + x.nome + ' (do dispositivo ' + _gsLetraDoDv(x.criado_por) + ')'); }catch(e){}
+    }
+    let c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:(r && r.id) || '', p_pasta:pastaTxt }, 15000);
+    if(c.error && _gsSrvFuncaoAusente(c.error)) c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:(r && r.id) || '' }, 15000);
     if(c.error) throw new Error(c.error.message);
-    x.drive_ok_em = new Date().toISOString(); _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
-    try{ addLogSistema('PDF do aparelho ' + _gsLetraDoDv(x.criado_por) + ' enviado ao Drive pelo responsável: ' + x.nome, { aud:true, acao:'pdf_outro_aparelho_no_drive', alvo:x.nome, origem:'automatico' }); }catch(e){}
+    delete _gsPesada.driveEnviados[x.id]; _gsPesadaGravarJSON('drive-enviados.json', _gsPesada.driveEnviados);
+    _gsPesadaMarcarNoDrive(x);
+    try{ addLogSistema('PDF do dispositivo ' + _gsLetraDoDv(x.criado_por) + ' enviado ao Drive pelo responsável: ' + x.nome + (c.data && c.data.drive_conta ? ' (conta ' + c.data.drive_conta + ')' : ''), { aud:true, acao:'pdf_outro_aparelho_no_drive', alvo:x.nome, origem:'automatico' }); }catch(e){}
     if(x.gs && x.tipo === 'pdf_fechamento') await _gsPesadaConfirmarDriveDoGs(x.gs);
+    if(x.gs && x.tipo === 'pdf_complementar') await _gsPesadaConfirmarDriveDoCompl(x.gs, x.nome);
     return true;
   }finally{ delete _gsPesada.drive[x.id]; }
+}
+function _gsPesadaMarcarNoDrive(x, quando){
+  const em = quando || new Date().toISOString();
+  x.drive_ok_em = em;
+  const cur = _gsPesada.srv[x.id]; if(cur && cur !== x) cur.drive_ok_em = em;
+  _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+}
+// as fotos de um PDF COMPLEMENTAR são confirmadas no Drive quando o PDF dele é confirmado
+async function _gsPesadaConfirmarDriveDoCompl(gs, nome){
+  let n = 0;
+  const ks = Object.keys(_gsPesada.complementados || {});
+  for(let i = 0; i < ks.length; i++){
+    if(_gsPesada.complementados[ks[i]] !== nome) continue;
+    const x = _gsPesada.srv[ks[i]]; if(!x || x.drive_ok_em) continue;
+    const c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:'pdf:' + nome }, 15000);
+    if(!c.error){ x.drive_ok_em = new Date().toISOString(); n++; }
+  }
+  if(n) _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
+  return n;
 }
 function _gsLetraDoDv(dv){ if(dv === _gsSync.dv) return _gsSyncLetra(); const d = _gsConf.disp[dv]; return d ? d.letra : '?'; }
 // as fotos/documentos de um GS vão ao Drive DENTRO do PDF de fechamento: confirmadas junto
@@ -24531,7 +24977,24 @@ function _gsPesadaComplementarAgendar(gs){
   clearTimeout(_gsComplTimers[gs]);
   _gsComplTimers[gs] = setTimeout(function(){ delete _gsComplTimers[gs]; gsPdfComplementar(gs).catch(function(e){ console.warn('[COMPLEMENTAR]', e && e.message); }); }, 3000);
 }
+// v2.4.2.0 (Bloco A) — CAUSA DO TRIPLO "PDF COMPLEMENTAR de GS076" (17/10 08:21–08:22): cada foto tardia
+// recebida agendava a geração (3 s) e as gerações SE SOBREPUNHAM — três PDFs foram ao Drive, dois com o mesmo
+// nome. Agora: uma geração por vez por GS (a que chega no meio roda depois, só com as fotos novas), nome com
+// segundos e o PDF vai pelo servidor (reserva + conferência pelo nome), como os outros.
+const _gsComplRodando = {};
 async function gsPdfComplementar(gs){
+  if(_gsComplRodando[gs]){ _gsComplRodando[gs].denovo = true; return _gsComplRodando[gs].p; }
+  const ctl = { denovo:false, p:null };
+  _gsComplRodando[gs] = ctl;
+  ctl.p = (async function(){
+    let ult = null;
+    try{ do{ ctl.denovo = false; const n = await _gsPdfComplementarUm(gs); if(n) ult = n; } while(ctl.denovo); }
+    finally{ delete _gsComplRodando[gs]; }
+    return ult;
+  })();
+  return ctl.p;
+}
+async function _gsPdfComplementarUm(gs){
   const h = HOSPEDAGENS[gs]; if(!h || !h.checkout_ts || !gsSouResponsavel()) return null;
   const tardias = Object.keys(_gsPesada.srv).map(function(k){ return _gsPesada.srv[k]; }).filter(function(x){
     return x && x.gs === gs && x.tipo === 'anexo' && !_gsPesada.complementados[x.id] && Date.parse(x.acao_em || 0) > h.checkout_ts;
@@ -24561,37 +25024,129 @@ async function gsPdfComplementar(gs){
   }
   const b64 = doc.output('datauristring').split(',')[1];
   const dd = new Date(); const p2 = function(n){ return String(n).padStart(2, '0'); };
-  const nome = gs + '_apt' + String(h.apt || '').replace(/\W/g, '') + '_complementar_' + p2(dd.getDate()) + '-' + p2(dd.getMonth() + 1) + '-' + String(dd.getFullYear()).slice(-2) + '_' + p2(dd.getHours()) + 'h' + p2(dd.getMinutes()) + '.pdf';
-  await _gdEnviarPDFFechamento(nome, b64, h.apt, h.checkin_ts);
-  for(let i = 0; i < itens.length; i++){
-    _gsPesada.complementados[itens[i].x.id] = nome;
-    const c = await _gsSrvRpc('confirmar_drive', { p_id:itens[i].x.id, p_drive_id:'pdf:' + nome }, 15000);
-    if(!c.error) itens[i].x.drive_ok_em = new Date().toISOString();
+  const nome = gs + '_apt' + String(h.apt || '').replace(/\W/g, '') + '_complementar_' + p2(dd.getDate()) + '-' + p2(dd.getMonth() + 1) + '-' + String(dd.getFullYear()).slice(-2) + '_' + p2(dd.getHours()) + 'h' + p2(dd.getMinutes()) + 'm' + p2(dd.getSeconds()) + 's.pdf';
+  if(_gsPesada.ativo && gsSrvAtivo()){
+    // pelo servidor: a foto só é confirmada no Drive quando o PDF dela for confirmado (_gsPesadaConfirmarDriveDoCompl)
+    if(!gsPesadaPdf(nome, b64, 'pdf_complementar', { gs:gs, apt:h.apt || null, checkin:h.checkin_ts || null })) return null;
+    for(let i = 0; i < itens.length; i++) _gsPesada.complementados[itens[i].x.id] = nome;
+  } else {
+    await _gdEnviarPDFFechamento(nome, b64, h.apt, h.checkin_ts);
+    for(let i = 0; i < itens.length; i++){
+      _gsPesada.complementados[itens[i].x.id] = nome;
+      const c = await _gsSrvRpc('confirmar_drive', { p_id:itens[i].x.id, p_drive_id:'pdf:' + nome }, 15000);
+      if(!c.error) itens[i].x.drive_ok_em = new Date().toISOString();
+    }
   }
   _gsPesadaGravarJSON('complementados.json', _gsPesada.complementados);
   _gsPesadaGravarJSON('srv.json', _gsPesada.srv);
-  try{ addLogSistema('PDF COMPLEMENTAR de ' + gs + ' no Drive (' + itens.length + ' foto(s) depois do check-out): ' + nome, { aud:true, acao:'pdf_complementar', alvo:gs, origem:'automatico' }); }catch(e){}
+  try{ addLogSistema('PDF COMPLEMENTAR de ' + gs + ' gerado (' + itens.length + ' foto(s) depois do check-out) — segue ao Drive: ' + nome, { aud:true, acao:'pdf_complementar', alvo:gs, origem:'automatico' }); }catch(e){}
   return nome;
 }
 
 // ── Gestão → Servidor: responsável pelo Drive, assumir, encerrar no corte ──
+// v2.4.2.0 (Bloco B): sugestão da conta oficial — a conectada no responsável (o servidor informa a de cada um)
+function _gsContaSugerida(){
+  try{
+    const r = _gsRespLer();
+    if(gsSouResponsavel() && _gsDriveContaParaSinal()) return _gsDriveContaParaSinal();
+    const a = _gsAparelhos && Array.isArray(_gsAparelhos.lista) ? _gsAparelhos.lista.find(function(x){ return x && x.responsavel && x.drive_conta; }) : null;
+    return (a && a.drive_conta) || _gsDriveContaParaSinal() || (r && r.minha_conta) || '';
+  }catch(e){ return ''; }
+}
+// v2.4.2.0 (ajuste 2): os dispositivos da empresa, com o último sinal e o Drive — é AQUI que aparece quem está sem sinal
+function _gsListaDispositivosHTML(){
+  const a = _gsAparelhos; if(!a || !Array.isArray(a.lista) || !a.lista.length) return '';
+  const minha = String(_gsSrvLer().letra || ''), passou = (Date.now() - a.em) / 1000;
+  const tempo = function(seg){ if(seg == null) return 'nunca'; const m = Math.floor(seg / 60); return m < 1 ? 'agora' : (m < 60 ? 'há ' + m + ' min' : (m < 1440 ? 'há ' + Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : 'há ' + Math.floor(m / 1440) + ' dia(s)')); };
+  return '<div id="srv-dispositivos" style="margin-top:6px;padding-top:6px;border-top:1px dashed #ddd"><strong>Dispositivos</strong>' + a.lista.map(function(x){
+    const seg = x.seg_sem_sinal == null ? null : x.seg_sem_sinal + passou;
+    const drive = x.conta_ok === false ? '<span style="color:#A32D2D">Drive na conta errada (' + _vtEsc(x.drive_conta || '?') + ')</span>' : (x.drive_ok ? 'Drive ✓' : 'sem Drive');
+    return '<div class="srv-disp" data-letra="' + _vtEsc(x.letra || '') + '" style="font-size:11px;color:#555">' + _vtEsc(x.letra || '?') + (x.letra === minha ? ' (este)' : '') + (x.responsavel ? ' · <strong>responsável</strong>' : '') +
+      ' · último sinal ' + tempo(seg) + ' · ' + drive + (x.versao ? ' · ' + _vtEsc(x.versao) : '') + '</div>';
+  }).join('') + '</div>';
+}
 function _gsRespPainelHTML(){
   if(!gsSrvAtivo()) return '';
   const sou = gsSouResponsavel(), letra = _gsRespLetra();
   const n = _gsPesada.fila.length;
+  const r = _gsRespLer(), p = gsDrivePendentesServidor();
+  const minha = _gsDriveContaParaSinal(), oficial = r.conta_oficial || '';
+  const errada = !!(oficial && minha && minha !== String(oficial).toLowerCase());
+  const sug = !oficial ? _gsContaSugerida() : '';
   return '<div id="srv-resp" style="background:#F7F7F7;border:1px solid #ddd;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.45">' +
-    '<strong>☁️ Envio ao Drive</strong><br><span id="srv-resp-txt">' + (sou ? 'Este aparelho é o RESPONSÁVEL pelo envio ao Drive.' : 'O envio ao Drive é feito pelo aparelho ' + _vtEsc(letra) + '.') + '</span>' +
-    '<br><span style="color:#888">' + (n ? n + (n === 1 ? ' arquivo aguardando envio' : ' arquivos aguardando envio') : 'Nenhum arquivo aguardando envio') + '</span>' +
-    (sou ? '' : '<button class="bsv" id="srv-assumir" style="width:100%;margin-top:8px">Assumir o envio ao Drive neste aparelho</button>') +
+    '<strong>☁️ Envio ao Drive</strong><br><span id="srv-resp-txt">' + (sou ? 'Este dispositivo é o RESPONSÁVEL pelo envio ao Drive.' : 'O envio ao Drive é feito pelo dispositivo ' + _vtEsc(letra) + '.') + '</span>' +
+    '<br><span style="color:#888">' + (n ? n + (n === 1 ? ' arquivo deste dispositivo aguardando envio ao servidor' : ' arquivos deste dispositivo aguardando envio ao servidor') : 'Nenhum arquivo deste dispositivo aguardando envio ao servidor') + '</span>' +
+    '<br><span id="srv-drive-pend" style="font-weight:700;color:' + (p.n ? '#B26A00' : '#0F6E56') + '">' + (p.n ? '☁️ No servidor: ' + p.n + (p.n === 1 ? ' arquivo aguardando' : ' arquivos aguardando') + ' o Drive desde ' + _gsHoraCurta(p.desde) : '☁️ No servidor: nenhum arquivo aguardando o Drive') + '</span>' +
+    '<div id="srv-drive-conta" style="margin-top:6px;padding-top:6px;border-top:1px dashed #ddd">Conta oficial do Drive: ' + (oficial ? '<strong>' + _vtEsc(oficial) + '</strong>' : '<strong style="color:#B26A00">não registrada</strong>') +
+      '<br><span style="color:' + (errada ? '#A32D2D' : '#555') + '">Este dispositivo: ' + (minha ? _vtEsc(minha) + (errada ? ' — ⚠️ CONTA ERRADA (os envios dele não são aceitos)' : '') : 'sem Drive conectado') + '</span>' +
+      (sug ? '<br><span id="srv-conta-sugestao" style="color:#185FA5">Sugestão: registrar <strong>' + _vtEsc(sug) + '</strong> (conta do responsável)</span>' : '') + '</div>' +
+    _gsListaDispositivosHTML() +
+    '<div style="display:flex;gap:6px;margin-top:8px"><button class="bcx" id="srv-conta-oficial" style="flex:1;font-size:12px">' + (oficial ? 'Trocar a conta oficial' : 'Registrar a conta oficial') + '</button>' +
+      '<button class="bcx" id="srv-envios" style="flex:1;font-size:12px">📤 Envios ao Drive</button></div>' +
+    (sou ? '' : '<button class="bsv" id="srv-assumir" style="width:100%;margin-top:8px">Assumir o envio ao Drive neste dispositivo</button>') +
     '</div>' +
     '<button class="bcx" id="srv-corte" style="width:100%;margin-bottom:6px">🗂 Encerrar hospedagens anteriores ao corte</button>';
 }
+// v2.4.2.0 (Bloco B): registrar/trocar a conta oficial (PIN do gestor) — fica no servidor e na trilha
+function gsTelaContaOficial(){
+  const r = _gsRespLer(), sug = r.conta_oficial || _gsContaSugerida();
+  showEntrarPIN(function(){
+    showM('<div class="mt">☁️ Conta oficial do Google Drive</div>' +
+      '<div class="ms" style="margin-bottom:8px">Todos os PDFs da empresa vão para ESTA conta. Dispositivo conectado em outra conta não envia e não pode ser o responsável.</div>' +
+      '<label class="fl">Conta (e-mail do Google)</label><input class="fi" id="srv-conta-campo" type="email" autocomplete="off" value="' + _vtEsc(sug || '') + '">' +
+      '<div id="srv-conta-msg" style="min-height:16px;font-size:12px;color:#A32D2D;margin:6px 0"></div>' +
+      '<div class="b2"><button class="bcx" onclick="showServidor()">Voltar</button><button class="bsv" id="srv-conta-salvar">Registrar</button></div>');
+    document.getElementById('srv-conta-salvar').onclick = async function(){
+      const c = String((document.getElementById('srv-conta-campo') || {}).value || '').trim().toLowerCase();
+      const msg = document.getElementById('srv-conta-msg');
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c)){ if(msg) msg.textContent = 'Informe um e-mail válido.'; return; }
+      if(msg){ msg.style.color = '#888'; msg.textContent = 'Registrando no servidor…'; }
+      const x = await _gsSrvRpc('definir_conta_drive', { p_conta:c }, 10000);
+      if(x.error){ if(msg){ msg.style.color = '#A32D2D'; msg.textContent = '⚠️ ' + (_gsSrvFuncaoAusente(x.error) ? 'o servidor ainda não tem o SQL 009' : x.error.message); } return; }
+      _gsRespGravar(x.data);
+      try{ addLogSistema('Conta oficial do Google Drive registrada: ' + c, { aud:true, acao:'drive_conta_oficial', alvo:c, origem:'usuario' }); }catch(e){}
+      try{ await _gsSrvSinal(); }catch(e){}
+      showToast('✅ Conta oficial registrada: ' + c, 3500);
+      showServidor();
+    };
+  });
+}
+// v2.4.2.0 (Bloco B): "Envios ao Drive" — o que o SERVIDOR registrou (arquivo, GS, dispositivo, conta, horário) e os pendentes
+async function gsTelaEnviosDrive(){
+  showM('<div class="mt">📤 Envios ao Drive</div><div class="ms" id="srv-envios-ms">Consultando o servidor…</div>');
+  const x = await _gsSrvRpc('envios_drive', { p_limite:30 }, 15000);
+  if(x.error){
+    showM('<div class="mt">📤 Envios ao Drive</div><div class="ms" style="color:#A32D2D">⚠️ ' + _vtEsc(_gsSrvFuncaoAusente(x.error) ? 'o servidor ainda não tem o SQL 009' : x.error.message) + '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>');
+    return;
+  }
+  const d = x.data || {}, env = d.enviados || [], pen = d.pendentes || [];
+  const li = function(h){ return '<div style="border-bottom:1px solid #eee;padding:5px 0;font-size:11px;line-height:1.4">' + h + '</div>'; };
+  const dt = function(v){ return v ? _dtLocal(Date.parse(v)) : '—'; };
+  showM('<div class="mt">📤 Envios ao Drive</div>' +
+    '<div class="exp-secao-titulo" id="srv-envios-pend-titulo">PENDENTES (' + pen.length + ')</div>' +
+    (pen.length ? pen.map(function(p){ return li('<strong>' + _vtEsc(p.nome || '') + '</strong><br>' + _vtEsc(p.gs || '—') + ' · criado no dispositivo ' + _vtEsc(p.letra || '?') + ' · desde ' + dt(p.desde) + (p.enviando ? ' · <span style="color:#185FA5">enviando pelo dispositivo ' + _vtEsc(p.enviando) + '</span>' : '')); }).join('')
+                : '<div style="font-size:12px;color:#0F6E56;padding:4px 0">Nenhum arquivo aguardando o Drive.</div>') +
+    '<div class="exp-secao-titulo" id="srv-envios-ok-titulo" style="margin-top:10px">ÚLTIMOS ENVIADOS (' + env.length + ')</div>' +
+    '<div style="max-height:40vh;overflow-y:auto">' + (env.length ? env.map(function(p){ return li('<strong>' + _vtEsc(p.nome || '') + '</strong><br>' + _vtEsc(p.gs || '—') + ' · dispositivo ' + _vtEsc(p.letra || '?') + ' · conta ' + _vtEsc(p.conta || '(não registrada)') + ' · ' + dt(p.em) + (p.pasta ? '<br><span style="color:#888">' + _vtEsc(p.pasta) + '</span>' : '')); }).join('')
+                : '<div style="font-size:12px;color:#888;padding:4px 0">Nenhum envio registrado ainda.</div>') + '</div>' +
+    '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+}
 function _gsRespLigarPainel(){
+  const co = document.getElementById('srv-conta-oficial'); if(co) co.onclick = function(){ gsTelaContaOficial(); };
+  const ev = document.getElementById('srv-envios'); if(ev) ev.onclick = function(){ gsTelaEnviosDrive(); };
   const a = document.getElementById('srv-assumir');
   if(a) a.onclick = function(){
+    // v2.4.2.0 (Bloco B): conectado na conta errada também não assume — e é dito o porquê
+    const rr = _gsRespLer(), minha = _gsDriveContaParaSinal();
+    if(_gsDriveOkParaSinal() && rr.conta_oficial && minha && minha !== String(rr.conta_oficial).toLowerCase()){
+      showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-conta-errada" style="font-weight:700;color:#A32D2D">⚠️ Este dispositivo está com o Drive na conta ' + _vtEsc(minha) + '.</div>' +
+        '<div class="ms">A conta oficial da empresa é <strong>' + _vtEsc(rr.conta_oficial) + '</strong>. Conecte o Drive nela em <strong>Gestão → Backup e Conexões</strong> e tente de novo.</div>' +
+        '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+      return;
+    }
     // v2.4.1.0 (Bloco B): sem Google Drive conectado este aparelho não pode assumir — e é dito o porquê
     if(!_gsDriveOkParaSinal()){
-      showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-sem-drive" style="font-weight:700;color:#A32D2D">⚠️ Este aparelho não tem o Google Drive conectado.</div>' +
+      showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-sem-drive" style="font-weight:700;color:#A32D2D">⚠️ Este dispositivo não tem o Google Drive conectado.</div>' +
         '<div class="ms">Só quem tem o Drive conectado pode enviar ao Drive. Conecte em <strong>Gestão → Backup e Conexões → Conectar Google Drive</strong> e tente de novo.</div>' +
         '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
       return;
@@ -24600,7 +25155,7 @@ function _gsRespLigarPainel(){
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-ms">Conferindo com o servidor…</div>');
       const r = await gsAssumirResponsavel();
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-res" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
-        (r.ok ? '✅ Este aparelho passou a fazer o envio ao Drive.' : '⚠️ Não foi possível: ' + _vtEsc(r.erro || 'sem resposta do servidor')) + '</div>' +
+        (r.ok ? '✅ Este dispositivo passou a fazer o envio ao Drive.' : '⚠️ Não foi possível: ' + _vtEsc(r.erro || 'sem resposta do servidor')) + '</div>' +
         '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
     });
   };
@@ -24613,7 +25168,9 @@ async function _gsPesadaIniciar(){
   if(_gsPesada.ativo) return;
   try{ await _gsPesadaCarregar(); }catch(e){ console.warn('[PESADA] não carregou:', e && e.message); return; }
   _gsPesada.ativo = true;
-  setTimeout(function(){ _gsPesadaVarrer().then(function(){ return _gsPesadaPdfsPendentes(); }).catch(function(e){ console.warn('[PESADA] varredura:', e && e.message); }); }, 2000);
+  // v2.4.2.0: assim que a fila fica pronta, confere no servidor o que falta (dispositivo recém-aberto ou apagado não
+  // espera o tique de 5 min para pedir de volta o que é dele)
+  setTimeout(function(){ _gsPesadaVarrer().then(function(){ return _gsPesadaPdfsPendentes(); }).then(function(){ return gsPesadaConsultarServidor('início'); }).catch(function(e){ console.warn('[PESADA] varredura:', e && e.message); }); }, 2000);
   clearInterval(_gsPesada.varreduraTimer);
   _gsPesada.varreduraTimer = setInterval(function(){ if(_gsPesada.ativo) _gsPesadaVarrer().catch(function(){}); }, 30000);
   _gsPesadaAgendar(1000);
@@ -24724,7 +25281,7 @@ async function gsConferirServidor(opts){
     try{ localStorage.setItem(_gsConfChave(), JSON.stringify({ h:fora.h })); }catch(e){}
     _gsConf.ultima = Date.now(); _gsConf.stats = st;
     if(st.fora_hosp || st.fora_eventos){
-      try{ addLogSistema('Conferência com o servidor: ' + st.fora_hosp + ' hospedagem(ns) e ' + st.fora_eventos + ' evento(s) deste aparelho não existem mais no servidor — ficam fora dos números do painel (nada foi apagado do aparelho)',
+      try{ addLogSistema('Conferência com o servidor: ' + st.fora_hosp + ' hospedagem(ns) e ' + st.fora_eventos + ' evento(s) deste dispositivo não existem mais no servidor — ficam fora dos números do painel (nada foi apagado do dispositivo)',
                          { aud:true, acao:'conferencia_servidor', alvo:Object.keys(fora.h).join(','), origem:'automatico' }); }catch(e){}
     }
     try{
@@ -24785,7 +25342,7 @@ function gsVistoriasPresasTexto(){
   l.forEach(function(x){ const a = x.aparelho ? x.aparelho.letra : '?'; (por[a] = por[a] || { n:0, versao:x.aparelho ? x.aparelho.versao : '' }).n++; });
   return Object.keys(por).sort().map(function(a){
     const p = por[a];
-    return ' · ' + p.n + (p.n === 1 ? ' vistoria com documento ainda no aparelho ' : ' vistorias com documento ainda no aparelho ') + a +
+    return ' · ' + p.n + (p.n === 1 ? ' vistoria com documento ainda no dispositivo ' : ' vistorias com documento ainda no dispositivo ') + a +
       (p.versao && p.versao !== GS_VERSION ? ' (está na ' + p.versao + ' — abrir o app lá para enviar)' : '');
   }).join('');
 }
@@ -25014,7 +25571,7 @@ function _gsPinsApagarTexto(){
     if(hl && hs === hl && localStorage.getItem(GESTAO_PIN_KEY) !== null){ localStorage.removeItem(GESTAO_PIN_KEY); g = 1; }
   }catch(e){}
   if(n || g){
-    try{ addLogSistema('PINs convertidos para hash e o texto APAGADO do aparelho: ' + n + ' de funcionário(s)' + (g ? ' + o do gestor' : ''),
+    try{ addLogSistema('PINs convertidos para hash e o texto APAGADO do dispositivo: ' + n + ' de funcionário(s)' + (g ? ' + o do gestor' : ''),
       { aud:true, acao:'pins_texto_apagados', alvo:String(n + g), origem:'automatico' }); }catch(e){}
   }
   return n + g;
@@ -25055,6 +25612,7 @@ function _gsCfgLocal(){
     o.plantao_override = { valor:PLANTAO_OVERRIDE };
     o.tema = { valor:(function(){ try{ return localStorage.getItem('garagespot_tema') || ''; }catch(e){ return ''; } })() };
     o.poda_config = { valor:_gsPodaConfig() };
+    o.horarios = { valor:gsHorariosEmpresa() };   // v2.4.2.0 (Bloco D)
     const h = _gsPinHashGestor(); if(h) o.gestor_pin_hash = { pin_hash:h };
     Object.keys(o).forEach(function(k){ o[k] = JSON.parse(JSON.stringify(o[k])); });
   }catch(e){ console.warn('[SYNC] configuração local ilegível:', e && e.message); }
@@ -25073,6 +25631,7 @@ function _gsCfgAplicarRecebido(k, d){
   else if(k === 'plantao_override' && v){ PLANTAO_OVERRIDE = v; savePlantaoOverride(); }
   else if(k === 'tema' && typeof v === 'string' && v){ try{ localStorage.setItem('garagespot_tema', v); applyTema(v); }catch(e){} }
   else if(k === 'poda_config' && v){ _gsPodaSalvarConfig(v); }
+  else if(k === 'horarios' && v){ saveHorarios(v); }
   else if(k === 'gestor_pin_hash' && d && d.pin_hash){ localStorage.setItem(GESTAO_PIN_HASH_LS, d.pin_hash); }
   else return false;
   return true;
@@ -25163,9 +25722,9 @@ function _gsSyncReverterAcao(item, r, m){
   const p = _gsPend.mapa[pid];
   if(p){ delete p._resolvendo; p.resolvida_em = p.resolvida_em || r.em; p.resolvida_por = p.resolvida_por || r.por; p.resolvida_aparelho = p.resolvida_aparelho || r.aparelho; }
   m.pend = true;
-  try{ addLogSistema('Resolução NÃO aplicada — a pendência já tinha sido resolvida por ' + (r.por || '?') + ' no aparelho ' + (r.aparelho || '?'),
+  try{ addLogSistema('Resolução NÃO aplicada — a pendência já tinha sido resolvida por ' + (r.por || '?') + ' no dispositivo ' + (r.aparelho || '?'),
     { aud:true, acao:'pendencia_ja_resolvida', alvo:String(pid), origem:'servidor' }); }catch(e){}
-  try{ showToast('ℹ️ Já resolvido por ' + (r.por || '?') + ' no aparelho ' + (r.aparelho || '?') + ' — o resultado de lá vale.', 6000); }catch(e){}
+  try{ showToast('ℹ️ Já resolvido por ' + (r.por || '?') + ' no dispositivo ' + (r.aparelho || '?') + ' — o resultado de lá vale.', 6000); }catch(e){}
   setTimeout(function(){ _gsSyncReceber('pendência já resolvida'); }, 200);
 }
 // a mesma recarga encerrada antes no outro aparelho: a cobrança DESTE não conta
@@ -25173,9 +25732,9 @@ function _gsRecargaJaEncerrada(k, r, m){
   try{
     const e = (HISTORICO_RECARGAS || []).find(function(x){ return x && !x._duplicada && (x._sid === k || _gsSyncRecargaChave(x) === k); });
     if(e){ e._duplicada = true; e._duplicada_de = { por:r.por || '', aparelho:r.aparelho || '', em:r.em || null, chave:r.chave_valida || '' }; m.tabs.recargas_encerradas = true; m.algo = true; }
-    addLogSistema('Recarga da vaga ' + ((e && e.vagaId) || '?') + ' já tinha sido encerrada por ' + (r.por || '?') + ' (aparelho ' + (r.aparelho || '?') + ') — este encerramento NÃO conta (sem cobrança em dobro)',
+    addLogSistema('Recarga da vaga ' + ((e && e.vagaId) || '?') + ' já tinha sido encerrada por ' + (r.por || '?') + ' (dispositivo ' + (r.aparelho || '?') + ') — este encerramento NÃO conta (sem cobrança em dobro)',
       { aud:true, acao:'recarga_ja_encerrada', alvo:String((e && e.vagaId) || ''), origem:'servidor' });
-    showToast('⚡ Esta recarga já foi encerrada por ' + (r.por || '?') + ' no aparelho ' + (r.aparelho || '?') + ' — cobrança única mantida.', 7000);
+    showToast('⚡ Esta recarga já foi encerrada por ' + (r.por || '?') + ' no dispositivo ' + (r.aparelho || '?') + ' — cobrança única mantida.', 7000);
   }catch(x){ console.warn('[SYNC] recarga já encerrada:', x && x.message); }
 }
 function _gsSyncRecargaChave(e){
@@ -25209,7 +25768,7 @@ function _gsResolver(pid, decisao, tipo, aplicar){
 }
 let _gsPendJanela = null;
 function _gsPendAvisoJaResolvida(p){
-  const quem = (p.resolvida_por || '?') + (p.resolvida_aparelho ? ' no aparelho ' + p.resolvida_aparelho : '');
+  const quem = (p.resolvida_por || '?') + (p.resolvida_aparelho ? ' no dispositivo ' + p.resolvida_aparelho : '');
   showM('<div class="mt">ℹ️ Já resolvido</div><div class="ms" id="pend-ja-resolvida">Esta pendência já foi resolvida por <strong>' + _vtEsc(quem) + '</strong>' +
     (p.resolvida_em ? ' em ' + _vtEsc(_dtLocal(Date.parse(p.resolvida_em))) : '') + '. O resultado de lá vale aqui também.</div>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
@@ -25309,7 +25868,7 @@ function _gsCardCarro(lado, info, idx){
   return '<div class="gs-card-carro" data-gs="' + _vtEsc(gs) + '"><div class="gs-card-foto">' + _gsFotoMiniatura(gs) + '</div>' +
     '<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px">' + _vtEsc(gs) + ' · Apt ' + _vtEsc(String(apt)) + '</div>' +
     '<div style="font-size:12px;color:#555">' + _vtEsc(placa) + ' · ' + _vtEsc(modelo) + '</div>' +
-    '<div style="font-size:11px;color:#888;margin:2px 0 6px">' + _vtEsc(quem) + ' · aparelho ' + _vtEsc(aparelho) + ' · ' + _vtEsc(hora) + '</div>' +
+    '<div style="font-size:11px;color:#888;margin:2px 0 6px">' + _vtEsc(quem) + ' · dispositivo ' + _vtEsc(aparelho) + ' · ' + _vtEsc(hora) + '</div>' +
     '<button class="bsv gs-este-na-vaga" data-idx="' + idx + '" style="width:100%">Este está na vaga</button></div></div>';
 }
 function gsConflitoAbrir(pid){
@@ -25321,7 +25880,7 @@ function gsConflitoAbrir(pid){
   const vaga = (p.dados && p.dados.vaga) || p.vaga;
   const lados = [p.dados.atual, p.dados.novo];
   showM('<div class="mt">⚠️ Vaga ' + _vtEsc(vaga) + ' com 2 carros</div>' +
-    '<div class="ms" style="margin-bottom:8px">Os dois aparelhos marcaram esta vaga quase ao mesmo tempo. Confira qual carro está nela.</div>' +
+    '<div class="ms" style="margin-bottom:8px">Os dois dispositivos marcaram esta vaga quase ao mesmo tempo. Confira qual carro está nela.</div>' +
     _gsCardCarro('atual', lados[0], 0) + _gsCardCarro('novo', lados[1], 1) +
     '<button class="bcx" id="gs-conf-depois" style="width:100%;margin-top:4px">Conferir depois</button>');
   document.getElementById('gs-conf-depois').onclick = function(){ _gsPendJanela = null; closeOv(); };
@@ -25457,7 +26016,7 @@ function gsPendAbrir(pid){
     const txt = function(o){ return o.tipo === 'vaga' ? 'Vaga ' + o.vaga : 'A passeio'; };
     showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(gs) + ' foi marcado em dois lugares. Onde ele está de verdade?</div><div class="ag">' +
       '<button class="bsv" id="gs-dl-aceito">' + _vtEsc(txt(ac)) + ' (servidor)</button>' +
-      '<button class="bsv" id="gs-dl-recusado">' + _vtEsc(txt(rc)) + ' (aparelho ' + _vtEsc(rc.aparelho || '?') + ' · ' + _vtEsc(rc.quem || '—') + ')</button></div>' + fechar);
+      '<button class="bsv" id="gs-dl-recusado">' + _vtEsc(txt(rc)) + ' (dispositivo ' + _vtEsc(rc.aparelho || '?') + ' · ' + _vtEsc(rc.quem || '—') + ')</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-dl-aceito').onclick = function(){ comOperador('confirmando o lugar de ' + gs, function(u, q){
       _gsResolver(pid, { lugar:'aceito' }, 'gs_dois_lugares_resolvido', function(){ addHistorico(String((HOSPEDAGENS[gs] || {}).apt || '?'), 'edicao', ac.vaga || '', 'Lugar confirmado: ' + txt(ac), q, gs); });
@@ -25478,9 +26037,9 @@ function gsPendAbrir(pid){
   // v2.3.0.0 (Bloco G): o registro SUMIU do servidor — explicado como tal, nunca como "alteração concorrente"
   if(gsPendEhRemovido(p)){
     showM(cab + '<div class="ms" id="pend-removido" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || p.gs || '')) +
-      ' foi alterado neste aparelho' + (d.aparelho ? ' (aparelho ' + _vtEsc(d.aparelho) + ')' : '') + ', mas <strong>o registro não existe mais no servidor</strong> (foi removido lá). ' +
-      'A alteração não foi aplicada no servidor. Os dados DESTE aparelho continuam como estão — nada foi apagado aqui.</div>' +
-      '<div class="ag"><button class="bsv" id="gs-rem-ok">Entendi — manter este aparelho como está</button></div>' + fechar);
+      ' foi alterado neste dispositivo' + (d.aparelho ? ' (dispositivo ' + _vtEsc(d.aparelho) + ')' : '') + ', mas <strong>o registro não existe mais no servidor</strong> (foi removido lá). ' +
+      'A alteração não foi aplicada no servidor. Os dados DESTE dispositivo continuam como estão — nada foi apagado aqui.</div>' +
+      '<div class="ag"><button class="bsv" id="gs-rem-ok">Entendi — manter este dispositivo como está</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-rem-ok').onclick = function(){ comOperador('confirmando registro removido no servidor', function(){ _gsResolver(pid, { removido_no_servidor:true }, 'registro_removido_ciente'); _gsPendJanela = null; closeOv(); }); };
     return;
@@ -25490,14 +26049,14 @@ function gsPendAbrir(pid){
     const linhas = Object.keys(campos).filter(function(c){ return c.charAt(0) !== '_'; }).map(function(c){
       const v = campos[c];
       return '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px"><div style="font-weight:800;font-size:12px">' + _vtEsc(c) + '</div>' +
-        '<div style="font-size:12px">Servidor: <strong>' + _vtEsc(JSON.stringify(v.servidor)) + '</strong> <span style="color:#888">(aparelho ' + _vtEsc(d.servidor_aparelho || '?') + (d.servidor_em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.servidor_em))) : '') + ')</span></div>' +
-        '<div style="font-size:12px">Aparelho ' + _vtEsc(d.aparelho || '?') + ': <strong>' + _vtEsc(JSON.stringify(v.aparelho)) + '</strong> <span style="color:#888">(' + _vtEsc(d.quem || '—') + (d.em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.em))) : '') + ')</span></div></div>';
+        '<div style="font-size:12px">Servidor: <strong>' + _vtEsc(JSON.stringify(v.servidor)) + '</strong> <span style="color:#888">(dispositivo ' + _vtEsc(d.servidor_aparelho || '?') + (d.servidor_em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.servidor_em))) : '') + ')</span></div>' +
+        '<div style="font-size:12px">Dispositivo ' + _vtEsc(d.aparelho || '?') + ': <strong>' + _vtEsc(JSON.stringify(v.aparelho)) + '</strong> <span style="color:#888">(' + _vtEsc(d.quem || '—') + (d.em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.em))) : '') + ')</span></div></div>';
     }).join('');
     showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || '')) + ' — os dois valores ficaram guardados. Qual vale?</div>' + linhas +
-      '<div class="ag"><button class="bsv" id="gs-alt-srv">Manter o do servidor</button><button class="bsv" id="gs-alt-ap">Usar o do aparelho ' + _vtEsc(d.aparelho || '?') + '</button></div>' + fechar);
+      '<div class="ag"><button class="bsv" id="gs-alt-srv">Manter o do servidor</button><button class="bsv" id="gs-alt-ap">Usar o do dispositivo ' + _vtEsc(d.aparelho || '?') + '</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-alt-srv').onclick = function(){ comOperador('mantendo o valor do servidor', function(){ _gsResolver(pid, { vale:'servidor' }, 'alteracao_resolvida'); _gsPendJanela = null; closeOv(); }); };
-    document.getElementById('gs-alt-ap').onclick = function(){ comOperador('usando o valor do aparelho', function(){
+    document.getElementById('gs-alt-ap').onclick = function(){ comOperador('usando o valor do dispositivo', function(){
       _gsResolver(pid, { vale:'aparelho' }, 'alteracao_resolvida', function(){ Object.keys(campos).forEach(function(c){ if(c.charAt(0) !== '_') _gsSetCampoLocal(p.tabela, p.chave, c, campos[c].aparelho); }); });
       _gsPendJanela = null; closeOv(); }); };
     return;
@@ -25505,7 +26064,7 @@ function gsPendAbrir(pid){
   if(p.tipo === 'checkout_recarga_ativa'){
     const vaga = d.vaga || p.vaga, r = RECARGAS[vaga];
     const ativa = !!(r && r.hospedagem === (d.gs || p.gs) && r.ativo);   // encerrar NÃO apaga o registro (fica ativo=false)
-    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(d.gs || p.gs) + ' teve o check-out feito no aparelho ' + _vtEsc(d.aparelho || '?') + ' com a recarga da vaga ' + _vtEsc(vaga) + ' ainda ativa.' +
+    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(d.gs || p.gs) + ' teve o check-out feito no dispositivo ' + _vtEsc(d.aparelho || '?') + ' com a recarga da vaga ' + _vtEsc(vaga) + ' ainda ativa.' +
       (ativa ? ' Encerre a recarga (a cobrança usa o horário que você informar).' : ' A recarga já foi encerrada.') + '</div><div class="ag">' +
       (ativa ? '<button class="bsv" id="gs-cr-encerrar">⚡ Encerrar a recarga da vaga ' + _vtEsc(vaga) + '</button>' : '<button class="bsv" id="gs-cr-ok">Concluir</button>') + '</div>' + fechar);
     ligarFechar();
@@ -25529,8 +26088,8 @@ function gsPendAbrir(pid){
   if(p.tipo === 'recarga_ponto_ocupado'){
     const at = d.ativa || {}, nv = d.nova || {};
     showM(cab + '<div class="ms" style="margin-bottom:8px">O ponto de recarga ' + _vtEsc((d.ponto || []).join('/')) + ' só carrega um carro. Qual fica?</div>' +
-      '<div style="font-size:12px;margin-bottom:6px">Ativa: vaga ' + _vtEsc(at.vaga || '?') + ' · ' + _vtEsc((at.dados || {}).hospedagem || '') + ' (aparelho ' + _vtEsc(at.aparelho || '?') + ')<br>' +
-      'Pedida: vaga ' + _vtEsc(nv.vaga || '?') + ' · ' + _vtEsc((nv.dados || {}).hospedagem || '') + ' (aparelho ' + _vtEsc(nv.aparelho || '?') + ' · ' + _vtEsc(nv.quem || '—') + ')</div>' +
+      '<div style="font-size:12px;margin-bottom:6px">Ativa: vaga ' + _vtEsc(at.vaga || '?') + ' · ' + _vtEsc((at.dados || {}).hospedagem || '') + ' (dispositivo ' + _vtEsc(at.aparelho || '?') + ')<br>' +
+      'Pedida: vaga ' + _vtEsc(nv.vaga || '?') + ' · ' + _vtEsc((nv.dados || {}).hospedagem || '') + ' (dispositivo ' + _vtEsc(nv.aparelho || '?') + ' · ' + _vtEsc(nv.quem || '—') + ')</div>' +
       '<div class="ag"><button class="bsv" id="gs-rp-ativa">Manter a recarga ativa</button><button class="bsv" id="gs-rp-nova">Ficar com a pedida (encerrar a ativa)</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-rp-ativa').onclick = function(){ comOperador('mantendo a recarga ativa', function(){ _gsResolver(pid, { fica:'ativa' }, 'recarga_ponto_resolvido'); _gsPendJanela = null; closeOv(); }); };
@@ -25595,7 +26154,7 @@ function _gsPendExtrasHTML(){
     ab.forEach(function(p){
       const d = p.dados || {};
       const sub = p.tipo === 'conflito_vaga' ? 'Vaga ' + (d.vaga || p.vaga) + ': ' + ((d.atual || {}).gs || '?') + ' × ' + ((d.novo || {}).gs || '?')
-        : (p.gs ? p.gs : '') + (p.vaga ? ' · vaga ' + p.vaga : '') + (d.aparelho ? ' · aparelho ' + d.aparelho : '');
+        : (p.gs ? p.gs : '') + (p.vaga ? ' · vaga ' + p.vaga : '') + (d.aparelho ? ' · dispositivo ' + d.aparelho : '');
       html += '<div class="gs-pend-card" data-pend="' + _vtEsc(p.id) + '"><div class="cav-titulo">⚠️ ' + _vtEsc(_gsPendRotulo(p)) + '</div>' +
         '<div class="cav-subtitulo">' + _vtEsc(sub) + ' · toque para resolver</div></div>';
     });
@@ -25614,7 +26173,7 @@ function _gsPendExtrasHTML(){
     html += '<div class="exp-secao-titulo" id="pend-so-aparelho-titulo">SÓ NESTE APARELHO</div>' +
       '<div class="gs-pend-card" id="pend-so-aparelho" style="cursor:default"><div class="cav-titulo">ℹ️ Registros que o servidor não tem mais</div>' +
       '<div class="cav-subtitulo">' + (so.length ? _vtEsc(so.join(', ')) + ' (hospedagem ativa só aqui)' + (soEv ? ' · ' : '') : '') +
-      (soEv ? soEv + ' evento(s) só aqui' : '') + ' — foram removidos do servidor (ex.: limpeza de teste). Não entram nos números do painel; nada foi apagado deste aparelho.</div></div>';
+      (soEv ? soEv + ' evento(s) só aqui' : '') + ' — foram removidos do servidor (ex.: limpeza de teste). Não entram nos números do painel; nada foi apagado deste dispositivo.</div></div>';
   }
   return html;
 }
@@ -25698,11 +26257,11 @@ function _gsSrvMarcarTransferido(info){
   _gsSrvGravar(s);
   try{ _gsSyncParar(); _gsVersaoParar(); }catch(e){}
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); _gsSrvTimerSinal = null; }catch(e){}
-  try{ addLogSistema('Esta conta foi TRANSFERIDA para outro aparelho — sincronização parada aqui (os dados locais ficam intactos)',
+  try{ addLogSistema('Esta conta foi TRANSFERIDA para outro dispositivo — sincronização parada aqui (os dados locais ficam intactos)',
     { aud:true, acao:'servidor_conta_transferida', alvo:String(s.letra || ''), origem:'servidor' }); }catch(e){}
   _gsSrvEstado = 'transferido';
   try{ _gsSrvAtualizarRodape(); }catch(e){}
-  try{ showToast('🔁 Esta conta foi transferida para outro aparelho — este aparelho parou de sincronizar.', 7000); }catch(e){}
+  try{ showToast('🔁 Esta conta foi transferida para outro dispositivo — este dispositivo parou de sincronizar.', 7000); }catch(e){}
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -26611,7 +27170,7 @@ function _gsRenderFaixaProtegido(){
     f.id = 'gs-faixa-protegido';
     f.setAttribute('role', 'alert');
     f.style.cssText = 'flex-shrink:0;background:#FCEBEB;border:1px solid #C53030;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:12px;color:#A32D2D;font-weight:600';
-    f.innerHTML = '<span style="flex:1;min-width:0">⚠️ Fotos e vistorias podem ter sido perdidas neste aparelho. Os backups estão pausados para proteger a última cópia boa.</span>' +
+    f.innerHTML = '<span style="flex:1;min-width:0">⚠️ Fotos e vistorias podem ter sido perdidas neste dispositivo. Os backups estão pausados para proteger a última cópia boa.</span>' +
       '<button id="gs-faixa-recuperar" class="bsv" style="padding:5px 10px;font-size:11px;white-space:nowrap">Recuperar do último backup bom</button>';
     if(pg) pg.insertBefore(f, pg.firstChild); else document.body.insertBefore(f, document.body.firstChild);
   }
@@ -26732,14 +27291,14 @@ async function _gsFontesDeBackup(){
       .filter(function(b){ return b && b.arquivo && /^backup_completo_/.test(String(b.nome || '')); })
       .sort(function(a, b){ return (b.ts || 0) - (a.ts || 0); }).slice(0, 8);
     if(F) reg.forEach(function(b){
-      fontes.push({ origem:'aparelho', nome:b.nome, ler: async function(){
+      fontes.push({ origem:'dispositivo', nome:b.nome, ler: async function(){
         const r = await F.readFile({ path:'GarageSpot/Dados/' + b.nome, directory:'DOCUMENTS', encoding:'utf8' });
         return JSON.parse(String((r && r.data) || ''));
       } });
     });
-  }catch(e){ console.warn('[RECUPERAR] lista do aparelho falhou:', e && e.message); }
+  }catch(e){ console.warn('[RECUPERAR] lista do dispositivo falhou:', e && e.message); }
   // 2) a cópia de restauração em um toque (some junto com o banco, mas vale tentar)
-  fontes.push({ origem:'cópia rápida do aparelho', nome:'ultimo_completo', ler: function(){ return _gsLerSnapshotIDB(); } });
+  fontes.push({ origem:'cópia rápida do dispositivo', nome:'ultimo_completo', ler: function(){ return _gsLerSnapshotIDB(); } });
   // 3) o Drive
   try{
     if(_gdDisponivel() && _gdConectado()){
@@ -26760,12 +27319,12 @@ async function _gsFontesDeBackup(){
 function _gsRecuperarUltimoBom(){
   showEntrarPIN(function(){
     showM('<div class="mt">♻ Recuperar do último backup bom</div>' +
-      '<div class="ms" id="gs-rec-ms">Procurando o último backup bom — primeiro no aparelho, depois na nuvem…</div>' +
-      '<div style="font-size:11px;color:#888;margin-top:6px">Nada do que está no aparelho será apagado: a recuperação SOMA.</div>');
+      '<div class="ms" id="gs-rec-ms">Procurando o último backup bom — primeiro no dispositivo, depois na nuvem…</div>' +
+      '<div style="font-size:11px;color:#888;margin-top:6px">Nada do que está no dispositivo será apagado: a recuperação SOMA.</div>');
     _gsExecutarRecuperacao().then(function(r){
       const ms = document.getElementById('gs-rec-ms');
       const txt = r.ok
-        ? '✅ Recuperado: as contagens batem com o que este aparelho tinha. Backups retomados.' + (r.usados.length ? '<br><small>De: ' + r.usados.map(_vtEsc).join(', ') + '</small>' : '')
+        ? '✅ Recuperado: as contagens batem com o que este dispositivo tinha. Backups retomados.' + (r.usados.length ? '<br><small>De: ' + r.usados.map(_vtEsc).join(', ') + '</small>' : '')
         : '⚠️ ' + _vtEsc(r.erro || 'A recuperação não completou.') + (r.faltas && r.faltas.length ? '<br><small>Ainda falta: ' + r.faltas.slice(0, 6).map(_vtEsc).join(' · ') + '</small>' : '') +
           '<br><small>O modo protegido continua — nada foi perdido do que entrou depois.</small>';
       showM('<div class="mt">♻ Recuperar do último backup bom</div><div class="ms">' + txt + '</div>' +
@@ -26794,7 +27353,7 @@ async function _gsExecutarRecuperacao(){
   try{ renderPainelDia(); }catch(e){}
   res.faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
   if(res.faltas.length){
-    res.erro = res.erro || (fontes.length ? 'Os backups encontrados não cobrem tudo o que este aparelho tinha.' : 'Nenhum backup encontrado.');
+    res.erro = res.erro || (fontes.length ? 'Os backups encontrados não cobrem tudo o que este dispositivo tinha.' : 'Nenhum backup encontrado.');
     _gsProtegidoSalvarPendentes();   // o que foi somado fica GRAVADO como pendente
     try{ addLogSistema('Recuperação incompleta — modo protegido mantido. Falta: ' + res.faltas.slice(0, 8).join(', '),
       { aud:true, acao:'recuperacao_incompleta', origem:'usuario' }); }catch(e){}
@@ -26819,7 +27378,7 @@ async function _gsExecutarRecuperacao(){
     return res;
   }
   if(!_idbAvailable()){
-    res.erro = 'O banco do aparelho continua sem abrir — os dados foram recuperados na tela, mas só podem ser gravados quando ele abrir.';
+    res.erro = 'O banco do dispositivo continua sem abrir — os dados foram recuperados na tela, mas só podem ser gravados quando ele abrir.';
     _gsProtegidoSalvarPendentes();
     return res;
   }
