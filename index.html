@@ -1369,9 +1369,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.2.2';
+const GS_VERSION = 'v2.4.3.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
-const GS_VERSION_CODE = 32;
+const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1844,43 +1844,72 @@ function gsVizinhaManualAbrir(idx){
   showM('<div class="mt">⚠️ Vaga com o GS do carro vizinho</div><div class="ms" id="gs-vm-texto" style="margin-bottom:4px">' + corpo + '</div>' + aviso +
     '<div class="ms" style="font-size:11px;color:#666">Resolver à mão: escolha o que está certo na garagem. Nenhuma hospedagem é encerrada ou apagada.</div>' +
     '<div class="ag">' + botoes + '<button class="bcx" onclick="closeOv()">Fechar</button></div>');
-  const fim = function(msg){
-    try{ saveData(); }catch(e){}
-    try{ upd(); }catch(e){}
-    closeOv();
-    try{ renderPainelDia(); }catch(e){}
-    try{ if(_expansaoEstaAberta() && _expansaoGrupoAtual === 'pendencias') abrirExpansao('pendencias'); }catch(e){}
-    showToast(msg, 3500);
-  };
-  document.querySelectorAll('.gs-vm-religar').forEach(function(btn){
-    btn.onclick = function(){
-      const gs = btn.getAttribute('data-gs'), v = m.vaga;
-      confirmarUsuario('religando a vaga ' + v + ' à ' + gs, function(u){
-        const us = u ? u.nome + ' · ' + u.cargo : '';
-        if(!S[v] || S[v].hospedagem !== m.de) return fim('A vaga ' + v + ' mudou — nada foi feito');
-        S[v].hospedagem = gs; try{ ref(v); }catch(e){}
-        try{ addHistorico(m.apt || '?', 'edicao', v, 'Vaga ' + v + ' religada a ' + gs + ' (estava com ' + m.de + ', do carro da ' + m.dona + ') — defeito da vaga vizinha, resolvido à mão', us, gs); }catch(e){}
-        try{ addLogSistema('vaga ' + v + ': ' + m.de + ' → ' + gs + ', defeito da vaga vizinha resolvido à mão', { aud:true, acao:'vaga_vizinha_religada', alvo:v + ' ' + m.de + '→' + gs, quem:us, origem:'usuario' }); }catch(e){}
-        try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_religada', v); }catch(e){}
-        fim('✅ Vaga ' + v + ' religada à ' + gs);
-      });
-    };
+  // v2.4.3.0: as ações vivem em funções próprias (gsVizinhaReligar/gsVizinhaLiberar) — o cartão de Pendências e
+  // o menu da vaga no mapa chamam as MESMAS, sem caminho paralelo
+  document.querySelectorAll('#mc .gs-vm-religar').forEach(function(btn){
+    btn.onclick = function(){ gsVizinhaReligar(m.vaga, btn.getAttribute('data-gs')); };
   });
-  document.querySelectorAll('.gs-vm-liberar').forEach(function(btn){
-    btn.onclick = function(){
-      const v = btn.getAttribute('data-vaga');
-      showEntrarPIN(function(){ confirmarUsuario('liberando a vaga ' + v + ' (sem check-out)', function(u){
-        const us = u ? u.nome + ' · ' + u.cargo : 'Gestor';
-        if(!S[v] || S[v].hospedagem !== m.de) return fim('A vaga ' + v + ' mudou — nada foi feito');
-        const antes = _gsCarroTexto(S[v]);
-        _gsVagaLiberar(v);
-        try{ addLogSistema('Vaga ' + v + ' liberada à mão, sem check-out (defeito da vaga vizinha): estava com ' + antes + ' e o ' + m.de + '; nenhuma hospedagem foi alterada',
-          { aud:true, acao:'vaga_vizinha_liberada', alvo:v + ' ' + m.de, quem:us, origem:'usuario' }); }catch(e){}
-        try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_liberada', v); }catch(e){}
-        fim('✅ Vaga ' + v + ' liberada — a ' + m.de + ' continua ativa');
-      }); });
-    };
+  document.querySelectorAll('#mc .gs-vm-liberar').forEach(function(btn){
+    btn.onclick = function(){ gsVizinhaLiberar(btn.getAttribute('data-vaga')); };
   });
+}
+// v2.4.3.0: a pendência à mão que envolve esta vaga (ou null)
+function gsVizinhaDaVaga(v){
+  try{ return gsVizinhaManuais().find(function(m){ return m.vaga === v || (m.vagas && m.vagas.indexOf(v) >= 0); }) || null; }catch(e){ return null; }
+}
+// check-out/passeio pedido numa vaga contaminada: não segue — abre a resolução e diz por quê
+function gsVizinhaAbrirDaVaga(v, acao){
+  const l = gsVizinhaManuais();
+  const i = l.findIndex(function(m){ return m.vaga === v || (m.vagas && m.vagas.indexOf(v) >= 0); });
+  if(i < 0) return;
+  gsVizinhaManualAbrir(i);
+  if(acao){ try{ showToast('⚠️ ' + acao.charAt(0).toUpperCase() + acao.slice(1) + ' bloqueado na vaga ' + v + ': ela está com o GS de outro carro — resolva primeiro', 5000); }catch(e){} }
+}
+function _gsVizinhaFim(msg){
+  try{ saveData(); }catch(e){}
+  try{ upd(); }catch(e){}
+  closeOv();
+  try{ renderPainelDia(); }catch(e){}
+  try{ if(_expansaoEstaAberta() && _expansaoGrupoAtual === 'pendencias') abrirExpansao('pendencias'); }catch(e){}
+  showToast(msg, 3500);
+}
+function gsVizinhaReligar(v, gs){
+  const m = gsVizinhaDaVaga(v); if(!m || !gs) return;
+  confirmarUsuario('religando a vaga ' + v + ' à ' + gs, function(u){
+    const us = u ? u.nome + ' · ' + u.cargo : '';
+    if(!S[v] || S[v].hospedagem !== m.de) return _gsVizinhaFim('A vaga ' + v + ' mudou — nada foi feito');
+    S[v].hospedagem = gs; try{ ref(v); }catch(e){}
+    try{ addHistorico(m.apt || '?', 'edicao', v, 'Vaga ' + v + ' religada a ' + gs + ' (estava com ' + m.de + ', do carro da ' + m.dona + ') — defeito da vaga vizinha, resolvido à mão', us, gs); }catch(e){}
+    try{ addLogSistema('vaga ' + v + ': ' + m.de + ' → ' + gs + ', defeito da vaga vizinha resolvido à mão', { aud:true, acao:'vaga_vizinha_religada', alvo:v + ' ' + m.de + '→' + gs, quem:us, origem:'usuario' }); }catch(e){}
+    try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_religada', v); }catch(e){}
+    _gsVizinhaFim('✅ Vaga ' + v + ' religada à ' + gs);
+  });
+}
+function gsVizinhaLiberar(v){
+  const m = gsVizinhaDaVaga(v); if(!m) return;
+  showEntrarPIN(function(){ confirmarUsuario('liberando a vaga ' + v + ' (sem check-out)', function(u){
+    const us = u ? u.nome + ' · ' + u.cargo : 'Gestor';
+    if(!S[v] || S[v].hospedagem !== m.de) return _gsVizinhaFim('A vaga ' + v + ' mudou — nada foi feito');
+    const antes = _gsCarroTexto(S[v]);
+    _gsVagaLiberar(v);
+    try{ addLogSistema('Vaga ' + v + ' liberada à mão, sem check-out (defeito da vaga vizinha): estava com ' + antes + ' e o ' + m.de + '; nenhuma hospedagem foi alterada',
+      { aud:true, acao:'vaga_vizinha_liberada', alvo:v + ' ' + m.de, quem:us, origem:'usuario' }); }catch(e){}
+    try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_liberada', v); }catch(e){}
+    _gsVizinhaFim('✅ Vaga ' + v + ' liberada — a ' + m.de + ' continua ativa');
+  }); });
+}
+// os botões de resolução (cartão de Pendências e menu da vaga): religar para cada candidata sem lugar + liberar
+function _gsVizinhaBotoesHTML(m, estilo){
+  const st = estilo || '';
+  if(m.tipo === 'dois') return m.vagas.map(function(v){ return '<button type="button" class="bcx gs-vz-liberar" data-vaga="' + _vtEsc(v) + '" style="' + st + '">🅿️ O carro da ' + _vtEsc(v) + ' não está mais aqui — liberar a vaga</button>'; }).join('');
+  return m.candidatos.map(function(c){ return c.onde ? '' : '<button type="button" class="bsv gs-vz-religar" data-vaga="' + _vtEsc(m.vaga) + '" data-gs="' + _vtEsc(c.gs) + '" style="' + st + '">🔗 É a ' + _vtEsc(c.gs) + ' — religar a vaga ' + _vtEsc(m.vaga) + '</button>'; }).join('') +
+    '<button type="button" class="bcx gs-vz-liberar" data-vaga="' + _vtEsc(m.vaga) + '" style="' + st + '">🅿️ O carro não está mais aqui — liberar a vaga ' + _vtEsc(m.vaga) + '</button>';
+}
+// liga os botões de resolução dentro de um contêiner (o toque no botão não abre o cartão)
+function _gsVizinhaLigarBotoes(raiz){
+  if(!raiz) return;
+  raiz.querySelectorAll('.gs-vz-religar').forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); gsVizinhaReligar(b.getAttribute('data-vaga'), b.getAttribute('data-gs')); }; });
+  raiz.querySelectorAll('.gs-vz-liberar').forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); gsVizinhaLiberar(b.getAttribute('data-vaga')); }; });
 }
 function _gsVizinhaPendHTML(){
   let html = '';
@@ -1892,7 +1921,9 @@ function _gsVizinhaPendHTML(){
         const tit = m.tipo === 'dois' ? 'Vagas ' + m.vagas.join(' e ') + ' com o mesmo ' + m.de : 'Vaga ' + m.vaga + ' · ' + m.carro;
         const sub = m.tipo === 'dois' ? m.motivo : 'está com o ' + m.de + ' (carro da ' + m.dona + ')' + (m.candidatos.length > 1 ? ' · ' + m.candidatos.length + ' candidatas' : (!m.candidatos.length ? ' · nenhuma hospedagem ativa deste carro' : ''));
         html += '<div class="card-pend-assin gs-viz-card" style="cursor:pointer" data-idx="' + i + '" onclick="gsVizinhaManualAbrir(' + i + ')">' +
-          '<div class="cav-titulo">⚠️ ' + _vtEsc(tit) + '</div><div class="cav-subtitulo">' + _vtEsc(sub) + ' · resolver à mão — toque para ver</div></div>';
+          '<div class="cav-titulo">⚠️ ' + _vtEsc(tit) + '</div><div class="cav-subtitulo">' + _vtEsc(sub) + ' · resolver à mão: escolha abaixo (toque no cartão para os detalhes) · não faça check-out nesta vaga</div>' +
+          // v2.4.3.0: as ações direto no cartão (no celular do Douglas a 4B ficou sem resolver: o caminho não era óbvio)
+          '<div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' + _gsVizinhaBotoesHTML(m, 'padding:6px 8px;font-size:12px;width:100%') + '</div></div>';
       });
     }
     if(rep.length){
@@ -3853,10 +3884,14 @@ function showMenu(id){
   const _hM=d.hospedagem?HOSPEDAGENS[d.hospedagem]:null;
   const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" style="background:#FDECEC;border:1px solid #C53030;border-radius:6px;padding:6px 10px;font-size:12px;color:#A32D2D;margin-bottom:8px">⏰ <strong>Check-out atrasado</strong> · saída prevista ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}
       <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="bcx" id="m-atr-chk" style="flex:1;padding:5px 8px;font-size:12px">🚪 Fazer check-out</button><button type="button" class="bcx" id="m-atr-data" style="flex:1;padding:5px 8px;font-size:12px">📅 Alterar data prevista</button></div></div>`:'';
+  // v2.4.3.0: vaga com o GS do carro vizinho → aviso e resolução no próprio menu (check-out e passeio ficam travados)
+  const _mViz=(typeof gsVizinhaDaVaga==='function')?gsVizinhaDaVaga(id):null;
+  const vizHTML=_mViz?`<div id="m-vizinha" style="background:#FFF3E0;border:1px solid #E65100;border-radius:6px;padding:6px 10px;font-size:12px;color:#8A3B00;margin-bottom:8px">⚠️ <strong>Vaga com o GS do carro vizinho</strong>: este carro (${_vtEsc(_gsCarroTexto(d))}) está com o ${_vtEsc(_mViz.de)}, que é do carro da ${_vtEsc(_mViz.dona||'vaga vizinha')}. <strong>Não faça check-out nem passeio por aqui.</strong><div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${_gsVizinhaBotoesHTML(_mViz,'padding:6px 8px;font-size:12px;width:100%')}</div></div>`:'';
   mc.innerHTML=`
     <div class="mt" id="m-titulo" style="position:relative;padding-right:${trocaBtn?'110px':'0'}">Vaga ${id} — Apt ${_vtEsc(d.apt||'')}${d.hospedagem?' · '+_vtEsc(d.hospedagem):''}${trocaBtn}</div>
     <div class="ms">🅿 Na garagem · ${info}</div>
     ${atrasoHTML}
+    ${vizHTML}
     ${dupWarn}
     <div class="ag">
       <button class="ab ao" id="m-out">🛣️ &nbsp;Passeio</button>
@@ -3868,6 +3903,7 @@ function showMenu(id){
   document.getElementById('m-out').onclick=()=>doOut(id);
   document.getElementById('m-det').onclick=()=>showDet(id);
   document.getElementById('m-chk').onclick=()=>doChk(id);
+  if(_mViz){ try{ _gsVizinhaLigarBotoes(document.getElementById('m-vizinha')); }catch(e){} }
   const _mac=document.getElementById('m-atr-chk'); if(_mac) _mac.onclick=()=>doChk(id);
   const _mad=document.getElementById('m-atr-data'); if(_mad) _mad.onclick=()=>gsAlterarDataPrevista(d.hospedagem);
 }
@@ -3975,6 +4011,8 @@ window.trocarParaGrande = function(id){
 };
 
 function doOut(id){
+  // v2.4.3.0: vaga com o GS do carro vizinho — passeio usaria a hospedagem de OUTRO carro; abre a resolução
+  try{ if(typeof gsVizinhaDaVaga === 'function' && gsVizinhaDaVaga(id)){ gsVizinhaAbrirDaVaga(id, 'passeio'); return; } }catch(e){}
   const d=S[id];
   const aptKey=d.apt;
   // v1.9.9.2 — TRAVA DE RECARGA (C2): o ponto de recarga é FIXO. Um carro não
@@ -4216,6 +4254,8 @@ function _gsDocumentoDeFechamento(ctx){
 }
 
 function doChk(id){
+  // v2.4.3.0: vaga com o GS do carro vizinho — check-out usaria a hospedagem de OUTRO carro; abre a resolução
+  try{ if(typeof gsVizinhaDaVaga === 'function' && gsVizinhaDaVaga(id)){ gsVizinhaAbrirDaVaga(id, 'check-out'); return; } }catch(e){}
   const d=S[id];
   const aptKey=d.apt;
   const mc=document.getElementById('mc');
@@ -4402,7 +4442,10 @@ function showDet(id, fromPasseio){
   const hospSufixo = hospedagemNum ? ' · '+hospedagemNum : '';
   const _vstDet = getVistoriaByApt(apt);
   const _vstPendAssin = _vstDet && _vstDet.assinatura_pendente && !_vstDet.ts_assinada;
+  // v2.4.3.0: detalhe da vaga com o GS do carro vizinho — avisa e oferece a resolução (era o que o Douglas via na 4B)
+  const _dViz = (!fromPasseio && typeof gsVizinhaDaVaga === 'function') ? gsVizinhaDaVaga(id) : null;
   mc.innerHTML=`
+    ${_dViz?`<div id="det-vizinha" style="background:#FFF3E0;border:1px solid #E65100;border-radius:7px;padding:7px 10px;font-size:12px;color:#8A3B00;margin-bottom:8px">⚠️ <strong>Este carro não é o da ${_vtEsc(_dViz.de)}</strong> — o GS veio do carro da ${_vtEsc(_dViz.dona||'vaga vizinha')} (defeito da vaga vizinha). Não faça check-out por esta vaga.<div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${_gsVizinhaBotoesHTML(_dViz,'padding:6px 8px;font-size:12px;width:100%')}</div></div>`:''}
     ${_vstPendAssin?`<div style="background:#FCEBEB;border:1px solid #E8A8A8;border-radius:7px;padding:7px 10px;font-size:11px;color:#A32D2D;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>⚠️ Assinatura da vistoria pendente</span><button style="font-size:10px;padding:3px 8px;border:none;background:#A32D2D;color:#fff;border-radius:5px;cursor:pointer;font-family:inherit" onclick="assinarVistoria('${_vstDet.id||_vstDet.numero}')">Coletar</button></div>`:''}
     <div class="mt" style="display:flex;align-items:center;gap:4px">
       <span style="white-space:nowrap;cursor:pointer;text-decoration:underline dotted" onclick="showHistoricoModal('${apt}','${hospedagemNum}','${id}',${fromPasseio?1:0})" title="Ver histórico">ℹ️ ${tituloTxt}${hospSufixo}</span>
@@ -4417,6 +4460,7 @@ function showDet(id, fromPasseio){
     </div>`;
   document.getElementById('ov').classList.add('on');
   document.getElementById('btn-edit').onclick=()=>showEdit(id, fromPasseio);
+  if(_dViz){ try{ _gsVizinhaLigarBotoes(document.getElementById('det-vizinha')); }catch(e){} }
 }
 
 // Parte 6 v1.9.4.4: EDIÇÃO COMPLETA DE DETALHES — formulário = check-in (mesmos campos),
@@ -6378,6 +6422,7 @@ function abrirExpansao(grupo, filtroInicial){
       sub.textContent='Itens que precisam de ação';
       corpo.innerHTML=renderExpansaoPendencias();
       bindHandlersPendencias();
+      try{ _gsVizinhaLigarBotoes(corpo); }catch(e){}   // v2.4.3.0
       break;
     case 'hospedados':
       titulo.textContent='🏨 Hospedados';
@@ -22565,14 +22610,61 @@ function gsSrvAtivo(){ const s = _gsSrvLer(); return _gsSrvLigado() && /^[A-Z]$/
 let _gsSrvUltimoSinal = 0;
 function _gsSrvAtivo(){ return gsSrvAtivo(); }
 
+// v2.4.3.0 (APK vc33) — Bloco C: A SESSÃO DO SERVIDOR É UMA SÓ, DA PÁGINA E DO SERVIÇO NATIVO.
+// Até o vc32 só a página renovava o acesso (autoRefresh da biblioteca, por timer do JS); com a página parada o
+// token vencia e o sinal nativo recebia 401 (~50 min no teste de 17/10). Agora a biblioteca guarda a sessão no
+// localStorage E no serviço (sessaoGuardar); ao ler, adota a do serviço se ela vence depois (o serviço a renovou
+// com a página calada). Assim a página nunca tenta renovar com um refresh token que o serviço já trocou.
+// Só a chave da sessão viaja; as outras chaves da biblioteca ficam só no localStorage. APK sem os métodos
+// (vc32 ou anterior) ou navegador: localStorage puro, como antes.
+function _gsSegPlanoTem(metodo){
+  try{
+    const p = _gsSegPlano(); if(!p) return false;
+    const ph = (window.Capacitor && Array.isArray(window.Capacitor.PluginHeaders)) ? window.Capacitor.PluginHeaders.find(function(x){ return x && x.name === 'GsSegundoPlano'; }) : null;
+    if(ph) return (ph.methods || []).some(function(m){ return m && m.name === metodo; });
+    return Object.prototype.hasOwnProperty.call(p, metodo) && typeof p[metodo] === 'function';
+  }catch(e){ return false; }
+}
+function _gsSesExpira(v){ try{ const j = typeof v === 'string' ? JSON.parse(v) : v; return (j && Number(j.expires_at)) || 0; }catch(e){ return 0; } }
+function _gsSrvArmazenamentoSessao(chaveSessao){
+  if(!_gsSegPlanoTem('sessaoLer') || !_gsSegPlanoTem('sessaoGuardar')) return null;
+  const p = _gsSegPlano();
+  const teto = function(pr){ return Promise.race([pr, new Promise(function(r){ setTimeout(function(){ r(null); }, 1500); })]); };
+  return {
+    getItem: async function(k){
+      let loc = null; try{ loc = localStorage.getItem(k); }catch(e){}
+      if(k !== chaveSessao || !gsSrvAtivo()) return loc;   // sem login nada é chamado no plugin
+      try{
+        const r = await teto(p.sessaoLer({ chave:k }));
+        const nat = r && typeof r.valor === 'string' ? r.valor : null;
+        if(nat && _gsSesExpira(nat) > _gsSesExpira(loc)){
+          try{ localStorage.setItem(k, nat); }catch(e){}
+          try{ gsDiag('sessao', 'a página adotou o acesso renovado pelo serviço'); }catch(e){}
+          return nat;
+        }
+        if(!nat && loc) p.sessaoGuardar({ chave:k, valor:loc }).catch(function(){});   // dispositivo que já estava logado
+      }catch(e){}
+      return loc;
+    },
+    setItem: function(k, v){
+      try{ localStorage.setItem(k, v); }catch(e){}
+      if(k === chaveSessao && gsSrvAtivo()){ try{ p.sessaoGuardar({ chave:k, valor:v }).catch(function(){}); }catch(e){} }
+    },
+    removeItem: function(k){
+      try{ localStorage.removeItem(k); }catch(e){}
+      if(k === chaveSessao){ try{ p.sessaoApagar({ chave:k }).catch(function(){}); }catch(e){} }   // sair também limpa o serviço
+    },
+  };
+}
 function _gsSrvCliente(){
   if(_gsSrvCli) return _gsSrvCli;
   if(typeof supabase === 'undefined' || !supabase.createClient) return null;
   const cfg = GS_SRV_CONFIG[_gsSrvAmbiente()];
   if(!cfg || !/^https:\/\//.test(cfg.url) || !cfg.chave) return null;
-  _gsSrvCli = supabase.createClient(cfg.url, cfg.chave, {
-    auth: { storageKey:'gs-srv-auth-' + _gsSrvAmbiente(), persistSession:true, autoRefreshToken:true, detectSessionInUrl:false },
-  });
+  const auth = { storageKey:'gs-srv-auth-' + _gsSrvAmbiente(), persistSession:true, autoRefreshToken:true, detectSessionInUrl:false };
+  const arm = _gsSrvArmazenamentoSessao(auth.storageKey);
+  if(arm) auth.storage = arm;
+  _gsSrvCli = supabase.createClient(cfg.url, cfg.chave, { auth:auth });
   try{
     _gsSrvCli.auth.onAuthStateChange(function(ev){
       if(ev === 'SIGNED_OUT' && _gsSrvLigado()){ _gsSrvMudarEstado('reconectar'); }
@@ -22638,7 +22730,17 @@ function _gsSrvAtualizarRodape(){
 
 // ── sinal (não bloqueia nada) ───────────────────────────────────────────────
 const GS_SINAL_OUTROS_MS = 60 * 1000, GS_SINAL_RESP_MS = 4 * 60 * 1000;   // v2.3.1.0 (Bloco D)
-async function _gsSrvSinal(){
+// v2.4.3.0: o sinal em voo fica visível para o tique (sync-d3 0: o setInterval de 1 min disparava no meio do tique,
+// o tique via "sinal recente" e terminava ANTES de o sinal chegar ao servidor — reproduzido). Não junta chamadas:
+// cada chamada manda o estado do momento (ex.: Drive acabou de conectar).
+let _gsSrvSinalVoo = null;
+function _gsSrvSinal(){
+  const p = _gsSrvSinalExec();
+  _gsSrvSinalVoo = p;
+  p.then(function(){ if(_gsSrvSinalVoo === p) _gsSrvSinalVoo = null; }, function(){ if(_gsSrvSinalVoo === p) _gsSrvSinalVoo = null; });
+  return p;
+}
+async function _gsSrvSinalExec(){
   if(!_gsSrvLigado() || _gsSrvLer().transferido) return;
   _gsSrvUltimoSinal = Date.now();
   const driveOk = _gsDriveOkParaSinal();   // v2.4.1.0 (008): só é responsável quem tem o Drive conectado
@@ -23074,6 +23176,8 @@ async function gsSegPlanoBatimento(){
     try{ const cli = _gsSrvCliente(); const ses = cli && await cli.auth.getSession(); token = ses && ses.data && ses.data.session ? ses.data.session.access_token : null; }catch(e){}
     const rb = await p.batimento({ url:cfg.url, chave:cfg.chave, token:token, aparelho_id:await gsAparelhoId(), versao:GS_VERSION,
                         fila_leve:(_gsSync.fila || []).length, fila_pesada:(_gsPesada.fila || []).length, drive_ok:_gsDriveOkParaSinal() });
+    // v2.4.3.0 (vc33): o serviço fica com a sessão atual (ele a renova se a página parar); ele recusa uma mais velha
+    if(_gsSegPlanoTem('sessaoGuardar')){ try{ const k = 'gs-srv-auth-' + _gsSrvAmbiente(), v = localStorage.getItem(k); if(v) await p.sessaoGuardar({ chave:k, valor:v }); }catch(e){} }
     // v2.4.2.0: a página pode ter (re)carregado com a tela oculta — o nativo diz a verdade
     if(rb && typeof rb.tela_visivel === 'boolean' && rb.tela_visivel !== _gsTelaNat) window.gsTelaNativa(rb.tela_visivel);
   }catch(e){}
@@ -23094,7 +23198,8 @@ async function gsTiqueNativo(origem){
        && (!_gdTokenCache || Date.now() - _gdTokenCache.ts > GD_TOKEN_TTL - 10 * 60000)){
       try{ _gdTokenCache = null; await _gdObterToken(false); }catch(e){ if(e && e.gdRecusaGoogle) _gdMarcarPrecisaReconectar(e.message); }
     }
-    if(Date.now() - (_gsSrvUltimoSinal || 0) > 50000) await _gsSrvSinal();
+    if(_gsSrvSinalVoo){ try{ await _gsSrvSinalVoo; }catch(e){} }   // v2.4.3.0: o do temporizador, já em voo, fecha o ciclo
+    else if(Date.now() - (_gsSrvUltimoSinal || 0) > 50000) await _gsSrvSinal();
     if(_gsSync.estado === 'ativo'){
       try{ await _gsSyncReceber('tique ' + (origem || '')); }catch(e){}
       try{ _gsSyncDetectar({ todas:true }); if(_gsSync.fila.length){ _gsSync.proxEnvio = 0; await _gsSyncEnviar(); } }catch(e){}
@@ -23347,7 +23452,7 @@ async function gsApkDetectar(){
     const p = _gsSegPlano();
     // sem chamar o plugin (sem login nada é chamado nele): a lista de métodos que o Capacitor injeta na página
     const ph = (window.Capacitor && Array.isArray(window.Capacitor.PluginHeaders)) ? window.Capacitor.PluginHeaders.find(function(x){ return x && x.name === 'GsSegundoPlano'; }) : null;
-    if(ph){ const ms = (ph.methods || []).map(function(m){ return m && m.name; }); vc = ms.indexOf('driveToken') >= 0 ? 32 : (ms.indexOf('diagnostico') >= 0 ? 31 : 30); rotulo = 'APK vc' + vc; }
+    if(ph){ const ms = (ph.methods || []).map(function(m){ return m && m.name; }); vc = ms.indexOf('sessaoLer') >= 0 ? 33 : ms.indexOf('driveToken') >= 0 ? 32 : (ms.indexOf('diagnostico') >= 0 ? 31 : 30); rotulo = 'APK vc' + vc; }
     else if(!p){ rotulo = nat ? 'APK vc29 ou anterior' : 'navegador (sem APK)'; }
     else if(!gsSrvAtivo()){ return { vc:0, rotulo:'APK' }; }   // sem login: não consulta o plugin (tenta de novo depois)
     else {
@@ -23367,7 +23472,8 @@ async function gsSegPlanoLigar(){
   const p = _gsSegPlano();
   if(!p || !gsSrvAtivo()) return false;
   try{
-    await p.iniciar({ titulo:'GarageSpot · dispositivo ' + (_gsSrvLer().letra || '?'), texto:'Sincronização ativa (também com a tela desligada)' });
+    // v2.4.3.0: notificação mínima (o APK vc33 usa sempre 'GarageSpot ativo'; os anteriores, o que vier aqui)
+    await p.iniciar({ titulo:'GarageSpot ativo', texto:'' });
     // v2.4.2.0: nome do dispositivo (Bloco E) e a visibilidade real da tela (Bloco 0)
     gsSegPlanoEstado().then(function(e){
       try{ if(e && (e.fabricante || e.modelo)) localStorage.setItem(GS_DISP_NOME_LS, (String(e.fabricante || '') + ' ' + String(e.modelo || '')).trim()); }catch(x){}
@@ -23396,7 +23502,7 @@ function _gsCfgApItens(e){
   const m = _gsCfgApLer(), xiaomi = !!(e && e.xiaomi);
   const itens = [
     { id:'servico', titulo:'Sincronização em segundo plano', ok:e ? !!e.ativo : false,
-      dica:'Notificação fixa "GarageSpot · sincronização ativa". Liga sozinha com o servidor.', botao:'Ligar', acao:'servico' },
+      dica:'Notificação discreta "GarageSpot ativo". Liga sozinha com o servidor.', botao:'Ligar', acao:'servico' },
     { id:'notificacoes', titulo:'Notificações do GarageSpot', ok:e ? !!e.notificacoes : null,
       dica:'Sem elas a notificação fixa e os alertas de recarga não aparecem.', botao:'Abrir', acao:'notificacoes' },
     { id:'bateria', titulo:'Bateria sem restrições', ok:e ? (!!e.semOtimizacaoBateria && !e.segundoPlanoRestrito) : null,
@@ -23410,7 +23516,7 @@ function _gsCfgApItens(e){
   // só deixa com "Exibir sobre outros apps" (e, na Xiaomi, "Abrir novas janelas em segundo plano")
   if(e && e.sobreposicao !== undefined){
     itens.push({ id:'sobreposicao', titulo:'Exibir sobre outros apps', ok:!!e.sobreposicao,
-      dica:'Permite ao GarageSpot voltar sozinho se a tela dele for fechada (ex.: removido dos recentes). Na tela do Android, ligar o GarageSpot.', botao:'Abrir', acao:'sobreposicao' });
+      dica:'Permite ao GarageSpot voltar a trabalhar sozinho se a tela dele for fechada (ex.: removido dos recentes) — ' + (e.versionCode >= 33 ? 'só com a tela do dispositivo apagada ou bloqueada, sem aparecer e sem voltar aos recentes.' : 'no APK vc32 ele pode aparecer na frente: instale o vc33.') + ' Na tela do Android, ligar o GarageSpot.', botao:'Abrir', acao:'sobreposicao' });
   }
   if(e && xiaomi && e.sobreposicao !== undefined){
     itens.push({ id:'janelas', titulo:'Abrir janelas em segundo plano (Xiaomi)', ok:e.janelasSegundoPlano === true ? true : (e.janelasSegundoPlano === false ? false : (m.janelas ? true : null)), manual:e.janelasSegundoPlano == null,
@@ -23438,7 +23544,7 @@ async function gsTelaConfigurarAparelho(opts){
   if(!p){
     showM(cab + '<div class="ms" id="cfg-ap-sem" style="margin-bottom:8px">' +
       (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
-        ? 'Este dispositivo está com um APK antigo, sem a sincronização em segundo plano. <strong>Instale o APK vc32</strong> (v2.4.2.0) para o app continuar sincronizando com a tela desligada.'
+        ? 'Este dispositivo está com um APK antigo, sem a sincronização em segundo plano. <strong>Instale o APK vc33</strong> (v2.4.3.0) para o app continuar sincronizando com a tela desligada.'
         : 'Esta tela é para os tablets e celulares com o app instalado (Android). No navegador não há o que configurar.') +
       '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>');
     return;
@@ -23457,9 +23563,15 @@ async function gsTelaConfigurarAparelho(opts){
   showM(cab +
     (opts.primeiraVez ? '<div class="ms" style="margin-bottom:6px">Para o GarageSpot continuar sincronizando com a <strong>tela desligada</strong>, deixe tudo verde. Leva 2 minutos.</div>' : '') +
     // v2.4.2.0: APK vc31 ou anterior — a página congela com a tela bloqueada e o token do Drive não renova sozinho
-    (e && e.sobreposicao === undefined ? '<div class="ms" id="cfg-ap-vc32" style="margin-bottom:6px;font-weight:700;color:#A32D2D">⚠️ APK antigo: instale o APK vc32 (v2.4.2.0) para o app trabalhar sem atraso com a tela bloqueada.</div>' : '') +
+    (e && e.sobreposicao === undefined ? '<div class="ms" id="cfg-ap-vc32" style="margin-bottom:6px;font-weight:700;color:#A32D2D">⚠️ APK antigo: instale o APK vc33 (v2.4.3.0) para o app trabalhar sem atraso com a tela bloqueada.</div>' : '') +
+    // v2.4.3.0: APK vc32 — o app pode aparecer na frente de outro app ao voltar sozinho
+    (e && e.sobreposicao !== undefined && !(e.versionCode >= 33) ? '<div class="ms" id="cfg-ap-vc33" style="margin-bottom:6px;font-weight:700;color:#8A6100">Instale o APK vc33 (v2.4.3.0): o app passa a trabalhar por trás sem aparecer na frente e com a notificação discreta.</div>' : '') +
     '<div style="font-size:12px;color:#555;margin-bottom:6px" id="cfg-ap-resumo">' + ok + ' de ' + itens.length + ' ok · ' + _vtEsc(String((e && e.fabricante) || '') + ' ' + String((e && e.modelo) || '')) + ' · Android SDK ' + _vtEsc(String((e && e.sdk) || '?')) + '</div>' +
     itens.map(linha).join('') +
+    // v2.4.3.0 (vc33): a notificação pode ser escondida sem parar a sincronização
+    (e && e.canalOculto !== undefined ? '<div id="cfg-ap-canal" style="border:1px dashed #cfd8e3;border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center"><div style="flex:1"><div style="font-weight:800;font-size:13px;color:#153E6B">🔕 Notificação "GarageSpot ativo"' + (e.canalOculto ? ' — escondida' : '') + '</div>' +
+      '<div style="font-size:11px;color:#666">É silenciosa e não aparece no topo. Para escondê-la: abra os ajustes do canal "Sincronização em segundo plano" e desligue. A sincronização CONTINUA funcionando.</div></div>' +
+      '<button class="bcx cfg-ap-btn" data-acao="canal" style="flex:0 0 auto;padding:6px 10px;font-size:12px">Ajustes da notificação</button></div>' : '') +
     '<div style="font-size:11px;color:#888;margin:4px 0 8px">Depois de mudar algo no sistema, volte ao GarageSpot: esta lista se atualiza sozinha.</div>' +
     '<div class="b2"><button class="bcx" id="cfg-ap-atualizar">Atualizar</button><button class="bsv" id="cfg-ap-fechar">' + (opts.primeiraVez ? 'Continuar' : 'Voltar') + '</button></div>');
   _gsCfgApTelaAberta = true;
@@ -26402,7 +26514,7 @@ function _gsPendExtrasHTML(){
   // v2.3.1.0 (Bloco C): só INFORMA (não entra no selo — o selo é igual em todos os aparelhos)
   const so = gsSrvForaLista().filter(function(gs){ return !(HOSPEDAGENS[gs] || {}).checkout_ts; }), soEv = gsSrvForaEventosQtd();
   if(so.length || soEv){
-    html += '<div class="exp-secao-titulo" id="pend-so-aparelho-titulo">SÓ NESTE APARELHO</div>' +
+    html += '<div class="exp-secao-titulo" id="pend-so-aparelho-titulo">SÓ NESTE DISPOSITIVO</div>' +
       '<div class="gs-pend-card" id="pend-so-aparelho" style="cursor:default"><div class="cav-titulo">ℹ️ Registros que o servidor não tem mais</div>' +
       '<div class="cav-subtitulo">' + (so.length ? _vtEsc(so.join(', ')) + ' (hospedagem ativa só aqui)' + (soEv ? ' · ' : '') : '') +
       (soEv ? soEv + ' evento(s) só aqui' : '') + ' — foram removidos do servidor (ex.: limpeza de teste). Não entram nos números do painel; nada foi apagado deste dispositivo.</div></div>';
