@@ -1369,7 +1369,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.2.1';
+const GS_VERSION = 'v2.4.2.2';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 32;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
@@ -1718,6 +1718,191 @@ function _gsSincronizarHospPares(id){
       if(S[p] && S[p].status==='occupied' && !(S[p].hospedagem && S[p].hospedagem!==gs && String(S[p].apt||'')!==String(S[id].apt||''))) S[p].hospedagem=gs;
     });
   }catch(e){}
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.2.2 — REPARO DAS VAGAS CONTAMINADAS PELO DEFEITO DA VIZINHA A/B
+// ════════════════════════════════════════════════════════════════════════════
+// Até a v2.4.2.0 (e na v1.9.9.5 do hotel) gravar um carro numa vaga A/B copiava o GS dele para a
+// vizinha ocupada por OUTRO carro (dev 17/10: a 4B ficou com a Ranger da GS079 e o ponteiro da
+// GS082). A v2.4.2.1 impede casos novos; isto conserta os que JÁ estão gravados, inclusive os que
+// chegam num backup restaurado. O rastro é sempre o mesmo: A e B NÃO unidas com o MESMO GS, e o
+// carro de uma delas não é o daquela hospedagem.
+// Regras do Douglas (18/10/2026): UMA candidata certa (os dados do carro batem com uma única
+// hospedagem ativa, que não está em outro lugar) → devolve o GS, trilha + informativo em
+// Pendências. Mais de uma ou nenhuma → NÃO mexe: pendência para resolver à mão. Nada é apagado e
+// nenhum check-out é feito pelo reparo.
+const GS_REPARO_VIZ_LS = 'garagespot_reparo_vizinha';
+function _gsNormCarro(v){ return String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' '); }
+function _gsCarroBateHosp(s, h){
+  if(!s || !h) return false;
+  if(_gsNormCarro(s.apt) !== _gsNormCarro(h.apt)) return false;
+  if(_gsNormCarro(s.model) !== _gsNormCarro(h.model) || _gsNormCarro(s.color) !== _gsNormCarro(h.color)) return false;
+  const ps = _gsNormCarro(s.plate).replace(/[^a-z0-9]/g, ''), ph = _gsNormCarro(h.plate).replace(/[^a-z0-9]/g, '');
+  return !(ps && ph && ps !== ph);
+}
+function _gsCarroTexto(s){ s = s || {}; return 'Apt ' + (s.apt || '?') + ' · ' + ([s.model, s.color].filter(Boolean).join(' ') || '—'); }
+// Onde a hospedagem está FORA da vaga `vaga` ('' = em lugar nenhum)
+function _gsOndeForaDe(gs, vaga){
+  const v = Object.keys(S).find(function(k){ return k !== vaga && S[k] && S[k].status === 'occupied' && S[k].hospedagem === gs; });
+  if(v) return 'vaga ' + v;
+  return (typeof PASSEIO !== 'undefined' && PASSEIO && PASSEIO[gs]) ? 'a passeio' : '';
+}
+// Só LÊ. {auto:[…], manual:[…]} — `auto` são as de candidata única; `manual`, as que pedem uma pessoa.
+function gsVizinhaDiagnostico(){
+  const out = { auto:[], manual:[] };
+  try{
+    if(typeof S === 'undefined' || !S) return out;
+    const H = (typeof HOSPEDAGENS !== 'undefined' && HOSPEDAGENS) ? HOSPEDAGENS : {};
+    const ativa = function(g){ const h = H[g]; return !!(h && !h.checkout_ts && h.status !== 'duplicada'); };
+    Object.keys(S).filter(function(k){ return /A$/.test(k); }).sort().forEach(function(aId){
+      const bId = aId.slice(0, -1) + 'B', a = S[aId], b = S[bId];
+      if(!a || !b || a.status !== 'occupied' || b.status !== 'occupied') return;
+      if(b.mergedMaster || a.mergedSlave) return;                 // vaga grande: o mesmo GS é o certo
+      const g = a.hospedagem; if(!g || b.hospedagem !== g) return;
+      const h = H[g], okA = _gsCarroBateHosp(a, h), okB = _gsCarroBateHosp(b, h);
+      if(okA === okB){
+        out.manual.push({ tipo:'dois', vagas:[aId, bId], de:g, carros:[_gsCarroTexto(a), _gsCarroTexto(b)],
+          motivo:okA ? 'os dois carros batem com a ' + g : 'nenhum dos dois carros bate com a ' + g });
+        return;
+      }
+      const vaga = okA ? bId : aId, dona = okA ? aId : bId, s = S[vaga];
+      const bate = Object.keys(H).filter(function(x){ return x !== g && _gsCarroBateHosp(s, H[x]); });
+      const cands = bate.filter(ativa), semLugar = cands.filter(function(x){ return !_gsOndeForaDe(x, vaga); });
+      const item = { tipo:'vaga', vaga:vaga, dona:dona, de:g, apt:String(s.apt || ''), carro:_gsCarroTexto(s), carroDona:_gsCarroTexto(S[dona]),
+        candidatos:cands.map(function(x){ return { gs:x, onde:_gsOndeForaDe(x, vaga) }; }),
+        encerradas:bate.filter(function(x){ return !ativa(x); }).map(function(x){ return { gs:x, checkout_ts:(H[x] && H[x].checkout_ts) || null }; }) };
+      if(cands.length === 1 && semLugar.length === 1){ item.para = cands[0]; out.auto.push(item); }
+      else out.manual.push(item);
+    });
+  }catch(e){ console.warn('[REPARO VIZINHA] diagnóstico falhou:', e && e.message); }
+  return out;
+}
+function gsReparosVizinhaLer(){ try{ const l = JSON.parse(localStorage.getItem(GS_REPARO_VIZ_LS) || '[]'); return Array.isArray(l) ? l : []; }catch(e){ return []; } }
+function _gsReparosVizinhaGravar(l){ try{ localStorage.setItem(GS_REPARO_VIZ_LS, JSON.stringify(l.slice(-50))); }catch(e){} }
+function gsReparosVizinhaAConferir(){ return gsReparosVizinhaLer().filter(function(x){ return x && !x.conferido; }); }
+function gsVizinhaManuais(){ return gsVizinhaDiagnostico().manual; }
+// Roda na abertura e logo depois de toda restauração/carga. Só toca o PONTEIRO da vaga contaminada.
+function gsRepararVagasVizinhas(origem){
+  const r = gsVizinhaDiagnostico();
+  if(!r.auto.length) return r;
+  const lista = gsReparosVizinhaLer(), org = origem || 'abertura';
+  r.auto.forEach(function(x){
+    S[x.vaga].hospedagem = x.para;
+    try{ addLogSistema('vaga ' + x.vaga + ': ' + x.de + ' → ' + x.para + ', reparo do defeito da vaga vizinha (' + x.carro + '; a ' + x.de + ' continua na ' + x.dona + ' · ' + org + ')',
+      { aud:true, acao:'vaga_reparada', alvo:x.vaga + ' ' + x.de + '→' + x.para, origem:'automatico' }); }catch(e){}
+    try{ addHistorico(x.apt || '?', 'edicao', x.vaga, 'Vaga ' + x.vaga + ' religada a ' + x.para + ' (estava com ' + x.de + ', do carro da ' + x.dona + ') — reparo automático do defeito da vaga vizinha', 'sistema', x.para); }catch(e){}
+    lista.push({ ts:Date.now(), vaga:x.vaga, de:x.de, para:x.para, dona:x.dona, carro:x.carro, carroDona:x.carroDona, origem:org, conferido:false });
+    try{ ref(x.vaga); }catch(e){}
+  });
+  _gsReparosVizinhaGravar(lista);
+  try{ saveData(); }catch(e){}
+  try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_reparada', r.auto[0].vaga); }catch(e){}
+  try{ upd(); }catch(e){}
+  try{ showToast('🔧 ' + r.auto.length + ' vaga(s) reparada(s) automaticamente — conferir em Pendências', 6000); }catch(e){}
+  return r;
+}
+// Informativo: o que o reparo mudou (toque no item de Pendências)
+function gsReparosVizinhaAbrir(){
+  const l = gsReparosVizinhaAConferir();
+  if(!l.length){ closeOv(); return; }
+  showM('<div class="mt">🔧 Vaga(s) reparada(s) automaticamente</div>' +
+    '<div class="ms" style="margin-bottom:8px">Um defeito antigo (corrigido na v2.4.2.1) gravava o GS de um carro também na vaga vizinha A/B ocupada por outro carro. ' +
+    'O app achou e devolveu o GS certo. Nenhum dado foi apagado e nenhum check-out foi feito.</div>' +
+    l.map(function(x){ return '<div class="gs-rv-item" style="background:#f8f7f3;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;line-height:1.6">' +
+      '<strong>Vaga ' + _vtEsc(x.vaga) + '</strong> · ' + _vtEsc(x.carro) + '<br>' + _vtEsc(x.de) + ' → <strong>' + _vtEsc(x.para) + '</strong>' +
+      '<br><span style="color:#666">A ' + _vtEsc(x.de) + ' continua na vaga ' + _vtEsc(x.dona) + ' (' + _vtEsc(x.carroDona) + ') · ' + _vtEsc(_dtLocal(x.ts)) + ' · ' + _vtEsc(x.origem || '') + '</span></div>'; }).join('') +
+    '<div class="ms" style="font-size:11px;color:#666">Confira no mapa: tocando em cada vaga, o título mostra o GS daquele carro.</div>' +
+    '<div class="ag"><button class="bsv" id="gs-rv-ok">✓ Conferido</button><button class="bcx" onclick="closeOv()">Fechar</button></div>');
+  document.getElementById('gs-rv-ok').onclick = function(){
+    const todos = gsReparosVizinhaLer();
+    todos.forEach(function(x){ if(x && !x.conferido) x.conferido = Date.now(); });
+    _gsReparosVizinhaGravar(todos);
+    try{ addLogSistema('Reparo da vaga vizinha conferido: ' + l.map(function(x){ return x.vaga + ' ' + x.de + '→' + x.para; }).join(', '), { aud:true, acao:'vaga_reparada_conferida', origem:'usuario' }); }catch(e){}
+    closeOv();
+    try{ renderPainelDia(); }catch(e){}
+    try{ if(_expansaoEstaAberta() && _expansaoGrupoAtual === 'pendencias') abrirExpansao('pendencias'); }catch(e){}
+  };
+}
+// Pendência à mão (mais de uma candidata ou nenhuma)
+function gsVizinhaManualAbrir(idx){
+  const m = gsVizinhaManuais()[idx];
+  if(!m){ closeOv(); try{ if(_expansaoEstaAberta()) abrirExpansao('pendencias'); }catch(e){} return; }
+  const aviso = '<div class="vst-warn-box" style="font-size:12px;margin:8px 0">⚠️ <strong>Não faça check-out nesta vaga</strong>: ele fecharia a ' + _vtEsc(m.de) + ', que é de outro carro.</div>';
+  let corpo, botoes = '';
+  if(m.tipo === 'dois'){
+    corpo = 'As vagas <strong>' + _vtEsc(m.vagas[0]) + '</strong> (' + _vtEsc(m.carros[0]) + ') e <strong>' + _vtEsc(m.vagas[1]) + '</strong> (' + _vtEsc(m.carros[1]) + ') estão com o mesmo <strong>' + _vtEsc(m.de) + '</strong> sem estarem unidas, e ' + _vtEsc(m.motivo) + '. O app não sabe qual é o certo.';
+    botoes = m.vagas.map(function(v){ return '<button class="bcx gs-vm-liberar" data-vaga="' + _vtEsc(v) + '">🅿️ O carro da ' + _vtEsc(v) + ' não está mais aqui — liberar a vaga</button>'; }).join('');
+  } else {
+    corpo = 'A vaga <strong>' + _vtEsc(m.vaga) + '</strong> (' + _vtEsc(m.carro) + ') está com o <strong>' + _vtEsc(m.de) + '</strong>, que é do carro da vaga ' + _vtEsc(m.dona) + ' (' + _vtEsc(m.carroDona) + ').';
+    if(m.candidatos.length > 1) corpo += '<br>Há <strong>' + m.candidatos.length + '</strong> hospedagens ativas com os dados deste carro: ' + _vtEsc(m.candidatos.map(function(c){ return c.gs + (c.onde ? ' (' + c.onde + ')' : ''); }).join(', ')) + '.';
+    else if(m.candidatos.length === 1) corpo += '<br>A hospedagem ativa com os dados deste carro, ' + _vtEsc(m.candidatos[0].gs) + ', já está em ' + _vtEsc(m.candidatos[0].onde) + '.';
+    else corpo += '<br>Nenhuma hospedagem ATIVA tem os dados deste carro' + (m.encerradas.length ? ' — a dele, ' + _vtEsc(m.encerradas.map(function(c){ return c.gs + (c.checkout_ts ? ' (encerrada em ' + _dtLocal(c.checkout_ts) + ')' : ''); }).join(', ')) + ', já foi encerrada. O carro provavelmente já saiu.' : '.');
+    botoes = m.candidatos.map(function(c){ return c.onde ? '' : '<button class="bsv gs-vm-religar" data-gs="' + _vtEsc(c.gs) + '">🔗 É a ' + _vtEsc(c.gs) + ' — religar a vaga ' + _vtEsc(m.vaga) + '</button>'; }).join('') +
+      '<button class="bcx gs-vm-liberar" data-vaga="' + _vtEsc(m.vaga) + '">🅿️ O carro não está mais aqui — liberar a vaga ' + _vtEsc(m.vaga) + '</button>';
+  }
+  showM('<div class="mt">⚠️ Vaga com o GS do carro vizinho</div><div class="ms" id="gs-vm-texto" style="margin-bottom:4px">' + corpo + '</div>' + aviso +
+    '<div class="ms" style="font-size:11px;color:#666">Resolver à mão: escolha o que está certo na garagem. Nenhuma hospedagem é encerrada ou apagada.</div>' +
+    '<div class="ag">' + botoes + '<button class="bcx" onclick="closeOv()">Fechar</button></div>');
+  const fim = function(msg){
+    try{ saveData(); }catch(e){}
+    try{ upd(); }catch(e){}
+    closeOv();
+    try{ renderPainelDia(); }catch(e){}
+    try{ if(_expansaoEstaAberta() && _expansaoGrupoAtual === 'pendencias') abrirExpansao('pendencias'); }catch(e){}
+    showToast(msg, 3500);
+  };
+  document.querySelectorAll('.gs-vm-religar').forEach(function(btn){
+    btn.onclick = function(){
+      const gs = btn.getAttribute('data-gs'), v = m.vaga;
+      confirmarUsuario('religando a vaga ' + v + ' à ' + gs, function(u){
+        const us = u ? u.nome + ' · ' + u.cargo : '';
+        if(!S[v] || S[v].hospedagem !== m.de) return fim('A vaga ' + v + ' mudou — nada foi feito');
+        S[v].hospedagem = gs; try{ ref(v); }catch(e){}
+        try{ addHistorico(m.apt || '?', 'edicao', v, 'Vaga ' + v + ' religada a ' + gs + ' (estava com ' + m.de + ', do carro da ' + m.dona + ') — defeito da vaga vizinha, resolvido à mão', us, gs); }catch(e){}
+        try{ addLogSistema('vaga ' + v + ': ' + m.de + ' → ' + gs + ', defeito da vaga vizinha resolvido à mão', { aud:true, acao:'vaga_vizinha_religada', alvo:v + ' ' + m.de + '→' + gs, quem:us, origem:'usuario' }); }catch(e){}
+        try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_religada', v); }catch(e){}
+        fim('✅ Vaga ' + v + ' religada à ' + gs);
+      });
+    };
+  });
+  document.querySelectorAll('.gs-vm-liberar').forEach(function(btn){
+    btn.onclick = function(){
+      const v = btn.getAttribute('data-vaga');
+      showEntrarPIN(function(){ confirmarUsuario('liberando a vaga ' + v + ' (sem check-out)', function(u){
+        const us = u ? u.nome + ' · ' + u.cargo : 'Gestor';
+        if(!S[v] || S[v].hospedagem !== m.de) return fim('A vaga ' + v + ' mudou — nada foi feito');
+        const antes = _gsCarroTexto(S[v]);
+        _gsVagaLiberar(v);
+        try{ addLogSistema('Vaga ' + v + ' liberada à mão, sem check-out (defeito da vaga vizinha): estava com ' + antes + ' e o ' + m.de + '; nenhuma hospedagem foi alterada',
+          { aud:true, acao:'vaga_vizinha_liberada', alvo:v + ' ' + m.de, quem:us, origem:'usuario' }); }catch(e){}
+        try{ if(typeof _gsSyncAcao === 'function') _gsSyncAcao('vaga_liberada', v); }catch(e){}
+        fim('✅ Vaga ' + v + ' liberada — a ' + m.de + ' continua ativa');
+      }); });
+    };
+  });
+}
+function _gsVizinhaPendHTML(){
+  let html = '';
+  try{
+    const man = gsVizinhaManuais(), rep = gsReparosVizinhaAConferir();
+    if(man.length){
+      html += '<div class="exp-secao-titulo" id="pend-vizinha-titulo">VAGA COM O GS DO CARRO VIZINHO (' + man.length + ')</div>';
+      man.forEach(function(m, i){
+        const tit = m.tipo === 'dois' ? 'Vagas ' + m.vagas.join(' e ') + ' com o mesmo ' + m.de : 'Vaga ' + m.vaga + ' · ' + m.carro;
+        const sub = m.tipo === 'dois' ? m.motivo : 'está com o ' + m.de + ' (carro da ' + m.dona + ')' + (m.candidatos.length > 1 ? ' · ' + m.candidatos.length + ' candidatas' : (!m.candidatos.length ? ' · nenhuma hospedagem ativa deste carro' : ''));
+        html += '<div class="card-pend-assin gs-viz-card" style="cursor:pointer" data-idx="' + i + '" onclick="gsVizinhaManualAbrir(' + i + ')">' +
+          '<div class="cav-titulo">⚠️ ' + _vtEsc(tit) + '</div><div class="cav-subtitulo">' + _vtEsc(sub) + ' · resolver à mão — toque para ver</div></div>';
+      });
+    }
+    if(rep.length){
+      html += '<div class="exp-secao-titulo" id="pend-reparo-titulo">INFORMATIVO</div>' +
+        '<div class="card-pend-assin gs-rv-card" style="cursor:pointer;border-left-color:#185FA5" onclick="gsReparosVizinhaAbrir()">' +
+        '<div class="cav-titulo">🔧 ' + rep.length + ' vaga' + (rep.length > 1 ? 's reparadas' : ' reparada') + ' automaticamente — conferir</div>' +
+        '<div class="cav-subtitulo">' + _vtEsc(rep.map(function(x){ return 'Vaga ' + x.vaga + ': ' + x.de + ' → ' + x.para; }).join(' · ')) + ' · toque para ver o que mudou</div></div>';
+    }
+  }catch(e){}
+  return html;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4738,6 +4923,7 @@ function executarRestore(){
     if(rbtn) rbtn.querySelectorAll('.restore').forEach(b=>b.remove());
     addLogSistema('Mapa restaurado do backup de '+fmtTs(data.ts), {aud:true, acao:'mapa_restaurado', alvo:fmtTs(data.ts)});
     upd(); saveData(); closeOv();
+    try{ gsRepararVagasVizinhas('mapa restaurado'); }catch(e){}   // v2.4.2.2 (Bloco A)
   }catch(e){ closeOv(); }
 }
 
@@ -6152,7 +6338,8 @@ function renderAgrupadoresPainel(){
   // v2.3.0.0 (Bloco G): UM escritor só do selo — com o servidor ligado ele soma TODOS os tipos
   // abertos (pendências do servidor + hospedagens sem vaga), igual em todos os aparelhos.
   // Antes, este ponto gravava só as locais e apagava o que `_gsPendAtualizarPainel` tinha somado.
-  const totalPend=semVaga+semAssin+atrasados+(typeof gsPendContagem==='function'?gsPendContagem():0);   // v2.4.1.0: + check-out atrasado
+  const totalPend=semVaga+semAssin+atrasados+(typeof gsPendContagem==='function'?gsPendContagem():0)
+    +(typeof gsVizinhaManuais==='function'?gsVizinhaManuais().length:0);   // v2.4.2.2 (Bloco A): vaga com o GS do vizinho (o informativo não conta)   // v2.4.1.0: + check-out atrasado
   try{ const tS=document.getElementById('pend-servidor'); if(tS) tS.textContent=(typeof gsPendContagem==='function'?gsPendContagem():0); }catch(e){}
   const grupoPend=document.getElementById('grupo-pendencias');
   const badgePend=document.getElementById('pendencias-badge');
@@ -6475,11 +6662,12 @@ function renderExpansaoPendencias(){
     if(gsCheckoutEstado(h)==='atrasado') atrasadosCo.push(Object.assign({_gs:gs},h));   // v2.4.2.0 (Bloco D)
   }
   atrasadosCo.sort(function(a,b){ return String(a.saida_prevista).localeCompare(String(b.saida_prevista)); });
-  if(semVaga.length===0 && semAssin.length===0 && atrasadosCo.length===0){
+  const vizHtml=(typeof _gsVizinhaPendHTML==='function')?_gsVizinhaPendHTML():'';   // v2.4.2.2 (Bloco A)
+  if(semVaga.length===0 && semAssin.length===0 && atrasadosCo.length===0 && !vizHtml){
     return '<div class="exp-empty exp-empty-success">✓ Nenhuma pendência no momento</div>';
   }
 
-  let html='';
+  let html=vizHtml;
   if(atrasadosCo.length>0){
     html+='<div class="exp-secao-titulo" id="pend-atrasados-titulo">CHECK-OUT ATRASADO ('+atrasadosCo.length+')</div>';
     for(const h of atrasadosCo){
@@ -10878,6 +11066,8 @@ const GS_LS_EXCLUIR = [
   GS_BACKUP_META_LS,
   // v2.0.0.0: identidade e sessão do servidor são DESTE aparelho (nunca em backup)
   'garagespot_srv', 'garagespot_srv_serie', 'garagespot_srv_carga',
+  // v2.4.2.2: o que o reparo da vaga vizinha mudou NESTE aparelho (a trilha, que vai no backup, tem o registro)
+  'garagespot_reparo_vizinha',
 ];
 
 // v1.9.4.15: config da Gestão que o Importar/Restaurar repõe (passo 8 de
@@ -12955,6 +13145,7 @@ async function _gsAplicarBackup(obj, origem){
     (res.turnos ? ', turnos restaurados' : '') +
     (res.pinGestor ? ', PIN do gestor restaurado' : ''),
     {aud:true, acao:'dados_importados', alvo:String(origem||'arquivo')}); } catch(e){}
+  try { gsRepararVagasVizinhas('restauração (' + (origem||'arquivo') + ')'); } catch(e){}   // v2.4.2.2 (Bloco A)
   return res;
 }
 
@@ -13197,6 +13388,7 @@ async function _gsSubstituirPorBackup(obj, origem){
     + res.hospedagens + ' hosp., ' + res.usuarios + ' func., ' + res.vistorias + ' vist., '
     + res.anexosItens + ' anexos, ' + res.mapaVagas + ' vaga(s) ocupada(s)',
     {aud:true, acao:'dados_substituidos', alvo:String(origem||'arquivo')}); }catch(e){}
+  try{ gsRepararVagasVizinhas('restauração substituir (' + (origem||'arquivo') + ')'); }catch(e){}   // v2.4.2.2 (Bloco A)
   return res;
 }
 
@@ -22965,6 +23157,37 @@ function gsDiag(tipo, detalhe){
     localStorage.setItem(GS_DIAG_LS, JSON.stringify(l));
   }catch(e){}
 }
+// v2.4.2.2 (Bloco B) — AS AÇÕES DO USUÁRIO ENTRAM NO REGISTRO. O da GS079 (17/10) mostrava o serviço e a página,
+// mas não o arraste das 22:38 que causou o problema. Agora o registro termina com as últimas ações (histórico de
+// movimentação + trilha de auditoria): horário, tipo, GS, apto, vaga, detalhe, funcionário e dispositivo. Só lê o
+// que o app já guarda; do hóspede, só o apto — o detalhe livre (observação, placa, nome) NUNCA entra.
+const GS_DIAG_DET_LIVRE = { movimentacao_vaga:1, merge_lateral:1, desfaz_merge_lateral:1, tornar_grande:1, tornar_pequeno:1, troca_apartamento:1,
+  recarga_iniciada:1, recarga_prolongada:1, recarga_editada:1, recarga_encerrada:1 };
+function _gsDiagDetalhe(tipo, extra){
+  const x = String(extra == null ? '' : extra);
+  if(!x || /^observacao_/.test(tipo)) return '';
+  if(GS_DIAG_DET_LIVRE[tipo]) return x.slice(0, 120);
+  // demais: só os NOMES dos campos ("Edição de detalhes — Placa: X → Y" vira "Edição de detalhes — Placa")
+  return x.split(' — ').map(function(p){ return p.split(' · ').map(function(q){ return q.split(':')[0].trim(); }).join(' · '); }).join(' — ').slice(0, 120);
+}
+function gsDiagAcoes(max){
+  const l = [];
+  try{
+    Object.keys(HISTORICO || {}).forEach(function(apt){ (HISTORICO[apt] || []).forEach(function(e){
+      if(!e || !e.ts) return;
+      const d = _gsDiagDetalhe(e.tipo, e.extra);
+      l.push({ ts:e.ts, t:_dtLocal(e.ts) + ' | A | ' + (e.tipo || '?') + ' | ' + (e.hospedagem || 'sem GS') + ' | Apt ' + apt + (e.vaga ? ' | vaga ' + e.vaga : '') +
+        (d ? ' | ' + d : '') + ' | ' + (e.usuario || '—') + (e.disp ? ' | ' + e.disp + (e.disp_nome ? ' (' + e.disp_nome + ')' : '') : '') });
+    }); });
+  }catch(e){}
+  try{
+    const log = JSON.parse(localStorage.getItem(LOG_KEY) || '[]') || [];
+    log.forEach(function(e){ if(e && e.aud && e.ts) l.push({ ts:e.ts, t:_dtLocal(e.ts) + ' | T | ' + (e.acao || 'trilha') + ' | ' + String(e.msg || '').slice(0, 160) +
+      (e.quem ? ' | ' + e.quem : '') + (e.disp ? ' | ' + e.disp : '') + (e.origem ? ' | ' + e.origem : '') }); });
+  }catch(e){}
+  l.sort(function(a, b){ return a.ts - b.ts; });
+  return l.slice(-(max || 150)).map(function(x){ return x.t; });
+}
 async function gsDiagTexto(){
   const p = _gsSegPlano();
   try{ await gsApkDetectar(); }catch(e){}
@@ -22972,9 +23195,11 @@ async function gsDiagTexto(){
   try{ const dr = gsDriveRenovLer(); cab += 'Drive: ' + (dr.silenciosas || 0) + ' renovação(ões) silenciosa(s) · ' + (dr.pedidos || 0) + ' pedido(s) ao usuário' + (dr.ultima_ok ? ' · última renovação ' + _dtLocal(dr.ultima_ok) : '') + '\n'; }catch(e){}
   try{ const e = p ? await p.estado() : null; if(e) cab += 'Android SDK ' + e.sdk + ' · ' + e.fabricante + ' ' + e.modelo + ' · serviço ' + (e.ativo ? 'ATIVO' : 'parado') + ' · bateria sem restrição ' + (e.semOtimizacaoBateria ? 'sim' : 'NÃO') + '\n'; }catch(x){}
   cab += 'N = nativo (serviço/tela do app) · J = JavaScript (página)\n\n';
-  if(p && p.diagnostico){ try{ const r = await p.diagnostico({ ultimas:2000 }); return cab + (r.texto || '(vazio)'); }catch(e){} }
+  let acoes = '';
+  try{ const a = gsDiagAcoes(150); acoes = '\n\n── ÚLTIMAS AÇÕES DO USUÁRIO (' + a.length + ') · A = movimentação da hospedagem · T = trilha de auditoria ──\n' + (a.join('\n') || '(nenhuma)'); }catch(e){}
+  if(p && p.diagnostico){ try{ const r = await p.diagnostico({ ultimas:2000 }); return cab + (r.texto || '(vazio)') + acoes; }catch(e){} }
   let l = []; try{ l = JSON.parse(localStorage.getItem(GS_DIAG_LS) || '[]'); }catch(e){}
-  return cab + l.join('\n');
+  return cab + l.join('\n') + acoes;
 }
 window.gsDiagMostrar = async function(){
   const c = document.getElementById('debug-log-content'); if(!c) return;
@@ -24372,6 +24597,7 @@ async function _gsSyncBaixarNaTela(){
   showM('<div class="mt">⬇️ Baixar dados do servidor</div><div class="ms" id="srv-bx-ms">Baixando…</div>' +
     '<div style="font-size:11px;color:#888">Fotos e PDFs não descem nesta versão.</div>');
   const r = await _gsSyncAdotar('baixar', function(n, tab){ const ms = document.getElementById('srv-bx-ms'); if(ms) ms.textContent = 'Baixando ' + tab + '… (' + n + ' registro(s))'; });
+  if(r.ok){ try{ gsRepararVagasVizinhas('baixar dados do servidor'); }catch(e){} }   // v2.4.2.2 (Bloco A)
   showM('<div class="mt">⬇️ Baixar dados do servidor</div>' +
     '<div class="ms" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
     (r.ok ? '✅ ' + r.total + ' registro(s) baixado(s). Este dispositivo passa a sincronizar.' : '⚠️ ' + _vtEsc(r.erro || 'não concluído')) + '</div>' +
@@ -26202,7 +26428,8 @@ function _gsPendAtualizarPainel(){
       if(t) t.textContent = n;
       if(b){
         const base = (parseInt((document.getElementById('pend-semvaga') || {}).textContent, 10) || 0) + (parseInt((document.getElementById('pend-semassin') || {}).textContent, 10) || 0) +
-                     (parseInt((document.getElementById('pend-atrasados') || {}).textContent, 10) || 0);   // v2.4.1.0
+                     (parseInt((document.getElementById('pend-atrasados') || {}).textContent, 10) || 0) +   // v2.4.1.0
+                     (typeof gsVizinhaManuais === 'function' ? gsVizinhaManuais().length : 0);   // v2.4.2.2 (Bloco A)
         const tot = base + n;
         b.textContent = tot; b.style.display = tot > 0 ? 'flex' : 'none';
         g.classList.toggle('tem-pendencia', tot > 0);
@@ -27778,6 +28005,8 @@ Promise.resolve(true).then(async (ativo)=>{
       // ══════════════════════════════════════════════════════════════════
       try { _gsMigrarPasseioParaGs(); } catch(e){ console.warn('[MIG passeio] pós-init:', e); }
       try { _gsMigrarRecargaGs(); } catch(e){ console.warn('[MIG recarga] pós-init:', e); }
+      // v2.4.2.2 (Bloco A): vagas contaminadas pelo defeito da vizinha A/B — depois dos dados em memória
+      try { gsRepararVagasVizinhas('abertura'); } catch(e){ console.warn('[REPARO VIZINHA] abertura:', e); }
       // v1.9.8.0: rascunho de check-in já concluído sai em silêncio (regra do
       // Douglas: o rascunho morre quando o GS nasce). Depende de HOSPEDAGENS já
       // estar carregado — por isso aqui, e não antes.
