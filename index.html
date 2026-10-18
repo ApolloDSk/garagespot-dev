@@ -1369,7 +1369,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.2.0';
+const GS_VERSION = 'v2.4.2.1';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 32;
 const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
@@ -1612,9 +1612,14 @@ function _gsParesDaVaga(id){
   const pares=[];
   try{
     if(!id || typeof S==='undefined' || !S[id]) return pares;
+    // v2.4.2.1: a vizinha A/B só é parceira quando as duas estão UNIDAS (vaga grande). Antes ela
+    // entrava sempre: mover/designar um carro para 4A com OUTRO carro na 4B gravava o GS do
+    // novo na 4B (dev 17/10 22:38, GS082 → 4B da GS079) e a GS079 virou "Sem vaga".
     if(/[AB]$/.test(id)){
       const par = id.slice(0,-1) + (id.slice(-1)==='A' ? 'B' : 'A');
-      if(S[par]) pares.push(par);
+      const aId = id.slice(-1)==='A' ? id : par, bId = id.slice(-1)==='B' ? id : par;
+      const unidas = !!((S[bId] && S[bId].mergedMaster) || (S[aId] && S[aId].mergedSlave));
+      if(S[par] && unidas) pares.push(par);
     }
     const hm=S[id].hmergeWith;
     if(hm && S[hm] && pares.indexOf(hm)<0) pares.push(hm);
@@ -1709,7 +1714,8 @@ function _gsSincronizarHospPares(id){
   try{
     const gs=(S[id] && S[id].hospedagem) || ''; if(!gs) return;
     _gsParesDaVaga(id).forEach(function(p){
-      if(S[p] && S[p].status==='occupied') S[p].hospedagem=gs;
+      // v2.4.2.1: nunca por cima de OUTRO carro (apto diferente com GS próprio)
+      if(S[p] && S[p].status==='occupied' && !(S[p].hospedagem && S[p].hospedagem!==gs && String(S[p].apt||'')!==String(S[id].apt||''))) S[p].hospedagem=gs;
     });
   }catch(e){}
 }
