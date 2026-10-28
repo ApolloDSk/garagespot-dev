@@ -1369,10 +1369,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.3.0';
+const GS_VERSION = 'v2.4.4.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
-const GS_BUILD_TS = '2026-10-15';   // v2.0.0.0
+const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
 
 // ════════════════════════════════════════════════════════════════════════
 // v1.9.4.14 — "HOJE" É O CALENDÁRIO LOCAL, NUNCA UTC
@@ -6285,6 +6285,7 @@ function renderPainelDia(){
         <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?_quandoLocal(lastBkp):'Sem backup'}</div>
         ${_gdRodapeHTML()}
         ${_gsSrvRodapeHTML()}
+        ${_gsDriveEspacoRodapeHTML()}
         ${_gdDicaTocarHTML()}
       </div>
     </div>
@@ -12029,6 +12030,7 @@ function _gsPodaAvaliarLocal(reg, agora, maisRecenteTs){
   if(!/\.json$/i.test(nome))        return { podar:false, motivo:'não é .json — fora do escopo da limpeza' };
   // 2. O mais recente NUNCA sai, aconteça o que acontecer.
   if(reg.ts === maisRecenteTs)      return { podar:false, motivo:'é o backup mais recente' };
+  { const na = _gsPodaRecusaRecente(reg, agora); if(na) return na; }   // v2.4.4.0
   // v1.9.9.4: o ÚLTIMO BACKUP COMPLETO BOM (o do registro de integridade, que só
   // um backup aprovado na conferência atualiza) fica fixado.
   if(_gsNomeUltimoBom() === nome)    return { podar:false, motivo:'é o último backup completo bom (fixado)' };
@@ -12078,34 +12080,61 @@ async function _gsPodaApagarArquivoLocal(nome){
   return true;
 }
 
-// Executa a poda LOCAL. Falha no meio → ABORTA, mantém íntegro o que sobrou,
-// registra e relata. O registro só é regravado no fim, refletindo o disco.
+// v2.4.4.0 — UM ARQUIVO RECUSADO NÃO TRAVA MAIS A LIMPEZA. Registro de 28/10 (celular A): "deleteFile failed with:
+// An unknown error occurred" no 1º backup. Na biblioteca do plugin (ionfilesystem 1.1.0) essa mensagem só sai
+// quando o arquivo EXISTE e `File.delete()` devolve false — o Android não deixou apagar AQUELE arquivo (em
+// Documentos, um arquivo que esta instalação não pode escrever). Como a limpeza começa pelo mais antigo e
+// abortava no primeiro erro, ela ficava parada PARA SEMPRE no mesmo arquivo. Agora:
+//   • arquivo que já não existe → sai do registro (não há o que apagar);
+//   • arquivo recusado → fica no registro com a marca `nao_apagavel`, entra na trilha UMA vez e só é tentado
+//     de novo depois de 7 dias; a limpeza SEGUE com os outros;
+//   • 3 recusas seguidas → para a rodada (algo geral, ex.: permissão de Documentos) e registra.
+const GS_PODA_RECUSA_DIAS = 7, GS_PODA_RECUSAS_SEGUIDAS = 3;
+function _gsPodaErroAusente(e){ return /does not exist|não existe|not found|no such file/i.test(String((e && e.message) || e || '')); }
+function _gsPodaRecusaRecente(reg, agora){
+  const na = reg && reg.nao_apagavel;
+  if(!na || !na.ts) return null;
+  const dias = (agora - na.ts) / 86400000;
+  if(dias >= GS_PODA_RECUSA_DIAS) return null;
+  return { podar:false, motivo:'o Android recusou apagar este arquivo em ' + _dLocal(na.ts) + ' — fica; nova tentativa em ' + Math.ceil(GS_PODA_RECUSA_DIAS - dias) + 'd' };
+}
+// Apaga uma lista; devolve {apagados, ausentes, recusados, erro}. Nunca para no primeiro tropeço.
+async function _gsPodaApagarLista(lista, apagarFn){
+  const out = { apagados:[], ausentes:[], recusados:[], erro:null };
+  let seguidas = 0;
+  for(let i = 0; i < lista.length; i++){
+    const it = lista[i];
+    try{ await apagarFn(it.nome); out.apagados.push(it); seguidas = 0; }
+    catch(e){
+      const msg = (e && e.message) || String(e);
+      if(_gsPodaErroAusente(e)){ out.ausentes.push(it); seguidas = 0; continue; }
+      out.recusados.push(Object.assign({}, it, { erro:msg }));
+      if(++seguidas >= GS_PODA_RECUSAS_SEGUIDAS){ out.erro = GS_PODA_RECUSAS_SEGUIDAS + ' recusas seguidas do Android (' + msg + ')'; break; }
+    }
+  }
+  return out;
+}
+
+// Executa a poda LOCAL. O registro só é regravado no fim, refletindo o disco.
 async function _gsPodaExecutarLocal(){
   if(_gsSuspenso('limpeza local')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = _gsPodaSimularLocal();
   if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
-  const apagados = [];
-  let erro = null;
-  for(let i = 0; i < plano.remover.length; i++){
-    const it = plano.remover[i];
-    try{
-      await _gsPodaApagarArquivoLocal(it.nome);
-      apagados.push(it);
-    }catch(e){
-      // ABORTO: nada de continuar tentando às cegas. O que já saiu, saiu; o
-      // registro abaixo passa a refletir exatamente isso.
-      erro = (e && e.message) || String(e);
-      break;
-    }
-  }
+  const res = await _gsPodaApagarLista(plano.remover, _gsPodaApagarArquivoLocal);
+  const apagados = res.apagados, erro = res.erro;
   try{
-    const apagadosNomes = {};
-    apagados.forEach(function(a){ apagadosNomes[a.nome] = true; });
+    const fora = {}, recusa = {};
+    apagados.concat(res.ausentes).forEach(function(a){ fora[a.nome] = true; });
+    res.recusados.forEach(function(a){ recusa[a.nome] = a.erro; });
     const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
-    const restam = bkps.filter(function(b){ return !(b && apagadosNomes[b.nome]); });
+    const restam = bkps.filter(function(b){ return !(b && fora[b.nome]); }).map(function(b){
+      if(b && recusa[b.nome]) return Object.assign({}, b, { nao_apagavel:{ ts:Date.now(), erro:String(recusa[b.nome]).slice(0, 120) } });
+      return b;
+    });
     _gsSetItemSeguro('garagespot_backups_local', JSON.stringify(restam), 'registro de backups');
   }catch(e){ console.warn('[PODA] registro não atualizado:', e && e.message); }
+  _gsPodaRegistrarRecusas(res, 'backup');
   // TRILHA: cada exclusão fica registrada, com a regra que a autorizou.
   apagados.forEach(function(a){
     try{ addLogSistema('Limpeza: backup local apagado — ' + a.nome + ' (' + a.motivo + ')',
@@ -12194,6 +12223,7 @@ function _gsPodaAvaliarPDFLocal(reg, agora){
   const nome = String((reg && reg.nome) || '');
   if(!/\.pdf$/i.test(nome))          return { podar:false, motivo:'não é um PDF — fora do escopo da limpeza' };
   if(!reg.nuvem_ok || !reg.nuvem_ts) return { podar:false, motivo:'ainda não confirmado na nuvem' };
+  { const na = _gsPodaRecusaRecente(reg, agora); if(na) return na; }   // v2.4.4.0
   const dias = (agora - reg.nuvem_ts) / (24*60*60*1000);
   if(dias < GS_PODA_DIAS_LOCAL){
     return { podar:false, motivo:'confirmado na nuvem há ' + Math.floor(dias) + 'd — faltam ' +
@@ -12237,18 +12267,18 @@ async function _gsPodaExecutarPDFs(){
   if(!_gsPodaLigada()) return { ok:false, erro:'limpeza desligada' };
   const plano = _gsPodaSimularPDFs();
   if(!plano.remover.length) return { ok:true, apagados:0, plano:plano };
-  const apagados = [];
-  let erro = null;
-  for(let i = 0; i < plano.remover.length; i++){
-    const it = plano.remover[i];
-    try{ await _gsPodaApagarPDFLocal(it.nome); apagados.push(it); }
-    catch(e){ erro = (e && e.message) || String(e); break; }   // ABORTA, como nos backups
-  }
+  const res = await _gsPodaApagarLista(plano.remover, _gsPodaApagarPDFLocal);   // v2.4.4.0: pula o recusado e segue
+  const apagados = res.apagados, erro = res.erro;
   try{
-    const fora = {};
-    apagados.forEach(function(a){ fora[a.nome] = true; });
-    _gsPDFsSalvar(_gsPDFsRegistro().filter(function(p){ return !(p && fora[p.nome]); }));
+    const fora = {}, recusa = {};
+    apagados.concat(res.ausentes).forEach(function(a){ fora[a.nome] = true; });
+    res.recusados.forEach(function(a){ recusa[a.nome] = a.erro; });
+    _gsPDFsSalvar(_gsPDFsRegistro().filter(function(p){ return !(p && fora[p.nome]); }).map(function(p){
+      if(p && recusa[p.nome]) return Object.assign({}, p, { nao_apagavel:{ ts:Date.now(), erro:String(recusa[p.nome]).slice(0, 120) } });
+      return p;
+    }));
   }catch(e){ console.warn('[PODA] registro de PDFs não atualizado:', e && e.message); }
+  _gsPodaRegistrarRecusas(res, 'documento');
   apagados.forEach(function(a){
     try{ addLogSistema('Limpeza: documento do dispositivo apagado — ' + a.nome + ' (' + a.motivo + ')',
       {aud:true, acao:'poda_pdf_local', alvo:a.nome}); }catch(e){}
@@ -12372,6 +12402,14 @@ async function _gdPodaExecutarNuvem(){
   return { ok:true, apagados:feitos.length, plano:plano };
 }
 
+// Trilha das recusas e dos ausentes (uma linha por arquivo, só na rodada em que aconteceu)
+function _gsPodaRegistrarRecusas(res, tipo){
+  try{
+    res.recusados.forEach(function(a){ addLogSistema('Limpeza: o Android NÃO deixou apagar o ' + tipo + ' ' + a.nome + ' (' + String(a.erro).slice(0, 80) + ') — ficou no dispositivo; a limpeza seguiu com os outros e tenta este de novo em ' + GS_PODA_RECUSA_DIAS + ' dias',
+      { aud:true, acao:'poda_nao_apagavel', alvo:a.nome }); });
+    res.ausentes.forEach(function(a){ addLogSistema('Limpeza: ' + tipo + ' ' + a.nome + ' já não estava no dispositivo — tirado do registro', { aud:true, acao:'poda_ja_ausente', alvo:a.nome }); });
+  }catch(e){}
+}
 // Roda a poda de verdade — SÓ se o gestor tiver ligado. Uma vez por dia basta:
 // a janela é de 7 dias, então não há nada que ganhe em rodar mais vezes.
 const GS_PODA_ULT_LS = 'garagespot_poda_ultima';
@@ -12498,27 +12536,295 @@ async function simularLimpeza(){
   try{ addLogSistema('Simulação de limpeza consultada', {aud:true, acao:'poda_simulada'}); }catch(e){}
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.4.0 (Bloco H) — USO DO DRIVE (somente leitura)
+// ════════════════════════════════════════════════════════════════════════════
+// Para o gestor/T.I. decidirem o que arquivar e para o Douglas decidir o Bloco A com números reais.
+// Usa SÓ o que o app enxerga: com o escopo `drive.file` o Google mostra a este app apenas os arquivos que
+// ELE criou — o total da conta (Gmail, Fotos, outros arquivos) vem do `about`, o resto vem da árvore.
+// Nada é criado, movido, renomeado nem apagado; a pasta raiz não é criada se não existir.
+const GD_USO_MAX_PAGINAS = 40;      // 40 × 1000 itens por listagem: teto contra laço sem fim
+const GD_USO_MAX_REVISOES = 40;     // arquivos reescritos consultados (Hospedados Hoje + estado atual)
+function _gdUsoTam(bytes){
+  const n = Number(bytes || 0);
+  if(n >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(2).replace('.', ',') + ' GB';
+  return _gsMB(n);
+}
+async function _gdUsoListar(token, q, campos){
+  const itens = [];
+  let pagina = '', n = 0;
+  do{
+    const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) + '&spaces=drive&pageSize=1000' +
+      '&fields=' + encodeURIComponent('nextPageToken,files(' + campos + ')') + (pagina ? '&pageToken=' + encodeURIComponent(pagina) : ''),
+      {method:'GET'}, token, 'listar o Drive (uso)');
+    const j = await r.json();
+    ((j && j.files) || []).forEach(function(f){ itens.push(f); });
+    pagina = (j && j.nextPageToken) || '';
+  }while(pagina && ++n < GD_USO_MAX_PAGINAS);
+  return itens;
+}
+async function _gdUsoAcharRaiz(token){
+  const emp = _gdRaizEmpresa();
+  if(emp && emp.id && await _gdRaizValida(token, emp.id)) return emp.id;
+  if(DRIVE_STATUS.nuvem_raiz_id && await _gdRaizValida(token, DRIVE_STATUS.nuvem_raiz_id)) return DRIVE_STATUS.nuvem_raiz_id;
+  const l = await _gdUsoListar(token, "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(GD_PASTA_RAIZ) + "' and trashed=false", 'id,name,createdTime');
+  l.sort(function(a, b){ return (Date.parse(a.createdTime || '') || 0) - (Date.parse(b.createdTime || '') || 0); });
+  return (l[0] && l[0].id) || '';
+}
+// Em que GRUPO um arquivo entra, pelo caminho de pastas abaixo de `GarageSpot/`.
+function _gdUsoGrupo(caminho){
+  const c = caminho || [];
+  if(c[0] === GD_PASTA_HOSP){
+    if(c[1] === GD_PASTA_HOJE) return { grupo:'Hospedados Hoje' };
+    if(/^\d{4}$/.test(c[1] || '')) return { grupo:'GarageSpot Hospedagens', sub:c[1] + (c[2] ? ' / ' + c[2] : '') };
+    return { grupo:'GarageSpot Hospedagens', sub:c[1] || '(na pasta)' };
+  }
+  if(c[0] === GD_PASTA_NOME) return { grupo:'Backups' };
+  if(c[0] === GD_PASTA_RECARGAS) return { grupo:'Recargas' };
+  if(c[0] === GD_PASTA_AUDITORIA) return { grupo:'Auditoria' };
+  return { grupo:'Outros' };
+}
+async function _gdUsoLevantar(progresso){
+  const aviso = typeof progresso === 'function' ? progresso : function(){};
+  return await _gdComToken(async function(token){
+    const out = { ts:Date.now(), conta:DRIVE_STATUS.nuvem_email || '', cota:{}, grupos:{}, maiores:[], revisoes:[], total:0, qtd:0, lixeira:{ qtd:0, bytes:0 }, raiz:false, foraRaiz:0 };
+    aviso('Lendo o espaço da conta…');
+    const ra = await _gdFetch(GD_API + '/about?fields=storageQuota', {method:'GET'}, token, 'consultar o espaço do Drive');
+    const q = ((await ra.json()) || {}).storageQuota || {};
+    out.cota = { limite:Number(q.limit || 0), uso:Number(q.usage || 0), noDrive:q.usageInDrive != null ? Number(q.usageInDrive) : null,
+                 naLixeira:q.usageInDriveTrash != null ? Number(q.usageInDriveTrash) : null };
+    aviso('Listando os arquivos do app…');
+    const campos = 'id,name,mimeType,size,quotaBytesUsed,modifiedTime,createdTime,parents';
+    const todos = await _gdUsoListar(token, 'trashed=false', campos);
+    const raiz = await _gdUsoAcharRaiz(token);
+    out.raiz = !!raiz;
+    const pastas = {};
+    todos.forEach(function(f){ if(f && f.mimeType === GD_MIME_PASTA) pastas[f.id] = f; });
+    // caminho de pastas ATÉ a raiz `GarageSpot` (null = fora dela)
+    const memo = {};
+    const caminhoDe = function(paiId){
+      if(memo[paiId] !== undefined) return memo[paiId];
+      const partes = []; let id = paiId, guarda = 0;
+      while(id && guarda++ < 30){
+        if(id === raiz){ memo[paiId] = partes; return partes; }
+        const p = pastas[id]; if(!p) break;
+        partes.unshift(p.name);
+        id = (p.parents || [])[0];
+      }
+      memo[paiId] = null; return null;
+    };
+    const reescritos = [];
+    todos.forEach(function(f){
+      if(!f || f.mimeType === GD_MIME_PASTA) return;
+      const bytes = Number(f.size || 0) || 0;
+      const cam = caminhoDe((f.parents || [])[0]);
+      let g;
+      if(cam === null){ g = { grupo:'Fora da pasta GarageSpot' }; out.foraRaiz++; }
+      else g = _gdUsoGrupo(cam);
+      const G = out.grupos[g.grupo] || (out.grupos[g.grupo] = { qtd:0, bytes:0, subs:{} });
+      G.qtd++; G.bytes += bytes;
+      if(g.sub){ const S2 = G.subs[g.sub] || (G.subs[g.sub] = { qtd:0, bytes:0 }); S2.qtd++; S2.bytes += bytes; }
+      out.total += bytes; out.qtd++;
+      out.maiores.push({ nome:f.name, pasta:cam === null ? '(fora da pasta GarageSpot)' : [GD_PASTA_RAIZ].concat(cam).join('/'), bytes:bytes, ts:Date.parse(f.modifiedTime || f.createdTime || '') || 0 });
+      if(g.grupo === 'Hospedados Hoje' || (g.grupo === 'Backups' && /^_ESTADO-ATUAL/.test(f.name || ''))) reescritos.push(f);
+    });
+    out.maiores.sort(function(a, b){ return b.bytes - a.bytes; });
+    out.maiores = out.maiores.slice(0, 20);
+    aviso('Lendo a lixeira…');
+    try{
+      const lix = await _gdUsoListar(token, 'trashed=true', 'id,size,mimeType');
+      lix.forEach(function(f){ if(f && f.mimeType !== GD_MIME_PASTA){ out.lixeira.qtd++; out.lixeira.bytes += Number(f.size || 0) || 0; } });
+    }catch(e){ if(e && (e.gdAuth || e.gdCheio)) throw e; out.lixeira.erro = (e && e.message) || 'falhou'; }
+    // VERSÕES guardadas dos arquivos REESCRITOS no mesmo id (PATCH): o Drive guarda as anteriores por um tempo.
+    const alvo = reescritos.slice(0, GD_USO_MAX_REVISOES);
+    for(let i = 0; i < alvo.length; i++){
+      const f = alvo[i];
+      aviso('Versões guardadas: ' + (i + 1) + ' de ' + alvo.length + '…');
+      try{
+        const rr = await _gdFetch(GD_API + '/files/' + encodeURIComponent(f.id) + '/revisions?pageSize=1000&fields=' +
+          encodeURIComponent('revisions(id,size,modifiedTime,keepForever)'), {method:'GET'}, token, 'listar versões (uso)');
+        const revs = ((await rr.json()) || {}).revisions || [];
+        const soma = revs.reduce(function(s, v){ return s + (Number(v.size || 0) || 0); }, 0);
+        out.revisoes.push({ nome:f.name, versoes:revs.length, bytes:soma, atual:Number(f.size || 0) || 0, cota:f.quotaBytesUsed != null ? Number(f.quotaBytesUsed) : null });
+      }catch(e){
+        if(e && (e.gdAuth || e.gdCheio)) throw e;
+        out.revisoes.push({ nome:f.name, versoes:null, erro:(e && e.message) || 'falhou' });
+      }
+    }
+    out.reescritosTotal = reescritos.length;
+    return out;
+  }, false);   // nunca abre login: tela de consulta
+}
+async function showUsoDrive(){
+  const mc = document.getElementById('mc');
+  mc.innerHTML = `<div class="mt">📊 Uso do Drive</div>
+    <div class="ms">Somente leitura — nada é apagado nem movido.</div>
+    <div id="uso-corpo" style="font-size:12px;color:#666">Consultando…</div>
+    <button class="bcx" onclick="showConexoes()" style="width:100%;margin-top:12px">← Voltar</button>`;
+  document.getElementById('ov').classList.add('on');
+  const corpo = function(){ return document.getElementById('uso-corpo'); };
+  if(!_gdDisponivel() || !_gdConectado()){
+    const c0 = corpo(); if(c0) c0.innerHTML = '<div style="color:#999">O Google Drive não está conectado neste dispositivo — conecte em Backup e Conexões para ver o uso.</div>';
+    return;
+  }
+  let u;
+  try{
+    u = await _gdUsoLevantar(function(t){ const c1 = corpo(); if(c1) c1.textContent = t; });
+  }catch(e){
+    const c2 = corpo(); if(c2) c2.innerHTML = '<div style="color:#A32D2D">Não deu para consultar: ' + _vtEsc((e && e.message) || String(e)) + '</div>';
+    return;
+  }
+  const c = corpo(); if(!c) return;
+  const linha = function(rot, val, forte){ return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid #eee"><span>' + rot + '</span><span style="white-space:nowrap' + (forte ? ';font-weight:700;color:#333' : '') + '">' + val + '</span></div>'; };
+  const k = u.cota;
+  const livre = k.limite ? Math.max(0, k.limite - k.uso) : null;
+  const pct = k.limite ? Math.round(k.uso * 100 / k.limite) : null;
+  let h = '<div class="gestao-menu-sep">Conta' + (u.conta ? ' · ' + _vtEsc(u.conta) : '') + '</div>';
+  h += linha('Usado (conta inteira)', _gdUsoTam(k.uso) + (pct != null ? ' · ' + pct + '%' : ''), true);
+  h += linha('Livre', livre != null ? _gdUsoTam(livre) : 'sem limite informado');
+  if(k.limite) h += linha('Total da conta', _gdUsoTam(k.limite));
+  if(k.noDrive != null) h += linha('Só no Drive', _gdUsoTam(k.noDrive));
+  if(k.naLixeira != null) h += linha('Na lixeira do Drive', _gdUsoTam(k.naLixeira));
+  h += linha('Arquivos do GarageSpot', u.qtd + ' · ' + _gdUsoTam(u.total), true);
+  h += '<div style="color:#999;font-size:11px;line-height:1.5;padding:4px 0">O app só enxerga os arquivos que ele mesmo criou. O que sobra do "usado" é Gmail, Google Fotos e outros arquivos da conta.</div>';
+  if(!u.raiz) h += '<div style="color:#854F0B;font-size:11px;padding:4px 0">A pasta "GarageSpot" não foi encontrada no Drive.</div>';
+  h += '<div class="gestao-menu-sep" style="margin-top:12px">Por pasta</div>';
+  const ordem = ['GarageSpot Hospedagens', 'Hospedados Hoje', 'Backups', 'Recargas', 'Auditoria', 'Outros', 'Fora da pasta GarageSpot'];
+  ordem.forEach(function(nome){
+    const G = u.grupos[nome];
+    if(!G && nome !== 'GarageSpot Hospedagens' && nome !== 'Hospedados Hoje' && nome !== 'Backups' && nome !== 'Recargas' && nome !== 'Auditoria') return;
+    const g = G || { qtd:0, bytes:0, subs:{} };
+    h += linha('<strong>' + _vtEsc(nome) + '</strong>', g.qtd + ' arq. · ' + _gdUsoTam(g.bytes), true);
+    Object.keys(g.subs).sort().reverse().forEach(function(s){
+      h += '<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 14px;color:#777;font-size:11px"><span>' + _vtEsc(s) + '</span><span style="white-space:nowrap">' + g.subs[s].qtd + ' · ' + _gdUsoTam(g.subs[s].bytes) + '</span></div>';
+    });
+  });
+  h += linha('Na lixeira (arquivos do app)', u.lixeira.erro ? 'não consultado' : (u.lixeira.qtd + ' arq. · ' + _gdUsoTam(u.lixeira.bytes)));
+  h += '<div class="gestao-menu-sep" style="margin-top:12px">Os 20 maiores arquivos</div>';
+  h += u.maiores.length ? u.maiores.map(function(m, i){
+    return '<div class="uso-maior" style="padding:4px 0;border-bottom:1px solid #eee"><div style="color:#333;word-break:break-all">' + (i + 1) + '. ' + _vtEsc(m.nome) + ' · <strong>' + _gdUsoTam(m.bytes) + '</strong></div>' +
+      '<div style="color:#999;font-size:11px;word-break:break-all">' + _vtEsc(m.pasta) + (m.ts ? ' · ' + _vtEsc(fmtDt(m.ts)) : '') + '</div></div>';
+  }).join('') : '<div style="color:#999;font-size:11px">Nenhum arquivo.</div>';
+  h += '<div class="gestao-menu-sep" style="margin-top:12px">Versões guardadas (arquivos reescritos)</div>';
+  h += '<div style="color:#999;font-size:11px;line-height:1.5;padding:2px 0 4px">Hospedados Hoje e o estado atual são reescritos no mesmo arquivo; o Drive guarda as versões anteriores por um tempo.</div>';
+  if(!u.revisoes.length) h += '<div style="color:#999;font-size:11px">Nenhum arquivo reescrito.</div>';
+  else {
+    let nv = 0, bv = 0;
+    u.revisoes.forEach(function(r){ if(r.versoes != null){ nv += r.versoes; bv += r.bytes; } });
+    h += linha('Total', nv + ' versão(ões) · ' + _gdUsoTam(bv), true);
+    u.revisoes.forEach(function(r){
+      h += '<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 14px;color:#777;font-size:11px"><span style="word-break:break-all">' + _vtEsc(r.nome) + '</span><span style="white-space:nowrap">' +
+        (r.versoes == null ? 'não informado' : r.versoes + ' · ' + _gdUsoTam(r.bytes)) + '</span></div>';
+    });
+    if(u.reescritosTotal > u.revisoes.length) h += '<div style="color:#999;font-size:11px">Consultados ' + u.revisoes.length + ' de ' + u.reescritosTotal + '.</div>';
+  }
+  h += '<div style="color:#999;font-size:11px;padding-top:8px">Consultado em ' + _vtEsc(fmtDt(u.ts)) + '.</div>';
+  c.innerHTML = h;
+  try{ addLogSistema('Uso do Drive consultado: ' + u.qtd + ' arquivo(s), ' + _gdUsoTam(u.total) + ' do app; conta ' + _gdUsoTam(k.uso) + (k.limite ? ' de ' + _gdUsoTam(k.limite) : ''), {aud:true, acao:'drive_uso_consultado'}); }catch(e){}
+}
+
 // ── Cota do Drive (aviso preventivo) ───────────────────────────────────────
 // `about.get` aceita o escopo `drive.file` (confirmado na doc oficial da API v3).
 // Qualquer falha aqui é engolida: é informação de conforto, nunca pode derrubar
 // nem atrasar um backup.
-const GD_COTA_INTERVALO_MS = 6 * 60 * 60 * 1000;
-async function _gdLerCota(){
+// v2.4.4.0 (Bloco C) — A COTA É LIDA A CADA CICLO (10 min) por quem envia ao Drive, e não mais 1×/6 h: o Drive
+// do hotel encheu entre duas leituras e ninguém soube antes. A leitura custa uma requisição pequena.
+const GD_COTA_INTERVALO_MS = 10 * 60 * 1000;
+const GD_COTA_AVISO_PCT = 80, GD_COTA_ALERTA_PCT = 90;
+const GD_COTA_FOLGA_VOLTOU = 100 * 1024 * 1024;   // 100 MB livres = "voltou a ter espaço" (cabe um lote de PDFs)
+const GS_DRIVE_ESPACO_LS = 'garagespot_drive_espaco_emp';   // o que o responsável publicou para a empresa (config sincronizada)
+async function _gdLerCota(opts){
   try{
+    opts = opts || {};
     if(!_gdDisponivel() || !_gdConectado()) return;
+    if(_gsDriveSoA('leitura da cota')) return;   // com servidor, quem lê é quem envia
     const ult = DRIVE_STATUS.nuvem_cota_ts || 0;
-    if(ult && (Date.now() - ult) < GD_COTA_INTERVALO_MS) return;
+    if(!opts.agora && ult && (Date.now() - ult) < GD_COTA_INTERVALO_MS) return;
     await _gdComToken(async function(token){
       const r = await _gdFetch(GD_API + '/about?fields=storageQuota', {method:'GET'}, token, 'consultar o espaço do Drive');
       const j = await r.json();
       const q = (j && j.storageQuota) || {};
-      DRIVE_STATUS.nuvem_cota_limite = Number(q.limit || 0);
-      DRIVE_STATUS.nuvem_cota_uso    = Number(q.usage || 0);
-      DRIVE_STATUS.nuvem_cota_ts     = Date.now();
-      saveDriveStatus();
+      _gdCotaRegistrar(Number(q.limit || 0), Number(q.usage || 0), Date.now());
       return true;
     }, false);
   }catch(e){ console.warn('[DRIVE] cota não consultada (ignorado):', e && e.message); }
+}
+// Guarda a leitura, a série (1 ponto por hora, 30 dias) que dá o RITMO, e destrava o "cheio" quando o espaço volta.
+function _gdCotaRegistrar(lim, uso, ts){
+  DRIVE_STATUS.nuvem_cota_limite = lim;
+  DRIVE_STATUS.nuvem_cota_uso    = uso;
+  DRIVE_STATUS.nuvem_cota_ts     = ts;
+  const h = Array.isArray(DRIVE_STATUS.nuvem_cota_hist) ? DRIVE_STATUS.nuvem_cota_hist : [];
+  if(!h.length || ts - h[h.length - 1][0] >= 60 * 60 * 1000) h.push([ts, uso]); else h[h.length - 1] = [h[h.length - 1][0], uso];
+  DRIVE_STATUS.nuvem_cota_hist = h.filter(function(p){ return p && ts - p[0] <= 30 * 86400000; });
+  // Sem isto o app ficava preso: cheio só saía com um envio bom, e com "cheio" vários envios nem tentavam.
+  if(DRIVE_STATUS.nuvem_cheio && lim > 0 && lim - uso >= GD_COTA_FOLGA_VOLTOU){
+    DRIVE_STATUS.nuvem_cheio = false;
+    if(_gdErroDeDriveCheio(DRIVE_STATUS.nuvem_erro_detalhe)){ DRIVE_STATUS.nuvem_falha = false; DRIVE_STATUS.nuvem_ultimo_erro = ''; }
+    try{ addLogSistema('Google Drive voltou a ter espaço (' + _gdGB(lim - uso) + ' GB livres) — os pendentes sobem sozinhos', { aud:true, acao:'drive_espaco_voltou' }); }catch(e){}
+    try{ gsDiag('drive', 'espaço voltou: ' + _gdGB(lim - uso) + ' GB livres'); }catch(e){}
+    try{ if(typeof _gdTentarPendente === 'function') setTimeout(function(){ _gdTentarPendente(); }, 3000); }catch(e){}
+  }
+  saveDriveStatus();
+  _gdCotaPublicar();
+}
+function _gdGB(b){ return (Number(b || 0) / (1024 * 1024 * 1024)).toFixed(1).replace('.', ','); }
+// RITMO = quanto subiu por dia, medido do ponto mais antigo com pelo menos 1 dia (até 14 dias). Sem 1 dia de
+// série não há previsão — prever com minutos de dado seria inventar número.
+function _gdCotaRitmoDia(hist, agora){
+  try{
+    const h = (hist || []).filter(function(p){ return agora - p[0] <= 14 * 86400000; });
+    if(h.length < 2) return null;
+    const a = h[0], b = h[h.length - 1];
+    const dias = (b[0] - a[0]) / 86400000;
+    if(dias < 1) return null;
+    return (b[1] - a[1]) / dias;
+  }catch(e){ return null; }
+}
+// O estado do espaço que TODOS os dispositivos mostram: a leitura deste (se ele lê) ou a publicada pelo responsável.
+function gsDriveEspaco(){
+  try{
+    let lim = DRIVE_STATUS.nuvem_cota_limite || 0, uso = DRIVE_STATUS.nuvem_cota_uso || 0, ts = DRIVE_STATUS.nuvem_cota_ts || 0;
+    let dias = null, cheio = !!DRIVE_STATUS.nuvem_cheio, origem = 'este';
+    const ritmo = _gdCotaRitmoDia(DRIVE_STATUS.nuvem_cota_hist, Date.now());
+    if(lim && ritmo && ritmo > 0) dias = Math.max(0, Math.floor((lim - uso) / ritmo + 1e-6));   // 1e-6: 26,9999… de ponto flutuante é 27
+    let pub = null; try{ pub = JSON.parse(localStorage.getItem(GS_DRIVE_ESPACO_LS) || 'null'); }catch(e){}
+    if(pub && pub.ts && (!ts || pub.ts > ts + 60000)){
+      lim = pub.lim; uso = pub.uso; ts = pub.ts; dias = pub.dias; cheio = !!pub.cheio; origem = 'servidor';
+    }
+    if(!lim) return cheio ? { nivel:'cheio', pct:100, lim:0, uso:0, ts:ts, dias:0, origem:origem } : null;
+    const pct = Math.min(100, Math.round((uso / lim) * 100));
+    const nivel = (cheio || pct >= 100) ? 'cheio' : pct >= GD_COTA_ALERTA_PCT ? 'alerta' : pct >= GD_COTA_AVISO_PCT ? 'info' : 'ok';
+    return { nivel:nivel, pct:pct, lim:lim, uso:uso, ts:ts, dias:dias, origem:origem };
+  }catch(e){ return null; }
+}
+// O responsável publica o espaço na configuração da empresa — é assim que o alerta de 90% chega aos DOIS tablets.
+// Só quando muda o ponto percentual, o nível ou a previsão (não a cada leitura): não gera tráfego à toa.
+function _gdCotaPublicar(){
+  try{
+    if(!gsSrvAtivo()) return;
+    const e = gsDriveEspaco(); if(!e || e.origem !== 'este') return;
+    const v = { pct:e.pct, nivel:e.nivel, dias:e.dias, lim:e.lim, uso:e.uso, cheio:e.nivel === 'cheio', ts:e.ts };
+    let ant = null; try{ ant = JSON.parse(localStorage.getItem(GS_DRIVE_ESPACO_LS) || 'null'); }catch(x){}
+    if(ant && ant.pct === v.pct && ant.nivel === v.nivel && ant.dias === v.dias && Date.now() - (ant.ts || 0) < 6 * 3600000) return;
+    localStorage.setItem(GS_DRIVE_ESPACO_LS, JSON.stringify(v));
+    try{ _gsSyncMarcarSuja('config'); }catch(x){}
+  }catch(e){}
+}
+function _gdEspacoTexto(e){
+  if(!e) return '';
+  if(e.nivel === 'cheio') return _gdMsgDriveCheio();
+  const prev = e.dias == null ? '' : (e.dias <= 0 ? ' · enche a qualquer momento' : ' · enche em ~' + e.dias + (e.dias === 1 ? ' dia' : ' dias') + ' no ritmo atual');
+  return 'Drive do hotel em ' + e.pct + '% (' + _gdGB(e.uso) + ' de ' + _gdGB(e.lim) + ' GB)' + prev;
+}
+// Rodapé do Painel: alerta (≥ 90%) e cheio aparecem em TODOS os dispositivos; o informativo (≥ 80%) fica no card.
+function _gsDriveEspacoRodapeHTML(){
+  try{
+    const e = gsDriveEspaco();
+    if(!e || (e.nivel !== 'alerta' && e.nivel !== 'cheio')) return '';
+    const cor = e.nivel === 'cheio' ? '#A32D2D' : '#B26A00';
+    return '<div id="rodape-drive-espaco" data-nivel="' + e.nivel + '" style="font-size:10px;color:' + cor + ';font-weight:700;margin-top:2px">💾 ' + _vtEsc(_gdEspacoTexto(e)) + '</div>';
+  }catch(x){ return ''; }
 }
 
 // ── Exportação COMPLETA sem depender de plugin ─────────────────────────────
@@ -13629,6 +13935,8 @@ function _gdConectado(){
 function _gdErroDeRede(e){
   try{
     if(!e) return false;
+    if(e.gdCheio) return false;                      // v2.4.4.0: Drive cheio não passa sozinho
+    if(e.gdTransitorio) return true;                 // v2.4.4.0: limite/5xx do Google — vem com status, mas é passageiro
     if(e.gdAuth) return false;                       // veio com status HTTP → é do Google
     if(e.gdDet && e.gdDet.status) return false;      // idem
     if(e.gdTimeout) return true;                     // estourou o teto: tratar como transitório
@@ -13669,8 +13977,8 @@ function _gdErroDeDriveCheio(detalhe){
 // `nuvem_ultimo_erro` em 180. Uma mensagem mais longa seria truncada justamente
 // no fim — que é onde está a parte que o operador precisa ler.
 function _gdMsgDriveCheio(){
-  return 'O Google Drive do hotel está SEM ESPAÇO — nada sobe. Libere espaço no Drive, ' +
-         'ou baixe e arquive documentos antigos fora dele. O app NÃO apaga documentos da nuvem.';
+  // v2.4.4.0 (Bloco C): o texto do Douglas. Com servidor, nenhum PDF se perde — fica no servidor e sobe sozinho.
+  return 'O Drive do hotel está sem espaço. Os PDFs ficam guardados no servidor e sobem assim que houver espaço.';
 }
 
 function _gdMarcarFalha(msg, detalhe, transitorio){
@@ -13943,6 +14251,25 @@ async function _gdFetch(url, opts, token, etapa){
     url: String(url).split('?')[0],
   };
 
+  // v2.4.4.0 (Bloco C) — CADA CAUSA COM A SUA SAÍDA. O Drive cheio também chega como 403 e caía no ramo de
+  // autorização logo abaixo: a tela mandava "desconectar e conectar de novo", que não resolve nada (corte de
+  // 19/10). O motivo do Google é olhado ANTES do status. Limite de requisições e erro do lado do Google
+  // (5xx) são transitórios: o app tenta de novo sozinho, sem pedir nada a ninguém.
+  if(_gdErroDeDriveCheio(det)){
+    const eC = new Error(_gdMsgDriveCheio());
+    eC.gdCheio = true; eC.gdDet = det;
+    try{ if(!DRIVE_STATUS.nuvem_cheio){ DRIVE_STATUS.nuvem_cheio = true; saveDriveStatus(); } }catch(_){}
+    throw eC;
+  }
+  const rz = String(g.reason || '').toLowerCase();
+  if(r.status === 429 || ((r.status === 403) && (rz === 'ratelimitexceeded' || rz === 'userratelimitexceeded'))){
+    const eL = new Error('o Google pediu para esperar (limite de requisições) — o app tenta de novo sozinho');
+    eL.gdTransitorio = true; eL.gdDet = det; throw eL;
+  }
+  if(r.status >= 500){
+    const eS = new Error('o Google Drive está instável agora (' + r.status + ') — o app tenta de novo sozinho');
+    eS.gdTransitorio = true; eS.gdDet = det; throw eS;
+  }
   if(r.status === 401 || r.status === 403){
     const e = new Error('o Google recusou a autorização (' + r.status +
       (g.reason ? ' · ' + g.reason : '') + ')');
@@ -14091,12 +14418,59 @@ async function _gdAdotarOuCriarPrincipal(token, nome, raizId){
 // Pasta de primeiro nível (sem pai declarado). Usada pelas DUAS raízes: a de
 // backups (recuperação) e a de hospedagens (consulta) — que são separadas de
 // propósito e não devem se misturar.
+// v2.4.4.0 (Bloco D) — UMA PASTA RAIZ POR EMPRESA, com o id registrado no servidor (config `drive_raiz`).
+// Antes a raiz era procurada pelo NOME a cada envio e a primeira que o Drive devolvesse valia: com o escopo
+// drive.file o app só enxerga o que ELE criou, então uma instalação nova (ou outro dispositivo responsável)
+// não via a pasta antiga e podia criar outra "GarageSpot" ao lado. Agora a ordem é:
+//   1. o id da empresa (servidor), revalidado — existe, é pasta e não está na lixeira;
+//   2. o id lembrado neste dispositivo, revalidado;
+//   3. busca pelo nome; havendo mais de uma, vale a MAIS ANTIGA (escolha estável) e o fato vai para a trilha;
+//   4. só então cria. O id escolhido é registrado para a empresa e nenhum outro dispositivo cria outra.
+const GS_DRIVE_RAIZ_LS = 'garagespot_drive_raiz_emp';
+function _gdRaizEmpresa(){ try{ return JSON.parse(localStorage.getItem(GS_DRIVE_RAIZ_LS) || 'null'); }catch(e){ return null; } }
+async function _gdRaizValida(token, id){
+  if(!id) return false;
+  try{
+    const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,mimeType,trashed', {method:'GET'}, token, 'conferir a pasta raiz');
+    const j = await r.json();
+    return !!(j && j.id && !j.trashed && j.mimeType === GD_MIME_PASTA);
+  }catch(e){ if(e && (e.gdAuth || e.gdCheio)) throw e; return false; }
+}
+function _gdRaizRegistrar(id, como){
+  try{
+    const conta = String((DRIVE_STATUS && DRIVE_STATUS.nuvem_email) || '').trim().toLowerCase();
+    const ant = _gdRaizEmpresa();
+    DRIVE_STATUS.nuvem_raiz_id = id; saveDriveStatus();
+    if(ant && ant.id === id) return;
+    localStorage.setItem(GS_DRIVE_RAIZ_LS, JSON.stringify({ id:id, conta:conta, em:Date.now(), como:como }));
+    try{ _gsSyncMarcarSuja('config'); }catch(e){}
+    try{ addLogSistema('Pasta raiz do Google Drive registrada para a empresa (' + como + ')' + (ant && ant.id ? ' — a anterior (' + ant.id + ') não estava mais válida' : ''),
+      { aud:true, acao:'drive_raiz_registrada', alvo:id }); }catch(e){}
+  }catch(e){}
+}
 async function _gdGarantirPastaRaiz(token, nome){
+  const conta = String((DRIVE_STATUS && DRIVE_STATUS.nuvem_email) || '').trim().toLowerCase();
+  if(nome === GD_PASTA_RAIZ){
+    const emp = _gdRaizEmpresa();
+    if(emp && emp.id && (!emp.conta || !conta || emp.conta === conta)){
+      if(await _gdRaizValida(token, emp.id)){ if(DRIVE_STATUS.nuvem_raiz_id !== emp.id){ DRIVE_STATUS.nuvem_raiz_id = emp.id; saveDriveStatus(); } return emp.id; }
+      try{ addLogSistema('A pasta raiz registrada para a empresa não está mais no Drive (lixeira ou apagada) — procurando a pasta pelo nome', { aud:true, acao:'drive_raiz_invalida', alvo:emp.id }); }catch(e){}
+    }
+    const loc = DRIVE_STATUS && DRIVE_STATUS.nuvem_raiz_id;
+    if(loc && (!emp || loc !== emp.id) && await _gdRaizValida(token, loc)){ _gdRaizRegistrar(loc, 'id deste dispositivo'); return loc; }
+  }
   const q = "mimeType='" + GD_MIME_PASTA + "' and name='" + _gdEscQ(nome) + "' and trashed=false";
   const r = await _gdFetch(GD_API + '/files?q=' + encodeURIComponent(q) +
-    '&spaces=drive&fields=files(id,name)&pageSize=10', {method:'GET'}, token, 'procurar a pasta ' + nome);
+    '&spaces=drive&orderBy=createdTime&fields=files(id,name,createdTime)&pageSize=10', {method:'GET'}, token, 'procurar a pasta ' + nome);
   const j = await r.json();
-  if(j && j.files && j.files.length) return j.files[0].id;
+  if(j && j.files && j.files.length){
+    const lista = j.files.slice().sort(function(a, b){ return (Date.parse(a.createdTime || '') || 0) - (Date.parse(b.createdTime || '') || 0); });
+    if(nome === GD_PASTA_RAIZ){
+      if(lista.length > 1){ try{ addLogSistema('Há ' + lista.length + ' pastas "' + nome + '" no Drive — vale a mais antiga; as outras não recebem nada novo', { aud:true, acao:'drive_raiz_duplicada', alvo:lista[0].id }); }catch(e){} }
+      _gdRaizRegistrar(lista[0].id, 'achada pelo nome');
+    }
+    return lista[0].id;
+  }
   const r2 = await _gdFetch(GD_API + '/files?fields=id', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -14104,6 +14478,7 @@ async function _gdGarantirPastaRaiz(token, nome){
   }, token, 'criar a pasta ' + nome);
   const j2 = await r2.json();
   if(!j2 || !j2.id) throw new Error('não foi possível criar a pasta "' + nome + '" no Drive');
+  if(nome === GD_PASTA_RAIZ) _gdRaizRegistrar(j2.id, 'criada');
   return j2.id;
 }
 
@@ -14878,6 +15253,9 @@ const HHJ_DEBOUNCE_MS = 20000;
 // Respiro entre dois documentos quando há vários pendentes: um por vez, nunca
 // em paralelo, com folga para a interface entre eles.
 const HHJ_INTERVALO_MS = 3000;
+// v2.4.4.0: documentos por rodada do trabalhador (o resto fica para a próxima — debounce ou tique de 10 min).
+const HHJ_LOTE_MAX = 3;
+const HHJ_MOTIVO_CONF = 'conferência';
 
 let _hhjTimer = null, _hhjRodando = false;
 
@@ -15042,8 +15420,34 @@ async function _hhjLixeira(token, id){
 
 // Gera e envia o documento de UMA hospedagem. Nunca é chamada de dentro de uma
 // ação do manobrista — só do trabalhador de segundo plano.
+// v2.4.4.0 (Hospedados Hoje completo) — ASSINATURA do que vai no documento: dados da hospedagem, carro/vaga,
+// movimentações, anexos (com ou sem conteúdo NESTE dispositivo) e vistorias (documento e assinatura presentes).
+// Com servidor, quem envia ao Drive é o RESPONSÁVEL, mas a ação pode ter sido feita no OUTRO dispositivo — o
+// `_hhjMarcar` de lá nunca chega aqui. A conferência compara esta assinatura com a do último envio e marca o
+// que mudou (ou nunca subiu). Só lê: nada de PDF, nada de rede.
+function _hhjAssinatura(gs){
+  try{
+    const m = _hhjMaterial(gs);
+    const h = (HOSPEDAGENS && HOSPEDAGENS[gs]) || {};
+    const ult = m.hist.length ? m.hist[m.hist.length - 1] : null;
+    const anexos = (m.snapshot.todos || []).map(function(a){
+      return a ? String(a.id || a.name || '') + ':' + ((a.data !== undefined || (a._arq && a._arq.ok)) ? 1 : 0) : '';
+    }).sort();
+    const vist = Object.keys(VISTORIAS || {}).map(function(k){ return VISTORIAS[k]; }).filter(function(v){
+      return v && (v.hospedagem === gs || v.hospedagem_gs === gs);
+    }).map(function(v){
+      return String(v.numero || '') + ':' + (v.documento_final_b64 ? 1 : 0) + (v.assinatura || v.assinatura_b64 ? 1 : 0) + ':' + (v.ts_finalizacao || v.ts_assinada || '');
+    }).sort();
+    const txt = JSON.stringify([h, m.dv, m.hist.length, ult && ult.ts, ult && ult.tipo, anexos, vist]);
+    let x = 5381;
+    for(let i = 0; i < txt.length; i++) x = ((x * 33) ^ txt.charCodeAt(i)) >>> 0;
+    return x.toString(36) + '.' + txt.length.toString(36);
+  }catch(e){ return ''; }
+}
+
 async function _hhjEnviarUm(gs){
   if(!_hhjAtiva(gs)) { await _hhjRetirar(gs); return { retirado:true }; }
+  const assin = _hhjAssinatura(gs);   // antes de gerar: mudança durante a geração volta a marcar na próxima conferência
   const doc = await _hhjGerarDoc(gs);
   if(!doc) throw new Error('gerador de PDF indisponível');
   await _pdfCeder();                                   // respiro antes de serializar
@@ -15089,7 +15493,7 @@ async function _hhjEnviarUm(gs){
       }catch(eR){ console.warn('[HHJ] rename falhou (o conteúdo já está certo):', eR && eR.message); }
     }
     const e2 = _hhjEstado();
-    e2.arquivos[gs] = { id:id, nome:nome, ts:Date.now() };
+    e2.arquivos[gs] = { id:id, nome:nome, ts:Date.now(), assin:assin };
     delete e2.pendentes[gs];
     _hhjSalvar(e2);
     return { id:id, nome:nome };
@@ -15154,11 +15558,20 @@ async function _hhjProcessar(){
       if(ov && ov.classList.contains('on')) return;
     }catch(e){}
     const est = _hhjEstado();
-    const alvos = Object.keys(est.pendentes || {});
+    // v2.4.4.0: o que o operador acabou de fazer vem antes do que a conferência achou; e no máximo
+    // HHJ_LOTE_MAX documentos por rodada — a primeira conferência no hotel acha ~13 hospedagens sem
+    // documento, e 13 PDFs com fotos seguidos no tablet de 2 GB seria o oposto da regra da fluidez.
+    const alvos = Object.keys(est.pendentes || {}).sort(function(a, b){
+      const pa = est.pendentes[a] || {}, pb = est.pendentes[b] || {};
+      const ca = pa.motivo === HHJ_MOTIVO_CONF ? 1 : 0, cb = pb.motivo === HHJ_MOTIVO_CONF ? 1 : 0;
+      return (ca - cb) || ((pa.ts || 0) - (pb.ts || 0));
+    }).slice(0, HHJ_LOTE_MAX);
     if(!alvos.length) return;
     _hhjRodando = true;
     for(const gs of alvos){
       try{
+        const ov2 = document.getElementById('ov');
+        if(ov2 && ov2.classList.contains('on')) break;   // o operador abriu algo no meio do lote: o resto espera
         await _hhjEnviarUm(gs);
       }catch(e){
         // A FALHA NÃO CUSTA A AÇÃO NEM O REGISTRO: o pendente continua na fila e a
@@ -15177,6 +15590,36 @@ async function _hhjProcessar(){
   finally{ _hhjRodando = false; }
 }
 
+// v2.4.4.0 — RECONCILIAÇÃO: toda hospedagem ATIVA tem documento, e ele reflete o que o app tem agora.
+// Antes só `_hhjMarcar` punha alguém na fila, e só no dispositivo onde a ação aconteceu. Com o servidor
+// ligado, ação feita no dispositivo que NÃO é o responsável ficava presa na fila dele (que não envia), e o
+// responsável — que envia — nunca sabia; hospedagem sem ação recente no responsável nunca ganhava documento.
+// Roda no responsável (ou sem servidor), no tique, antes do trabalhador. Não gera nada: só marca.
+function _hhjReconciliar(){
+  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return 0;
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return 0;
+    const est = _hhjEstado();
+    let n = 0;
+    _hhjAtivas().forEach(function(gs){
+      if(est.pendentes[gs]) return;
+      const reg = est.arquivos[gs];
+      if(reg && reg.id && reg.assin && reg.assin === _hhjAssinatura(gs)) return;
+      est.pendentes[gs] = { ts:Date.now(), motivo:HHJ_MOTIVO_CONF };
+      n++;
+    });
+    if(n){
+      _hhjSalvar(est);
+      try{ addLogSistema('Hospedados Hoje: ' + n + ' documento(s) a gerar ou atualizar (conferência das hospedagens ativas)'); }catch(e){}
+    }
+    return n;
+  }catch(e){ console.warn('[HHJ] reconciliação não rodou:', e && e.message); return 0; }
+}
+function _hhjCiclo(){
+  try{ _hhjReconciliar(); }catch(e){}
+  return _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){});
+}
+
 // CONFERÊNCIA DA PASTA. Garante as duas promessas que não podem depender de um
 // envio ter dado certo na hora: ninguém que já saiu continua lá, e sem hospedagem
 // ativa a pasta fica VAZIA. Roda no tique, depois do lote.
@@ -15192,12 +15635,24 @@ async function _hhjConferir(){
     await _gdComToken(async function(token){
       const pasta = await _hhjPastaId(token);
       const filhos = await _gdFilhos(token, pasta);
+      const presentes = {};
       for(const f of filhos){
         if(!f || f.mimeType === GD_MIME_PASTA) continue;
+        presentes[f.name] = true;
         if(ativas[f.name]) continue;                   // hospedagem ainda ativa: fica
         await _hhjLixeira(token, f.id);
         addLogSistema('Hospedados Hoje: documento retirado (hospedagem encerrada) — ' + f.name);
       }
+      // v2.4.4.0: hospedagem ATIVA sem o documento na pasta (nunca subiu, apagado ou posto na lixeira à mão)
+      // → volta à fila, e sem o id lembrado (atualizar um arquivo da lixeira o deixaria lá).
+      const e3 = _hhjEstado();
+      let faltou = 0;
+      _hhjAtivas().forEach(function(g){
+        if(presentes[_hhjNome(g)]) return;
+        if(e3.arquivos[g]) delete e3.arquivos[g];
+        if(!e3.pendentes[g]){ e3.pendentes[g] = { ts:Date.now(), motivo:HHJ_MOTIVO_CONF }; faltou++; }
+      });
+      if(faltou) _hhjSalvar(e3);
       return true;
     }, false);
     // limpa do registro local o que não é mais ativo
@@ -15873,7 +16328,9 @@ async function fazerBackupNuvemAgora(){
   else {
     // Quando o Google recusou a autorização, o caminho de saída é RECONECTAR — o
     // envio não abre mais a tela de consentimento por conta própria.
-    const precisaReconectar = !!(r.detalhe && (r.detalhe.status === 401 || r.detalhe.status === 403));
+    // v2.4.4.0 (Bloco C): Drive cheio e limite do Google também vêm como 403 — reconectar não resolve nenhum dos dois
+    const precisaReconectar = !!(r.detalhe && (r.detalhe.status === 401 || r.detalhe.status === 403)) &&
+      !_gdErroDeDriveCheio(r.detalhe) && !/ratelimitexceeded|userratelimitexceeded/i.test(String(r.detalhe.reason || ''));
     showToast('⚠️ Não foi enviado: ' + r.erro +
       (precisaReconectar ? ' · Toque em Desconectar e conecte de novo.' : '') +
       ' · O backup local está intacto.', 7000);
@@ -19171,37 +19628,25 @@ function _renderNuvemStatus(){
 // ── v1.9.6.3 — AVISO PREVENTIVO DE ESPAÇO NO DRIVE ─────────────────────────
 // Discreto e sem modal, por decisão: é informação de fundo, não uma emergência —
 // quem opera o mapa não pode ser interrompido por um aviso de cota. A leitura
-// vem de `about.get?fields=storageQuota` (o escopo `drive.file` basta), feita
-// no máximo 1×/6h e guardada em `DRIVE_STATUS.nuvem_cota_*`. Se a consulta
-// falhar, o aviso simplesmente não aparece — nunca vira erro na cara do usuário.
-// LIMITE = 85%, e a justificativa é operacional, não estética:
-//  • o que se quer comprar com o aviso é TEMPO para agir antes de a nuvem parar.
-//    Numa conta grátis de 15 GB, 15% de folga são ~2,2 GB — várias semanas de
-//    backups e PDFs no ritmo do hotel. Espaço de sobra para o gestor resolver sem
-//    pressa, que é o ponto;
-//  • abaixo disso (70–80%) o aviso apareceria cedo demais e por tempo demais —
-//    e aviso que fica meses na tela vira paisagem, deixa de ser lido, e aí não
-//    avisa mais nada quando importa;
-//  • acima disso (90–95%) a folga cai para ~750 MB: um punhado de check-outs com
-//    fotos e a nuvem para. Tarde demais para um aviso "preventivo".
-const GD_ESPACO_ALERTA_PCT = 85;
+// vem de `about.get?fields=storageQuota` (o escopo `drive.file` basta) e fica em
+// `DRIVE_STATUS.nuvem_cota_*`. Se a consulta falhar, o aviso simplesmente não
+// aparece — nunca vira erro na cara do usuário.
+// v2.4.4.0 (Bloco C, decisão do Douglas depois do corte): TRÊS degraus em vez de um
+// só a 85% — 80% informativo com a previsão "enche em ~N dias" (GD_COTA_AVISO_PCT),
+// 90% alerta no rodapé dos DOIS tablets (GD_COTA_ALERTA_PCT) e 100% erro. O de 85%
+// não evitou o 100% do dia do corte: a leitura era 1×/6 h e o aviso ficava só no card.
 
 function _gdEspacoAvisoHTML(){
   try{
-    const lim = DRIVE_STATUS.nuvem_cota_limite || 0;
-    const uso = DRIVE_STATUS.nuvem_cota_uso || 0;
-    if(!lim || !uso) return '';
-    const pct = Math.round((uso / lim) * 100);
-    if(pct < GD_ESPACO_ALERTA_PCT) return '';
-    const gb = function(b){ return (b / (1024*1024*1024)).toFixed(1).replace('.', ','); };
-    // Informação, NUNCA interrupção: é um bloco discreto dentro do card de nuvem.
-    // Sem modal, sem toast, sem roubar foco — quem está operando o app não pode
-    // ser parado por um aviso de espaço.
-    return `<div id="nuvem-espaco" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:6px;padding:7px 9px;margin-top:6px;color:#633806;font-size:11px;line-height:1.5">
-      💾 <strong>Drive em ${pct}%</strong> — ${gb(uso)} GB de ${gb(lim)} GB usados.
-      Vale agir antes que os backups parem de subir: <strong>liberar espaço</strong> na conta do Drive,
-      ou <strong>baixar e arquivar documentos antigos fora do Drive</strong> (num computador ou HD).
-      <br>O app <strong>não apaga documentos da nuvem</strong> — o que sai de lá é decisão da gestão.</div>`;
+    // v2.4.4.0 (Bloco C): 80% informativo (com a previsão), 90% alerta, 100% erro — o mesmo estado em todos os dispositivos
+    const e = gsDriveEspaco();
+    if(!e || e.nivel === 'ok') return '';
+    const cores = e.nivel === 'cheio' ? ['#FFF1F1', '#A32D2D', '#A32D2D'] : e.nivel === 'alerta' ? ['#FFF8E6', '#BA7517', '#633806'] : ['#F1F5FA', '#2E6DB4', '#153E6B'];
+    // Informação, NUNCA interrupção: um bloco discreto dentro do card de nuvem, sem modal e sem roubar foco.
+    return `<div id="nuvem-espaco" data-nivel="${e.nivel}" style="background:${cores[0]};border:1px solid ${cores[1]};border-radius:6px;padding:7px 9px;margin-top:6px;color:${cores[2]};font-size:11px;line-height:1.5">
+      💾 <strong>${_vtEsc(_gdEspacoTexto(e))}</strong>.
+      ${e.nivel === 'cheio' ? '' : 'Para não parar: <strong>liberar espaço</strong> na conta do Drive, ou <strong>baixar e arquivar documentos antigos fora do Drive</strong> (num computador ou HD).'}
+      <br>O app <strong>não apaga documentos da nuvem</strong> — o que sai de lá é decisão da gestão e do T.I. do hotel.</div>`;
   }catch(e){ return ''; }
 }
 
@@ -19224,6 +19669,7 @@ function showConexoes(){
     </div>
     <div class="gestao-menu-sep" style="margin-top:14px">Google Drive (nuvem)</div>
     ${_renderNuvemStatus()}
+    ${(_gdDisponivel() && _gdConectado()) ? '<button class="bcx" id="btn-uso-drive" onclick="showUsoDrive()" style="width:100%;margin-top:6px">📊 Uso do Drive</button>' : ''}
     <div class="gestao-menu-sep" style="margin-top:14px">Limpeza de backups antigos</div>
     ${_renderPodaStatus()}
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`;
@@ -22627,7 +23073,15 @@ function _gsSegPlanoTem(metodo){
 }
 function _gsSesExpira(v){ try{ const j = typeof v === 'string' ? JSON.parse(v) : v; return (j && Number(j.expires_at)) || 0; }catch(e){ return 0; } }
 function _gsSrvArmazenamentoSessao(chaveSessao){
-  if(!_gsSegPlanoTem('sessaoLer') || !_gsSegPlanoTem('sessaoGuardar')) return null;
+  // v2.4.4.0 (Bloco G): sem os métodos do serviço (vc32 ou anterior, navegador) o armazenamento é o localStorage
+  // puro, como antes — mas passa por aqui para guardar a CÓPIA da sessão.
+  if(!_gsSegPlanoTem('sessaoLer') || !_gsSegPlanoTem('sessaoGuardar')){
+    return {
+      getItem: function(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+      setItem: function(k, v){ try{ localStorage.setItem(k, v); }catch(e){} if(k === chaveSessao) _gsSrvSesCopiaGuardar(v); },
+      removeItem: function(k){ try{ localStorage.removeItem(k); }catch(e){} if(k === chaveSessao) _gsSrvSessaoRemovida(); },
+    };
+  }
   const p = _gsSegPlano();
   const teto = function(pr){ return Promise.race([pr, new Promise(function(r){ setTimeout(function(){ r(null); }, 1500); })]); };
   return {
@@ -22648,13 +23102,20 @@ function _gsSrvArmazenamentoSessao(chaveSessao){
     },
     setItem: function(k, v){
       try{ localStorage.setItem(k, v); }catch(e){}
+      if(k === chaveSessao) _gsSrvSesCopiaGuardar(v);   // v2.4.4.0
       if(k === chaveSessao && gsSrvAtivo()){ try{ p.sessaoGuardar({ chave:k, valor:v }).catch(function(){}); }catch(e){} }
     },
     removeItem: function(k){
       try{ localStorage.removeItem(k); }catch(e){}
-      if(k === chaveSessao){ try{ p.sessaoApagar({ chave:k }).catch(function(){}); }catch(e){} }   // sair também limpa o serviço
+      if(k === chaveSessao){ try{ p.sessaoApagar({ chave:k }).catch(function(){}); }catch(e){} _gsSrvSessaoRemovida(); }   // sair também limpa o serviço
     },
   };
+}
+// v2.4.4.0 (Bloco G): a biblioteca apagou a sessão. Se foi saída DE PROPÓSITO, a cópia vai junto; se foi ela
+// sozinha (renovação recusada), a cópia fica para a reconexão tentar — e o porquê vai para o registro.
+function _gsSrvSessaoRemovida(){
+  if(_gsSrvSaidaIntencional){ _gsSrvSesCopiaApagar(); return; }
+  try{ const er = gsSrvUltimoErroSessao(); gsDiag('sessao', 'a biblioteca APAGOU a sessão sozinha' + (er ? ' — última recusa: ' + er.tipo + ' http ' + er.status + (er.codigo ? ' · ' + er.codigo : '') : '') + ' (cópia guardada para reconectar)'); }catch(e){}
 }
 function _gsSrvCliente(){
   if(_gsSrvCli) return _gsSrvCli;
@@ -22664,10 +23125,10 @@ function _gsSrvCliente(){
   const auth = { storageKey:'gs-srv-auth-' + _gsSrvAmbiente(), persistSession:true, autoRefreshToken:true, detectSessionInUrl:false };
   const arm = _gsSrvArmazenamentoSessao(auth.storageKey);
   if(arm) auth.storage = arm;
-  _gsSrvCli = supabase.createClient(cfg.url, cfg.chave, { auth:auth });
+  _gsSrvCli = supabase.createClient(cfg.url, cfg.chave, { auth:auth, global:{ fetch:_gsSrvFetch } });
   try{
     _gsSrvCli.auth.onAuthStateChange(function(ev){
-      if(ev === 'SIGNED_OUT' && _gsSrvLigado()){ _gsSrvMudarEstado('reconectar'); }
+      if(ev === 'SIGNED_OUT' && _gsSrvLigado() && !_gsSrvSaidaIntencional){ _gsSrvMudarEstado('reconectar'); setTimeout(function(){ _gsSrvTratarFalha({ message:'sessão apagada pela biblioteca (401)' }); }, 500); }
     });
   }catch(e){}
   return _gsSrvCli;
@@ -22687,8 +23148,196 @@ async function _gsSrvRpc(fn, args, tetoMs){
 }
 function _gsSrvErroDeSessao(err){
   const m = String((err && (err.message || err.code)) || '');
-  return /jwt|token|auth|401|not authenticated|login necess/i.test(m);
+  // v2.4.4.0 (Bloco G): "permission denied for function …" = a chamada saiu SEM login (sessão perdida). Medido
+  // em 28/10 no dev: o servidor estava sadio e só a chamada anônima devolvia exatamente esse erro.
+  return /jwt|token|auth|401|not authenticated|login necess|permission denied for function/i.test(m);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.4.0 (Bloco G) — RECONECTAR AO SERVIDOR SEM SAIR DA CONTA
+// ════════════════════════════════════════════════════════════════════════════
+// O caso real (celular A, 28/10): 8 dias parado, projeto do Supabase pausado; ao abrir, a renovação falhou com
+// um erro que a biblioteca considera DEFINITIVO e o acesso já tinha vencido → ela apagou a sessão (e o nosso
+// armazenamento apagou junto a cópia do serviço: "sem sessão guardada"). O app seguia "ligado", sem conta, e
+// todo sinal saía anônimo ("permission denied for function sinal") — o rodapé dizia só "sem conexão".
+// Agora:
+//  • a sessão tem uma CÓPIA própria (`gs-srv-sessao-copia`, nunca entra em backup). Só sair de propósito
+//    (Desligar, cancelar a entrada) apaga a cópia;
+//  • o código exato de toda renovação recusada vai para o registro (`sessao_renovar`) e para `gs-srv-sessao-erro`;
+//  • cada falha tem a sua mensagem: sem internet, servidor indisponível/pausado, sessão perdida (entrar de novo),
+//    renovando;
+//  • reconexão automática, com espera crescente, ao abrir, ao voltar a rede e periodicamente; e "Reconectar
+//    agora" no rodapé e na tela Servidor (sem PIN e sem sair da conta). A fila nunca é tocada.
+const GS_SRV_SES_COPIA_LS = 'gs-srv-sessao-copia', GS_SRV_SES_ERRO_LS = 'gs-srv-sessao-erro';
+const GS_SONDA_INTERNET_URL = 'https://www.gstatic.com/generate_204';
+const GS_SRV_RECON_ESPERAS = [20, 60, 120, 300, 600];   // segundos (depois fica em 10 min)
+let _gsSrvSaidaIntencional = false, _gsSrvReconVoo = null, _gsSrvReconTimer = null, _gsSrvReconN = 0;
+function _gsSrvSesCopia(){ try{ return JSON.parse(localStorage.getItem(GS_SRV_SES_COPIA_LS) || 'null'); }catch(e){ return null; } }
+function _gsSrvSesCopiaGuardar(v){
+  try{ const j = typeof v === 'string' ? JSON.parse(v) : v; if(j && j.refresh_token) localStorage.setItem(GS_SRV_SES_COPIA_LS, JSON.stringify({ refresh_token:j.refresh_token, expires_at:j.expires_at || 0, em:Date.now() })); }catch(e){}
+}
+function _gsSrvSesCopiaApagar(){ try{ localStorage.removeItem(GS_SRV_SES_COPIA_LS); }catch(e){} }
+function gsSrvUltimoErroSessao(){ try{ return JSON.parse(localStorage.getItem(GS_SRV_SES_ERRO_LS) || 'null'); }catch(e){ return null; } }
+// fetch da biblioteca: registra o código EXATO de toda renovação/login recusado (o de 28/10 se perdeu)
+async function _gsSrvFetch(input, init){
+  const url = String((input && input.url) || input || '');
+  const ehToken = /\/auth\/v1\/token/.test(url);
+  const tipo = /grant_type=refresh_token/.test(url) ? 'renovação' : 'login';
+  try{
+    const r = await fetch(input, init);
+    if(ehToken && !r.ok){
+      let t = ''; try{ t = await r.clone().text(); }catch(e){}
+      let cod = ''; try{ const j = JSON.parse(t); cod = j.error_code || j.code || j.error || ''; }catch(e){}
+      const reg = { ts:Date.now(), tipo:tipo, status:r.status, codigo:String(cod), msg:String(t).slice(0, 160) };
+      try{ localStorage.setItem(GS_SRV_SES_ERRO_LS, JSON.stringify(reg)); }catch(e){}
+      try{ gsDiag('sessao_renovar', tipo + ' recusada: http ' + r.status + (cod ? ' · ' + cod : '') + ' · ' + String(t).slice(0, 100)); }catch(e){}
+    }
+    return r;
+  }catch(e){
+    if(ehToken){
+      const reg = { ts:Date.now(), tipo:tipo, status:0, codigo:'rede', msg:String((e && e.message) || e).slice(0, 160) };
+      try{ localStorage.setItem(GS_SRV_SES_ERRO_LS, JSON.stringify(reg)); }catch(x){}
+      try{ gsDiag('sessao_renovar', tipo + ' sem resposta: ' + reg.msg); }catch(x){}
+    }
+    throw e;
+  }
+}
+// Erro de renovação que significa "a conta precisa entrar de novo" (a renovação nunca vai passar)
+function _gsSrvErroSessaoDefinitivo(err){
+  const st = Number((err && err.status) || 0);
+  const t = String((err && (err.code || '')) || '') + ' ' + String((err && err.message) || '');
+  if(/refresh_token_not_found|refresh_token_already_used|invalid refresh token|session_not_found|session_expired|user_not_found|user_banned|invalid_grant/i.test(t)) return true;
+  return (st === 400 || st === 401 || st === 403) && !/fetch|network|timeout|rede/i.test(t);
+}
+async function _gsSondaInternet(){
+  try{
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    let t = null;
+    const r = await Promise.race([
+      fetch(GS_SONDA_INTERNET_URL + '?t=' + Date.now(), { mode:'no-cors', cache:'no-store' }).then(function(){ return true; }, function(){ return false; }),
+      new Promise(function(res){ t = setTimeout(function(){ res(false); }, 5000); }),
+    ]);
+    clearTimeout(t);
+    return r;
+  }catch(e){ return false; }
+}
+// Tenta devolver a sessão: (1) a que a biblioteca tem, renovando se preciso; (2) a CÓPIA guardada.
+// Devolve 'ok' | 'definitivo' (precisa entrar de novo) | 'rede' (não deu para falar com o servidor).
+async function _gsSrvRecuperarSessao(motivo, forcar){
+  const cli = _gsSrvCliente(); if(!cli) return 'rede';
+  try{
+    const g = await cli.auth.getSession();
+    const ses = g && g.data && g.data.session;
+    // forcar: o SERVIDOR recusou o acesso que o cliente acha válido — só renovar resolve
+    if(!forcar && ses && ses.expires_at && ses.expires_at * 1000 > Date.now() + 30000) return 'ok';
+    if(ses && ses.refresh_token){
+      const r = await cli.auth.refreshSession({ refresh_token:ses.refresh_token });
+      if(r && r.data && r.data.session) return 'ok';
+      if(r && r.error && !_gsSrvErroSessaoDefinitivo(r.error)) return 'rede';
+    }
+    const cp = _gsSrvSesCopia();
+    if(!cp || !cp.refresh_token) return 'definitivo';
+    const r2 = await cli.auth.refreshSession({ refresh_token:cp.refresh_token });
+    if(r2 && r2.data && r2.data.session){
+      try{ gsDiag('sessao', 'sessão RECUPERADA pela cópia guardada (' + (motivo || '') + ')'); }catch(e){}
+      try{ addLogSistema('Servidor: a sessão deste dispositivo tinha sido perdida e foi recuperada sozinha — a fila seguiu sem perder nada', { aud:true, acao:'servidor_sessao_recuperada', origem:'automatico' }); }catch(e){}
+      return 'ok';
+    }
+    if(r2 && r2.error && !_gsSrvErroSessaoDefinitivo(r2.error)) return 'rede';
+    return 'definitivo';
+  }catch(e){ return 'rede'; }
+}
+// O QUE ACONTECEU, dito do jeito que a pessoa precisa ouvir. Pode recuperar a sessão no caminho.
+async function _gsSrvDiagnosticarFalha(err){
+  const m = String((err && (err.message || err.code)) || err || '');
+  if(_gsSrvErroDeSessao(err)){
+    // recuperada há menos de 60 s e recusada de novo: a conta foi invalidada no servidor — não insiste em laço
+    if(Date.now() - _gsSrvUltRecuperada < 60000) return 'sessao_perdida';
+    const r = await _gsSrvRecuperarSessao('falha do sinal', true);
+    if(r === 'ok'){ _gsSrvUltRecuperada = Date.now(); return 'recuperada'; }
+    if(r === 'definitivo') return 'sessao_perdida';
+  }
+  if(/\b(50\d|52\d|530|540)\b|service unavailable|bad gateway|gateway timeout|project (is )?paused/i.test(m)) return 'indisponivel';
+  if(_gsSrvErroRede(err) || /typeerror|timeout/i.test(m) || _gsSrvErroDeSessao(err)){
+    return (await _gsSondaInternet()) ? 'indisponivel' : 'sem_internet';
+  }
+  return 'sem_conexao';
+}
+let _gsSrvTratandoFalha = false, _gsSrvUltRecuperada = 0;
+async function _gsSrvTratarFalha(err){
+  if(_gsSrvTratandoFalha) return;
+  _gsSrvTratandoFalha = true;
+  try{
+    const c = await _gsSrvDiagnosticarFalha(err);
+    try{ gsDiag('servidor', 'falha classificada: ' + c + ' (' + String((err && err.message) || err || '').slice(0, 80) + ')'); }catch(e){}
+    if(c === 'recuperada'){ _gsSrvMudarEstado('conectando'); _gsSrvTratandoFalha = false; await _gsSrvSinal(); return; }
+    // os dois textos antigos ficam: "sessão vencida e renovando" = reconectar; o resto ganha nome próprio
+    _gsSrvMudarEstado(c === 'sem_conexao' ? 'sem_conexao' : c);
+    _gsSrvReconAgendar();
+  }catch(e){ _gsSrvMudarEstado('sem_conexao'); }
+  finally{ _gsSrvTratandoFalha = false; }
+}
+// Reconexão automática com espera crescente. Sessão perdida de vez só volta com "Entrar de novo", mas ainda
+// assim tenta a cada 10 min (pode ter sido o servidor recusando por estar voltando de uma pausa).
+function _gsSrvReconAgendar(){
+  try{
+    if(!gsSrvAtivo() || _gsSrvEstado === 'conectado') { _gsSrvReconN = 0; return; }
+    if(_gsSrvReconTimer) return;
+    const s = GS_SRV_RECON_ESPERAS[Math.min(_gsSrvReconN, GS_SRV_RECON_ESPERAS.length - 1)];
+    _gsSrvReconN++;
+    _gsSrvReconTimer = setTimeout(function(){ _gsSrvReconTimer = null; gsSrvReconectarAgora({ auto:true }); }, s * 1000);
+  }catch(e){}
+}
+// "Reconectar agora" (rodapé, tela Servidor) e a reconexão automática: renova a sessão, manda o sinal, religa o
+// tempo real e esvazia as filas. Sem PIN e sem sair da conta. Nunca apaga a fila.
+async function gsSrvReconectarAgora(opts){
+  opts = opts || {};
+  if(!gsSrvAtivo()) return { ok:false, estado:'desligado' };
+  if(_gsSrvReconVoo) return _gsSrvReconVoo;
+  _gsSrvReconVoo = (async function(){
+    const antes = _gsSrvEstado;
+    if(!opts.auto){ try{ showToast('🔄 Reconectando ao servidor…', 2500); }catch(e){} }
+    try{ gsDiag('servidor', 'reconectar ' + (opts.auto ? '(automático)' : '(toque do usuário)') + ' · estava ' + antes); }catch(e){}
+    let rs = await _gsSrvRecuperarSessao(opts.auto ? 'reconexão automática' : 'reconectar agora');
+    if(rs === 'definitivo'){
+      _gsSrvMudarEstado('sessao_perdida'); _gsSrvReconAgendar();
+      if(!opts.auto){ try{ showServidor(); }catch(e){} }
+      return { ok:false, estado:'sessao_perdida' };
+    }
+    if(rs === 'rede'){
+      const c = (await _gsSondaInternet()) ? 'indisponivel' : 'sem_internet';
+      _gsSrvMudarEstado(c); _gsSrvReconAgendar();
+      if(!opts.auto){ try{ showToast('⚠️ ' + _gsSrvRodapeTexto(), 6000); }catch(e){} }
+      return { ok:false, estado:c };
+    }
+    await _gsSrvSinal();
+    if(_gsSrvEstado !== 'conectado'){
+      _gsSrvReconAgendar();
+      if(!opts.auto){ try{ showToast('⚠️ ' + _gsSrvRodapeTexto(), 6000); }catch(e){} }
+      return { ok:false, estado:_gsSrvEstado };
+    }
+    _gsSrvReconN = 0;
+    if(_gsSrvReconTimer){ clearTimeout(_gsSrvReconTimer); _gsSrvReconTimer = null; }
+    // tempo real: canal novo (o antigo pode ter morrido com a sessão)
+    try{ if(_gsSync.canal){ const cli = _gsSrvCliente(); try{ cli.removeChannel(_gsSync.canal); }catch(e){} _gsSync.canal = null; } _gsSyncAssinarTempoReal(); }catch(e){}
+    let n0 = 0;
+    try{
+      if(_gsSync.estado === 'ativo'){
+        n0 = (_gsSync.fila || []).length;
+        _gsSync.proxEnvio = 0; await _gsSyncEnviar();
+        await _gsSyncReceber('reconectar');
+        if(_gsPesada.ativo){ _gsPesada.prox = 0; try{ await gsPesadaDrenar('reconectar', 30000); }catch(e){} }
+      } else if(_gsSync.estado !== 'ativo'){ try{ _gsSyncIniciar(); }catch(e){} }
+    }catch(e){}
+    if(antes !== 'conectado' && antes !== 'conectando'){
+      try{ addLogSistema('Servidor reconectado ' + (opts.auto ? 'sozinho' : 'pelo usuário (sem PIN)') + ' — estava "' + antes + '"' + (n0 ? ' · ' + n0 + ' ação(ões) na fila enviadas' : ''), { aud:true, acao:'servidor_reconectado', origem:(opts.auto ? 'automatico' : 'usuario') }); }catch(e){}
+    }
+    if(!opts.auto){ try{ showToast('✅ Servidor conectado' + (n0 ? ' · ' + n0 + ' ação(ões) da fila enviadas' : '') + ' · ' + ((_gsSync.fila || []).length ? (_gsSync.fila.length + ' ainda na fila') : 'fila vazia'), 5000); }catch(e){} }
+    return { ok:true, estado:'conectado', enviadas:n0 };
+  })();
+  try{ return await _gsSrvReconVoo; }finally{ _gsSrvReconVoo = null; }
+}
+window.addEventListener('online', function(){ try{ if(gsSrvAtivo() && _gsSrvEstado !== 'conectado') setTimeout(function(){ gsSrvReconectarAgora({ auto:true }); }, 2000); }catch(e){} });
 
 // ── estado e rodapé ─────────────────────────────────────────────────────────
 function _gsSrvMudarEstado(e){
@@ -22707,13 +23356,25 @@ function _gsSrvRodapeTexto(){
   if(_gsSrvEstado === 'reconectar') return 'Servidor: reconectar ao servidor' + ap + sx;
   if(_gsSrvEstado === 'conectando') return 'Servidor: conectando…' + ap + sx;
   if(_gsSrvEstado === 'nao_configurado') return 'Servidor: não configurado' + ap + sx;
+  // v2.4.4.0 (Bloco G): cada causa com a sua orientação
+  if(_gsSrvEstado === 'sem_internet') return 'Servidor: sem internet neste dispositivo' + ap + sx;
+  if(_gsSrvEstado === 'indisponivel') return (_gsSrvAmbiente() === 'dev'
+      ? 'Servidor indisponível ou pausado — reative o projeto no painel do Supabase'
+      : 'Servidor indisponível — avise o desenvolvedor (nada se perde: fica guardado aqui)') + ap + sx;
+  if(_gsSrvEstado === 'sessao_perdida') return 'Servidor: a conta deste dispositivo precisa entrar de novo — toque aqui (a fila fica guardada)' + ap + sx;
   return 'Servidor: sem conexão' + ap + sx;
 }
 function _gsSrvRodapeHTML(){
   const t = _gsSrvRodapeTexto();
   if(!t) return '';
-  const cor = _gsSrvEstado === 'conectado' ? '#0F6E56' : (_gsSrvEstado === 'reconectar' ? '#A32D2D' : '#B26A00');
-  return '<div id="rodape-servidor" data-estado="' + _gsSrvEstado + '" style="font-size:10px;color:' + cor + ';font-weight:700;margin-top:2px">' + _vtEsc(t) + _gsRodapeDriveBotao() + '</div>';
+  const cor = _gsSrvEstado === 'conectado' ? '#0F6E56' : ((_gsSrvEstado === 'reconectar' || _gsSrvEstado === 'sessao_perdida') ? '#A32D2D' : '#B26A00');
+  // v2.4.4.0 (Bloco G): tocar na linha do servidor = "Reconectar agora" (não dispara o backup da nuvem)
+  return '<div id="rodape-servidor" data-estado="' + _gsSrvEstado + '" role="button" title="Tocar para reconectar ao servidor agora" onclick="event.stopPropagation();gsSrvRodapeToque()" style="font-size:10px;color:' + cor + ';font-weight:700;margin-top:2px;cursor:pointer">' + _vtEsc(t) + _gsRodapeDriveBotao() + '</div>';
+}
+function gsSrvRodapeToque(){
+  if(!gsSrvAtivo()) return;
+  if(_gsSrvEstado === 'sessao_perdida'){ try{ showServidor(); }catch(e){} return; }
+  gsSrvReconectarAgora({});
 }
 function _gsSrvAtualizarRodape(){
   const el = document.getElementById('rodape-servidor');
@@ -22762,8 +23423,8 @@ async function _gsSrvSinalExec(){
     const s = _gsSrvLer();
     if(r.data && r.data.letra && r.data.letra !== s.letra){ s.letra = r.data.letra; _gsSrvGravar(s); }
     if(r.data && r.data.responsavel) _gsRespGravar(r.data.responsavel);   // v2.3.0.0
-  } else if(_gsSrvErroDeSessao(r.error)) _gsSrvMudarEstado('reconectar');
-  else _gsSrvMudarEstado('sem_conexao');
+  } else if(_gsSrvErroDeSessao(r.error)){ _gsSrvMudarEstado('reconectar'); _gsSrvTratarFalha(r.error); }   // v2.4.4.0: tenta renovar/recuperar
+  else { _gsSrvMudarEstado('sem_conexao'); _gsSrvTratarFalha(r.error); }   // v2.4.4.0: sem internet × servidor fora
 }
 // Na abertura: NADA espera. Sem login, retorna na primeira linha.
 function _gsSrvIniciar(){
@@ -22775,7 +23436,13 @@ function _gsSrvIniciar(){
       const cli = _gsSrvCliente();
       if(!cli){ _gsSrvMudarEstado('nao_configurado'); return; }
       const ses = await cli.auth.getSession();
-      if(!ses || !ses.data || !ses.data.session){ _gsSrvMudarEstado('reconectar'); return; }
+      if(!ses || !ses.data || !ses.data.session){
+        // v2.4.4.0 (Bloco G): sem sessão na abertura — tenta a cópia guardada antes de pedir para entrar de novo
+        _gsSrvMudarEstado('reconectar');
+        const rs = await _gsSrvRecuperarSessao('abertura');
+        if(rs === 'definitivo'){ _gsSrvMudarEstado('sessao_perdida'); _gsSrvReconAgendar(); return; }
+        if(rs === 'rede'){ _gsSrvMudarEstado((await _gsSondaInternet()) ? 'indisponivel' : 'sem_internet'); _gsSrvReconAgendar(); return; }
+      }
       await _gsEsperarRede(8000);   // v2.4.2.0: o primeiro sinal espera a rede (página recém-carregada)
       await _gsSrvSinal();
     }catch(e){ _gsSrvMudarEstado('sem_conexao'); }
@@ -22822,13 +23489,17 @@ async function gsSrvTransferir(email){
   return r;
 }
 async function gsSrvCancelarEntrada(){
+  _gsSrvSaidaIntencional = true;
   try{ const cli = _gsSrvCliente(); if(cli) await cli.auth.signOut({ scope:'local' }); }catch(e){}
+  _gsSrvSaidaIntencional = false; _gsSrvSesCopiaApagar();
   _gsSrvMudarEstado('desligado');
 }
 async function _gsSrvConcluirEntrada(email, d){
   const cli = _gsSrvCliente();
   if(d.error || !d.data || !/^[A-Z]$/.test(String(d.data.letra || ''))){
+    _gsSrvSaidaIntencional = true;
     try{ await cli.auth.signOut({ scope:'local' }); }catch(e){}
+    _gsSrvSaidaIntencional = false; _gsSrvSesCopiaApagar();
     _gsSrvMudarEstado('desligado');
     return { ok:false, erro:'o servidor não registrou este dispositivo: ' + ((d.error && d.error.message) || 'sem letra') };
   }
@@ -22843,7 +23514,10 @@ async function _gsSrvConcluirEntrada(email, d){
 }
 async function gsSrvDesligar(){
   const s = _gsSrvLer();
+  _gsSrvSaidaIntencional = true;
   try{ const cli = _gsSrvCliente(); if(cli) await cli.auth.signOut({ scope:'local' }); }catch(e){}
+  _gsSrvSaidaIntencional = false; _gsSrvSesCopiaApagar();
+  try{ if(_gsSrvReconTimer) clearTimeout(_gsSrvReconTimer); }catch(e){} _gsSrvReconTimer = null; _gsSrvReconN = 0;
   s.ligado = false; s.desligado_em = Date.now(); delete s.transferido; delete s.transferido_em;   // v2.2.0.0
   _gsSrvGravar(s);
   try{ if(_gsSrvTimerSinal) clearInterval(_gsSrvTimerSinal); }catch(e){}
@@ -23130,8 +23804,13 @@ function showServidor(){
     return;
   }
   let carga = {}; try{ carga = JSON.parse(localStorage.getItem(GS_SRV_CARGA_LS) || 'null') || {}; }catch(e){}
+  // v2.4.4.0 (Bloco E): a carga inicial só existe no PRIMEIRO dispositivo. Nos demais (tablet B) "ainda não feita"
+  // parecia pendência — o que vale ali é quando os dados vieram do servidor.
+  const orig = _gsOrigemLer();
   const cargaTxt = carga.estado === 'concluida' ? '✅ Carga inicial concluída em ' + _dtLocal(carga.concluida_ts)
-                 : (carga.estado === 'em_andamento' ? '⏳ Carga inicial em andamento (pode retomar)' : 'Carga inicial ainda não feita');
+                 : (carga.estado === 'em_andamento' ? '⏳ Carga inicial em andamento (pode retomar)'
+                 : (orig && orig.ts && _gsSync.modo === 'baixar' ? '✅ Dados recebidos do servidor em ' + _dtLocal(orig.ts)
+                 : (_gsSync.ultimoRecebimento ? '✅ Recebendo os dados do servidor (último recebimento ' + _dtLocal(_gsSync.ultimoRecebimento) + ')' : 'Carga inicial ainda não feita')));
   showM('<div class="mt">🛰 Servidor</div>' +
     '<div style="background:#EEF6FF;border:1px solid #B9D6F2;border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
       '<div style="font-size:22px;font-weight:800;color:#185FA5">Dispositivo ' + _vtEsc(s.letra || '?') + '</div>' +
@@ -23142,6 +23821,8 @@ function showServidor(){
     '<div id="srv-sync">' + _gsSyncPainelHTML() + '</div>' +
     _gsRespPainelHTML() +   // v2.3.0.0 (Blocos E/F/H)
     '<div id="srv-carga-res" style="font-size:12px;margin:4px 0"></div>' +
+    _gsSrvReentrarHTML(s) +   // v2.4.4.0 (Bloco G)
+    '<button class="bcx" id="srv-reconectar" style="width:100%;margin-bottom:6px">🔄 Reconectar agora</button>' +
     '<button class="bcx" id="srv-cfg-aparelho" style="width:100%;margin-bottom:6px">📱 Configurar este dispositivo' + (gsSegPlanoResumo() ? ' · ' + _vtEsc(gsSegPlanoResumo()) : '') + '</button>' +
     '<button class="bcx" id="srv-desligar" style="width:100%;margin-bottom:6px;color:#A32D2D;border-color:#E8A8A8">Desligar servidor neste dispositivo</button>' +
     '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
@@ -23152,7 +23833,48 @@ function showServidor(){
     if(d) d.onclick = async function(){ await gsSrvDesligar(); showToast('Servidor desligado — o dispositivo segue no modo local', 3500); showServidor(); };
     const c = document.getElementById('srv-cfg-aparelho');
     if(c) c.onclick = function(){ gsTelaConfigurarAparelho(); };
+    const rc = document.getElementById('srv-reconectar');
+    if(rc) rc.onclick = async function(){ rc.disabled = true; rc.textContent = 'Reconectando…'; await gsSrvReconectarAgora({}); if(document.getElementById('srv-reconectar')) showServidor(); };
+    const re = document.getElementById('srv-reentrar');
+    if(re) re.onclick = async function(){
+      const msg = document.getElementById('srv-reentrar-msg');
+      re.disabled = true; if(msg){ msg.style.color = '#555'; msg.textContent = 'Entrando…'; }
+      const r = await gsSrvReentrar(document.getElementById('srv-email').value, document.getElementById('srv-senha').value);
+      re.disabled = false;
+      if(!r.ok){ if(msg){ msg.style.color = '#A32D2D'; msg.textContent = '⚠️ ' + r.erro; } return; }
+      showToast('✅ Conta de volta neste dispositivo — a fila segue sendo enviada', 5000);
+      showServidor();
+    };
   }, 0);
+}
+// v2.4.4.0 (Bloco G) — "ENTRAR DE NOVO" quando a sessão foi perdida de vez. NÃO desliga o servidor: a fila, a base
+// e a letra continuam; só a conta volta a entrar (mesmo dispositivo → o servidor não acusa "em uso").
+function _gsSrvReentrarHTML(s){
+  if(_gsSrvEstado !== 'sessao_perdida') return '';
+  const er = gsSrvUltimoErroSessao();
+  return '<div id="srv-sessao-perdida" style="background:#FFF1F1;border:1px solid #E8A8A8;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;line-height:1.45">' +
+    '<strong style="color:#A32D2D">A conta deste dispositivo precisa entrar de novo.</strong><br>O servidor não aceitou mais a sessão guardada' +
+    (er ? ' (' + _vtEsc(er.tipo + ' recusada · http ' + er.status + (er.codigo ? ' · ' + er.codigo : '')) + ' em ' + _vtEsc(_dtLocal(er.ts)) + ')' : '') +
+    '. <strong>Nada foi apagado</strong>: as ' + ((_gsSync.fila || []).length) + ' ação(ões) na fila sobem assim que a conta entrar.' +
+    '<label class="fl" style="margin-top:6px">E-mail do dispositivo</label><input class="fi" id="srv-email" type="email" autocomplete="off" value="' + _vtEsc(s.email || '') + '">' +
+    '<label class="fl">Senha</label><input class="fi" id="srv-senha" type="password" autocomplete="off">' +
+    '<div id="srv-reentrar-msg" style="min-height:16px;font-size:12px;margin:4px 0"></div>' +
+    '<button class="bsv" id="srv-reentrar" style="width:100%">Entrar de novo (mantém a fila)</button></div>';
+}
+async function gsSrvReentrar(email, senha){
+  const cli = _gsSrvCliente(); if(!cli) return { ok:false, erro:'servidor não configurado' };
+  let r;
+  try{ r = await cli.auth.signInWithPassword({ email:String(email || '').trim(), password:String(senha || '') }); }catch(e){ r = { error:{ message:(e && e.message) || String(e) } }; }
+  if(r.error || !r.data || !r.data.session) return { ok:false, erro:(r.error && r.error.message) || 'login recusado' };
+  const s = _gsSrvLer();
+  if(String(email || '').trim().toLowerCase() !== String(s.email || '').trim().toLowerCase()){
+    _gsSrvSaidaIntencional = true; try{ await cli.auth.signOut({ scope:'local' }); }catch(e){} _gsSrvSaidaIntencional = false;
+    return { ok:false, erro:'esta é outra conta — para trocar de conta, desligue o servidor e entre com a nova' };
+  }
+  try{ addLogSistema('Servidor: a conta deste dispositivo entrou de novo (sessão perdida) — fila mantida: ' + ((_gsSync.fila || []).length) + ' ação(ões)', { aud:true, acao:'servidor_reentrou', alvo:s.letra || '', origem:'usuario' }); }catch(e){}
+  _gsSrvMudarEstado('conectando');
+  await gsSrvReconectarAgora({ auto:true });
+  return { ok:_gsSrvEstado === 'conectado', erro:_gsSrvEstado === 'conectado' ? '' : _gsSrvRodapeTexto() };
 }
 // ════════════════════════════════════════════════════════════════════════════
 // v2.4.0.0 — SEGUNDO PLANO (APK vc30) + "CONFIGURAR ESTE APARELHO"
@@ -23168,6 +23890,7 @@ const GS_CFG_AP_LS = 'garagespot_cfg_aparelho';
 // 60 s por evaluateJavascript (não sofre a limitação de timers de página oculta). Cada tique faz o ciclo
 // INTEIRO: sinal, recebimento, fila leve, fila de arquivos e — no responsável — envio ao Drive.
 let _gsTiqueRodando = false, _gsTiqueN = 0, _gsTiqueUltConsulta = 0, _gsTiqueUltDriveRec = 0;
+let _gsTiqueUltHhj = 0;   // v2.4.4.0: Hospedados Hoje também pelo tique nativo (o setInterval da página é limitado com a tela oculta)
 async function gsSegPlanoBatimento(){
   const p = _gsSegPlano(); if(!p || !gsSrvAtivo()) return;
   try{
@@ -23209,6 +23932,9 @@ async function gsTiqueNativo(origem){
         try{ passos = await gsPesadaDrenar('tique', 40000); }catch(e){}
       }
     }
+    try{ await _gdLerCota(); }catch(e){}   // v2.4.4.0 (Bloco C): a cada ciclo (com teto de 10 min), só quem envia ao Drive
+    try{ await gsDriveConferenciaDiaria(); }catch(e){}   // v2.4.4.0 (Bloco D): 1×/dia, amostra dos últimos 7 dias
+    if(Date.now() - _gsTiqueUltHhj > 10 * 60000){ _gsTiqueUltHhj = Date.now(); try{ _hhjCiclo(); }catch(e){} }   // sem await: o trabalhador tem a própria trava e o próprio lote
     try{ _gsSyncAtualizarRodape(); }catch(e){}
   }finally{
     _gsTiqueRodando = false;
@@ -24192,6 +24918,8 @@ function _gsSyncPersistirLocal(m){
 // Redesenha SEM fechar nada. Arrasto ou "mover" em andamento: espera terminar.
 function _gsSyncRedesenhar(m){
   if(!m || !m.algo) return;
+  // v2.4.4.0: mudança vinda do OUTRO dispositivo também atualiza o Hospedados Hoje (só o responsável envia)
+  try{ Object.keys(m.tokens || {}).forEach(function(t){ if(t && HOSPEDAGENS[t]) _hhjMarcar(t, 'recebido do servidor'); }); }catch(e){}
   const p = _gsSync.redesenhoPendente;
   if(p){ Object.assign(m.vagas, p.vagas); Object.assign(m.recargas, p.recargas); Object.assign(m.tokens, p.tokens); m.rebuild = m.rebuild || p.rebuild; _gsSync.redesenhoPendente = null; }
   let ocupado = false;
@@ -24681,10 +25409,10 @@ function _gsSyncPainelHTML(){
       ' · tempo real: ' + (_gsSync.rt === 'SUBSCRIBED' ? 'conectado' : 'consulta a cada 30 s') +
       (_gsSync.recusadas ? '<br><span style="color:#A32D2D">' + _gsSync.recusadas + ' ação(ões) recusada(s) pelo servidor, guardada(s) para conferência</span>' : '') +
       (_gsSync.guardados.length ? '<br><span style="color:#A32D2D">Há dados de uma versão mais nova — atualize o app</span>' : '') +
-      '<div style="color:#888;font-size:11px;margin-top:3px">Fotos e PDFs ainda não viajam entre dispositivos.</div>');
+      '<div style="color:#888;font-size:11px;margin-top:3px">Fotos, vistorias e PDFs viajam pela fila de arquivos' + ((_gsPesada.fila || []).length ? ' (' + _gsPesada.fila.length + ' aguardando envio)' : '') + '.</div>');   // v2.4.4.0 (Bloco E)
   }
   if(e === 'decisao' && _gsSync.decisao === 'baixar'){
-    return caixa('#B9D6F2', '#EEF6FF', '<strong>O servidor já tem os dados da empresa</strong> e este dispositivo está vazio.<br>Baixe os dados para este dispositivo passar a sincronizar (fotos não descem nesta versão).' +
+    return caixa('#B9D6F2', '#EEF6FF', '<strong>O servidor já tem os dados da empresa</strong> e este dispositivo está vazio.<br>Baixe os dados para este dispositivo passar a sincronizar (as fotos e os documentos das hospedagens ativas descem logo depois, pela fila de arquivos).' +
       '<button class="bsv" id="srv-baixar" style="width:100%;margin-top:8px">⬇️ Baixar dados do servidor</button>');
   }
   if(e === 'decisao' && _gsSync.decisao === 'misturaria'){
@@ -24707,7 +25435,7 @@ function _gsSyncLigarPainel(){
 }
 async function _gsSyncBaixarNaTela(){
   showM('<div class="mt">⬇️ Baixar dados do servidor</div><div class="ms" id="srv-bx-ms">Baixando…</div>' +
-    '<div style="font-size:11px;color:#888">Fotos e PDFs não descem nesta versão.</div>');
+    '<div style="font-size:11px;color:#888">As fotos e os documentos das hospedagens ativas descem depois, pela fila de arquivos.</div>');
   const r = await _gsSyncAdotar('baixar', function(n, tab){ const ms = document.getElementById('srv-bx-ms'); if(ms) ms.textContent = 'Baixando ' + tab + '… (' + n + ' registro(s))'; });
   if(r.ok){ try{ gsRepararVagasVizinhas('baixar dados do servidor'); }catch(e){} }   // v2.4.2.2 (Bloco A)
   showM('<div class="mt">⬇️ Baixar dados do servidor</div>' +
@@ -24999,7 +25727,12 @@ async function _gsPesadaRodar(){
       else if(gsSouResponsavel() && await _gsPesadaDriveUm()) mais = true;
       else if(gsSouResponsavel()) await _gsPesadaLimpar();
     }
-  }catch(e){ console.warn('[PESADA] passo falhou (tenta de novo):', e && e.message); _gsPesadaFalhou(); }
+  }catch(e){
+    console.warn('[PESADA] passo falhou (tenta de novo):', e && e.message); _gsPesadaFalhou();
+    // v2.4.4.0 (Bloco C): Drive cheio aparece com a mensagem certa no card e no rodapé (o PDF fica no servidor)
+    if(e && e.gdCheio){ try{ _gdMarcarFalha(e.message, e.gdDet, false); gsDiag('drive', 'SEM ESPAÇO no Drive — os PDFs ficam no servidor e sobem quando houver espaço'); }catch(x){} }
+    else if(e && (e.gdDet || /conferência do Drive|Drive/i.test(String(e.message || '')))){ try{ gsDiag('drive', 'envio não concluído: ' + String(e.message || e).slice(0, 160)); }catch(x){} }
+  }
   finally{ _gsPesada.enviando = false; _gsSyncAtualizarRodape(); }
   _gsPesadaAgendar(mais ? (forcado ? GS_PESADA_PASSO_FORCADO_MS : 150) : (_gsPesada.prox > Date.now() ? _gsPesada.prox - Date.now() : 15000));
 }
@@ -25202,7 +25935,26 @@ async function _gsPesadaBaixarUm(){
   _gsPesada.conhecidos[x.id] = 1; await _gsPesadaGravarJSON('conhecidos.json', _gsPesada.conhecidos);
   try{ const v = _vagaIdDoGs(x.gs); if(v) ref(v); _gsSyncAvisarModal([x.gs]); _gsPendAtualizarPainel(); }catch(e){}
   _gsPesadaComplementarAgendar(x.gs);
+  try{ _hhjMarcar(x.gs, 'arquivo recebido do servidor'); }catch(e){}   // v2.4.4.0: a foto/vistoria do outro dispositivo entra no documento vivo
   return true;
+}
+// v2.4.4.0 (Bloco D) — CONFERÊNCIA REAL: o arquivo existe, está fora da lixeira, na pasta certa e com o tamanho
+// que saiu daqui. Só então o servidor é avisado e o arquivo sai do trânsito. Falhou → continua pendente.
+async function _gdConferirEnviado(token, id, pastaId, bytes){
+  if(!id) return { ok:false, motivo:'sem_id', texto:'o Drive não devolveu o id do arquivo' };
+  let j = null;
+  try{
+    const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,name,size,trashed,parents', {method:'GET'}, token, 'conferir o arquivo enviado');
+    j = await r.json();
+  }catch(e){
+    if(e && e.gdDet && e.gdDet.status === 404) return { ok:false, motivo:'sumiu', texto:'o arquivo não existe no Drive' };
+    throw e;
+  }
+  if(!j || !j.id) return { ok:false, motivo:'sumiu', texto:'o arquivo não existe no Drive' };
+  if(j.trashed) return { ok:false, motivo:'lixeira', texto:'o arquivo está na lixeira do Drive', info:j };
+  if(pastaId && Array.isArray(j.parents) && j.parents.indexOf(pastaId) < 0) return { ok:false, motivo:'pasta', texto:'o arquivo está em outra pasta', info:j };
+  if(bytes && Number(j.size || 0) !== Number(bytes)) return { ok:false, motivo:'tamanho', texto:'tamanho ' + (j.size || 0) + ' ≠ ' + bytes + ' bytes', info:j };
+  return { ok:true, info:j };
 }
 // RESPONSÁVEL: PDFs dos outros aparelhos → Drive; fotos/vistorias de hospedagens já fechadas → confirmadas
 // v2.4.2.0 (Bloco A) — NENHUM ARQUIVO VAI DUAS VEZES AO DRIVE:
@@ -25214,6 +25966,12 @@ async function _gsPesadaBaixarUm(){
 // Servidor ainda sem o 009: segue sem a reserva (como na v2.4.1.0).
 async function _gsPesadaDriveUm(){
   if(_gsDriveSoA('envio ao Drive') || !_gdDisponivel() || !_gdConectado()) return false;
+  // v2.4.4.0 (Bloco C): Drive cheio — a leitura da cota (a cada ciclo) destrava assim que o espaço volta; enquanto
+  // isso, uma tentativa a cada 30 min (o espaço pode voltar sem a cota ter sido lida, ex.: lixeira esvaziada)
+  if(DRIVE_STATUS.nuvem_cheio){
+    if(Date.now() - (_gsPesada.cheioTentativa || 0) < 30 * 60000) return false;
+    _gsPesada.cheioTentativa = Date.now();
+  }
   const agora = Date.now();
   const pend = Object.keys(_gsPesada.srv).map(function(k){ return _gsPesada.srv[k]; })
     .filter(function(x){ return x && !x.drive_ok_em && !x.removido_storage_em && /^pdf_/.test(String(x.tipo || '')) && !_gsPesada.drive[x.id]
@@ -25242,16 +26000,28 @@ async function _gsPesadaDriveUm(){
       const cls = _gdHistClassificar(x.nome || '') || { nome:x.nome, tipo:(x.tipo === 'pdf_recarga' ? 'recarga' : 'fechamento'), apt:(x.meta || {}).apt, checkin:(x.meta || {}).checkin };
       const destino = _gdHistDestino(Object.assign({}, cls, { apt:cls.apt || (x.meta || {}).apt, checkin:cls.checkin || (x.meta || {}).checkin }));
       pastaTxt = Array.isArray(destino) ? destino.join('/') : String(destino || '');
-      let ja = null;
+      let ja = null, pastaIdEnv = '';
       r = await _gdComToken(async function(token){
         const pasta = await _gdGarantirCaminho(token, destino);
+        pastaIdEnv = pasta;
         ja = await _hhjAcharPorNome(token, pasta, x.nome);   // v2.4.1.0: já está lá? confirma sem duplicar
-        if(ja) return ja;
-        return await _gdEnviarArquivoBin(token, pasta, x.nome, b64, 'application/pdf');
+        let f = ja || await _gdEnviarArquivoBin(token, pasta, x.nome, b64, 'application/pdf');
+        // v2.4.4.0 (Bloco D): LER DE VOLTA antes de confirmar ao servidor. O que estava lá com o mesmo nome e
+        // tamanho diferente (envio cortado no meio) recebe o conteúdo certo no MESMO arquivo — sem duplicar.
+        let c1 = await _gdConferirEnviado(token, f && f.id, pasta, b.bytes.length);
+        if(!c1.ok && ja && c1.motivo === 'tamanho'){ await _hhjAtualizarBin(token, f.id, b64, 'application/pdf'); c1 = await _gdConferirEnviado(token, f.id, pasta, b.bytes.length); }
+        if(!c1.ok) throw new Error('conferência do Drive falhou (' + c1.texto + ') — o PDF continua pendente');
+        return f;
       }, false);
-      _gsPesada.driveEnviados[x.id] = { id:(r && r.id) || '', pasta:pastaTxt, em:Date.now() };
+      _gsPesada.driveEnviados[x.id] = { id:(r && r.id) || '', pasta:pastaTxt, pasta_id:pastaIdEnv, bytes:b.bytes.length, em:Date.now() };
       await _gsPesadaGravarJSON('drive-enviados.json', _gsPesada.driveEnviados);
       try{ gsDiag('drive', (ja ? 'já estava no Drive (não reenviado): ' : 'PDF enviado ao Drive: ') + x.nome + ' (do dispositivo ' + _gsLetraDoDv(x.criado_por) + ')'); }catch(e){}
+    }
+    else if(r.id && r.pasta_id && r.bytes){
+      // já enviado numa volta anterior e a confirmação caiu: confere de novo (pode ter ido para a lixeira no meio)
+      const c0 = await _gdComToken(function(token){ return _gdConferirEnviado(token, r.id, r.pasta_id, r.bytes); }, false);
+      if(!c0.ok){ delete _gsPesada.driveEnviados[x.id]; await _gsPesadaGravarJSON('drive-enviados.json', _gsPesada.driveEnviados);
+        throw new Error('o PDF enviado antes não passou na conferência (' + c0.texto + ') — será enviado de novo'); }
     }
     let c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:(r && r.id) || '', p_pasta:pastaTxt }, 15000);
     if(c.error && _gsSrvFuncaoAusente(c.error)) c = await _gsSrvRpc('confirmar_drive', { p_id:x.id, p_drive_id:(r && r.id) || '' }, 15000);
@@ -25471,10 +26241,140 @@ async function gsTelaEnviosDrive(){
     (pen.length ? pen.map(function(p){ return li('<strong>' + _vtEsc(p.nome || '') + '</strong><br>' + _vtEsc(p.gs || '—') + ' · criado no dispositivo ' + _vtEsc(p.letra || '?') + ' · desde ' + dt(p.desde) + (p.enviando ? ' · <span style="color:#185FA5">enviando pelo dispositivo ' + _vtEsc(p.enviando) + '</span>' : '')); }).join('')
                 : '<div style="font-size:12px;color:#0F6E56;padding:4px 0">Nenhum arquivo aguardando o Drive.</div>') +
     '<div class="exp-secao-titulo" id="srv-envios-ok-titulo" style="margin-top:10px">ÚLTIMOS ENVIADOS (' + env.length + ')</div>' +
-    '<div style="max-height:40vh;overflow-y:auto">' + (env.length ? env.map(function(p){ return li('<strong>' + _vtEsc(p.nome || '') + '</strong><br>' + _vtEsc(p.gs || '—') + ' · dispositivo ' + _vtEsc(p.letra || '?') + ' · conta ' + _vtEsc(p.conta || '(não registrada)') + ' · ' + dt(p.em) + (p.pasta ? '<br><span style="color:#888">' + _vtEsc(p.pasta) + '</span>' : '')); }).join('')
+    _gsDriveSumidosHTML() +
+    '<div style="max-height:40vh;overflow-y:auto">' + (env.length ? env.map(function(p, i){
+        // v2.4.4.0 (Bloco D): caminho completo + Abrir no Drive + resultado da conferência
+        const caminho = (p.pasta ? GD_PASTA_RAIZ + '/' + p.pasta + '/' : '') + (p.nome || '');
+        const idOk = p.drive_id && !/^pdf:/.test(String(p.drive_id));
+        return li('<strong>' + _vtEsc(p.nome || '') + '</strong><br>' + _vtEsc(p.gs || '—') + ' · dispositivo ' + _vtEsc(p.letra || '?') + ' · conta ' + _vtEsc(p.conta || '(não registrada)') + ' · ' + dt(p.em) +
+          '<br><span class="srv-envio-caminho" style="color:#888">' + _vtEsc(caminho) + '</span>' +
+          (idOk ? ' <button type="button" class="bcx srv-envio-abrir" data-id="' + _vtEsc(p.drive_id) + '" style="font-size:10px;padding:1px 6px;margin-left:4px;width:auto">Abrir no Drive</button>' : '') +
+          ' <span class="srv-envio-st" id="srv-envio-st-' + i + '"></span>'); }).join('')
                 : '<div style="font-size:12px;color:#888;padding:4px 0">Nenhum envio registrado ainda.</div>') + '</div>' +
+    (env.length && _gdDisponivel() && _gdConectado() && !_gsDriveSoA('verificar envios') ? '<button class="bsv" id="srv-envios-verificar" style="width:100%;margin-top:10px">🔎 Verificar agora</button>' : '') +
+    '<div id="srv-envios-ver-res" style="font-size:12px;margin-top:6px"></div>' +
     '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+  document.querySelectorAll('.srv-envio-abrir').forEach(function(b){ b.onclick = function(){ gsDriveAbrirArquivo(b.getAttribute('data-id')); }; });
+  const bv = document.getElementById('srv-envios-verificar');
+  if(bv) bv.onclick = async function(){
+    bv.disabled = true; bv.textContent = 'Verificando…';
+    const res = await gsDriveConferirEnvios({ manual:true, lista:env });
+    env.forEach(function(p, i){
+      const el = document.getElementById('srv-envio-st-' + i); const r = res.porNome[p.nome];
+      if(el && r) el.innerHTML = r.ok ? '<span style="color:#0F6E56;font-weight:700">✓ ' + _vtEsc(r.texto || 'no Drive') + '</span>' : '<span style="color:#A32D2D;font-weight:700">⚠️ ' + _vtEsc(r.texto) + '</span>';
+    });
+    const rr = document.getElementById('srv-envios-ver-res');
+    if(rr) rr.innerHTML = res.erro ? '<span style="color:#A32D2D">⚠️ ' + _vtEsc(res.erro) + '</span>'
+      : '<span style="color:' + (res.problemas ? '#A32D2D' : '#0F6E56') + ';font-weight:700">' + res.conferidos + ' conferido(s) · ' + res.problemas + ' com problema' + (res.restaurados ? ' · ' + res.restaurados + ' tirado(s) da lixeira' : '') + (res.reenviados ? ' · ' + res.reenviados + ' reenviado(s)' : '') + '</span>';
+    bv.disabled = false; bv.textContent = '🔎 Verificar agora';
+  };
 }
+// v2.4.4.0 (Bloco D) — abre o arquivo no Drive (fora do app)
+function gsDriveAbrirArquivo(id){
+  if(!id) return;
+  const url = 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view';
+  try{ window.open(url, '_system') || window.open(url, '_blank'); }catch(e){ try{ window.open(url, '_blank'); }catch(_){} }
+}
+// v2.4.4.0 (Bloco D) — CONFERÊNCIA DOS PDFs QUE O SERVIDOR DIZ ESTAREM NO DRIVE.
+// Manual ("Verificar agora") confere a lista inteira da tela; a diária (tique do responsável) confere uma
+// AMOSTRA dos últimos 7 dias. O que achar na LIXEIRA é tirado de lá (o app nunca apaga PDF — alguém o pôs lá
+// por engano); o que SUMIU é reenviado se este dispositivo ainda tem o PDF, e senão vira ALERTA na tela e na trilha.
+const GS_DRIVE_CONF_ULT_LS = 'garagespot_drive_conf_ult', GS_DRIVE_SUMIDOS_LS = 'garagespot_drive_sumidos';
+const GD_CONF_AMOSTRA = 10, GD_CONF_INTERVALO_MS = 24 * 3600000;
+function _gsDriveSumidos(){ try{ return JSON.parse(localStorage.getItem(GS_DRIVE_SUMIDOS_LS) || '[]') || []; }catch(e){ return []; } }
+function _gsDriveSumidosHTML(){
+  const l = _gsDriveSumidos(); if(!l.length) return '';
+  return '<div id="srv-envios-sumidos" style="background:#FFF1F1;border:1px solid #E8A8A8;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px;color:#A32D2D;line-height:1.45"><strong>⚠️ ' + l.length +
+    (l.length === 1 ? ' PDF não está mais no Drive' : ' PDFs não estão mais no Drive') + '</strong> (e este dispositivo não tem cópia para reenviar):<br>' +
+    l.slice(0, 8).map(function(x){ return _vtEsc(x.caminho || x.nome); }).join('<br>') + '<br><span style="color:#633806">Procure na lixeira do Drive da conta do hotel e restaure, ou abra o app no dispositivo que gerou o PDF.</span></div>';
+}
+async function _gdPaiNome(token, id){
+  try{ const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,name', {method:'GET'}, token, 'conferir a pasta do arquivo'); const j = await r.json(); return (j && j.name) || ''; }catch(e){ return ''; }
+}
+async function _gdTirarDaLixeira(token, id){
+  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,trashed', { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ trashed:false }) }, token, 'tirar o PDF da lixeira');
+  return await r.json();
+}
+async function _gsPdfLocalB64(nome){
+  try{
+    const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem; if(!F || !nome) return null;
+    const r = await F.readFile({ path:'GarageSpot/' + nome, directory:'DOCUMENTS' });
+    return (r && typeof r.data === 'string' && r.data.length > 100) ? r.data : null;
+  }catch(e){ return null; }
+}
+async function gsDriveConferirEnvios(opts){
+  opts = opts || {};
+  const out = { conferidos:0, problemas:0, restaurados:0, reenviados:0, porNome:{}, erro:'' };
+  try{
+    if(!_gdDisponivel() || !_gdConectado()){ out.erro = 'o Google Drive não está conectado neste dispositivo'; return out; }
+    if(_gsDriveSoA('conferência dos envios')){ out.erro = _gsDriveMsg(); return out; }
+    let lista = opts.lista;
+    if(!lista){
+      const x = await _gsSrvRpc('envios_drive', { p_limite:100 }, 15000);
+      if(x.error){ out.erro = x.error.message; return out; }
+      lista = (x.data || {}).enviados || [];
+    }
+    const lim = Date.now() - 7 * 86400000;
+    let alvo = lista.filter(function(p){ return p && p.drive_id && !/^pdf:/.test(String(p.drive_id)) && (opts.manual || Date.parse(p.em || '') >= lim); });
+    if(!opts.manual && alvo.length > GD_CONF_AMOSTRA){
+      // amostra: os 5 mais recentes + 5 sorteados entre os demais
+      const resto = alvo.slice(5); for(let i = resto.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); const t = resto[i]; resto[i] = resto[j]; resto[j] = t; }
+      alvo = alvo.slice(0, 5).concat(resto.slice(0, GD_CONF_AMOSTRA - 5));
+    }
+    const sumidos = _gsDriveSumidos();
+    await _gdComToken(async function(token){
+      for(const p of alvo){
+        const caminho = (p.pasta ? GD_PASTA_RAIZ + '/' + p.pasta + '/' : '') + (p.nome || '');
+        let c = await _gdConferirEnviado(token, p.drive_id, '', 0);
+        if(c.ok){
+          const segs = String(p.pasta || '').split('/').filter(Boolean), esperado = segs[segs.length - 1] || '';
+          const pai = esperado && c.info && Array.isArray(c.info.parents) && c.info.parents[0] ? await _gdPaiNome(token, c.info.parents[0]) : esperado;
+          if(esperado && pai && pai !== esperado) c = { ok:false, motivo:'pasta', texto:'está na pasta "' + pai + '", não em "' + esperado + '"' };
+          else if(c.info && c.info.size !== undefined && !(Number(c.info.size) > 0)) c = { ok:false, motivo:'tamanho', texto:'arquivo vazio no Drive' };
+        }
+        if(!c.ok && c.motivo === 'lixeira'){
+          try{ await _gdTirarDaLixeira(token, p.drive_id); out.restaurados++;
+            addLogSistema('Conferência do Drive: PDF estava na LIXEIRA e foi restaurado — ' + caminho, { aud:true, acao:'drive_pdf_restaurado_da_lixeira', alvo:p.nome });
+            c = { ok:true, texto:'restaurado da lixeira' }; }catch(e){}
+        }
+        if(!c.ok && c.motivo === 'sumiu'){
+          const b64 = await _gsPdfLocalB64(p.nome);
+          if(b64){
+            try{
+              const segs = String(p.pasta || '').split('/').filter(Boolean);
+              const pasta = await _gdGarantirCaminho(token, segs.length ? segs : _gdHistDestino(_gdHistClassificar(p.nome || '') || { nome:p.nome, tipo:'fechamento' }));
+              const novo = await _gdEnviarArquivoBin(token, pasta, p.nome, b64, 'application/pdf');
+              const c2 = await _gdConferirEnviado(token, novo && novo.id, pasta, 0);
+              if(c2.ok){ out.reenviados++; c = { ok:true, texto:'reenviado' };
+                addLogSistema('Conferência do Drive: PDF tinha SUMIDO e foi reenviado a partir deste dispositivo — ' + caminho, { aud:true, acao:'drive_pdf_reenviado', alvo:p.nome }); }
+            }catch(e){}
+          }
+          if(!c.ok){
+            if(!sumidos.some(function(x){ return x.nome === p.nome; })) sumidos.push({ nome:p.nome, caminho:caminho, gs:p.gs || '', desde:Date.now() });
+            addLogSistema('Conferência do Drive: PDF NÃO ESTÁ MAIS NO DRIVE e este dispositivo não tem cópia — ' + caminho, { aud:true, acao:'drive_pdf_sumiu', alvo:p.nome });
+          }
+        }
+        out.conferidos++; if(!c.ok) out.problemas++;
+        out.porNome[p.nome] = c;
+      }
+      return true;
+    }, false);
+    try{ localStorage.setItem(GS_DRIVE_SUMIDOS_LS, JSON.stringify(sumidos.filter(function(x){ return !(out.porNome[x.nome] && out.porNome[x.nome].ok); }))); }catch(e){}
+    try{ localStorage.setItem(GS_DRIVE_CONF_ULT_LS, String(Date.now())); }catch(e){}
+    try{ gsDiag('drive', 'conferência ' + (opts.manual ? 'manual' : 'diária') + ': ' + out.conferidos + ' conferido(s), ' + out.problemas + ' com problema'); }catch(e){}
+    if(out.problemas && !opts.manual){ try{ showToast('⚠️ Conferência do Drive: ' + out.problemas + ' PDF(s) com problema — veja Gestão → Servidor → Envios ao Drive', 8000); }catch(e){} }
+  }catch(e){ out.erro = (e && e.message) || String(e); }
+  return out;
+}
+async function gsDriveConferenciaDiaria(){
+  try{
+    if(!gsSrvAtivo() || !gsSouResponsavel() || !_gdDisponivel() || !_gdConectado()) return;
+    const ult = parseInt(localStorage.getItem(GS_DRIVE_CONF_ULT_LS) || '0', 10) || 0;
+    if(Date.now() - ult < GD_CONF_INTERVALO_MS) return;
+    await gsDriveConferirEnvios({});
+  }catch(e){}
+}
+
 function _gsRespLigarPainel(){
   const co = document.getElementById('srv-conta-oficial'); if(co) co.onclick = function(){ gsTelaContaOficial(); };
   const ev = document.getElementById('srv-envios'); if(ev) ev.onclick = function(){ gsTelaEnviosDrive(); };
@@ -25957,6 +26857,8 @@ function _gsCfgLocal(){
     o.tema = { valor:(function(){ try{ return localStorage.getItem('garagespot_tema') || ''; }catch(e){ return ''; } })() };
     o.poda_config = { valor:_gsPodaConfig() };
     o.horarios = { valor:gsHorariosEmpresa() };   // v2.4.2.0 (Bloco D)
+    try{ const de = JSON.parse(localStorage.getItem(GS_DRIVE_ESPACO_LS) || 'null'); if(de) o.drive_espaco = { valor:de }; }catch(x){}   // v2.4.4.0 (Bloco C)
+    try{ const dr = JSON.parse(localStorage.getItem(GS_DRIVE_RAIZ_LS) || 'null'); if(dr && dr.id) o.drive_raiz = { valor:dr }; }catch(x){}   // v2.4.4.0 (Bloco D)
     const h = _gsPinHashGestor(); if(h) o.gestor_pin_hash = { pin_hash:h };
     Object.keys(o).forEach(function(k){ o[k] = JSON.parse(JSON.stringify(o[k])); });
   }catch(e){ console.warn('[SYNC] configuração local ilegível:', e && e.message); }
@@ -25976,6 +26878,8 @@ function _gsCfgAplicarRecebido(k, d){
   else if(k === 'tema' && typeof v === 'string' && v){ try{ localStorage.setItem('garagespot_tema', v); applyTema(v); }catch(e){} }
   else if(k === 'poda_config' && v){ _gsPodaSalvarConfig(v); }
   else if(k === 'horarios' && v){ saveHorarios(v); }
+  else if(k === 'drive_espaco' && v){ localStorage.setItem(GS_DRIVE_ESPACO_LS, JSON.stringify(v)); try{ if(typeof renderPainelDia === 'function' && document.getElementById('rodape-backup-atalho')) renderPainelDia(); }catch(e){} }   // v2.4.4.0
+  else if(k === 'drive_raiz' && v && v.id){ localStorage.setItem(GS_DRIVE_RAIZ_LS, JSON.stringify(v)); }   // v2.4.4.0
   else if(k === 'gestor_pin_hash' && d && d.pin_hash){ localStorage.setItem(GESTAO_PIN_HASH_LS, d.pin_hash); }
   else return false;
   return true;
@@ -28193,14 +29097,14 @@ Promise.resolve(true).then(async (ativo)=>{
       // Hospedados Hoje: retentativa do que ficou pendente e conferência da pasta
       // (ninguém que já saiu pode continuar lá). O caminho normal é o debounce de
       // 20 s disparado pela própria ação; isto é a rede de segurança.
-      _gsTique(function(){ _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){}); }, 450);
+      _gsTique(function(){ _hhjCiclo(); }, 450);
       // Esvaziamento do balde `_Sem data de check-in`. Para sozinho quando termina.
       _gsTique(function(){ _gdReorganizarSemData(); }, 525);
       try { setTimeout(function(){ _gdHistProcessar(); }, 25000); } catch(e){}
       // v1.9.6.6: as três tarefas novas entram escalonadas DEPOIS da varredura do
       // histórico, para não disputarem rede nem CPU com o arranque nem entre si.
       try { setTimeout(function(){ _gdArquivarAuditoria(); }, 40000); } catch(e){}
-      try { setTimeout(function(){ _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){}); }, 55000); } catch(e){}
+      try { setTimeout(function(){ _hhjCiclo(); }, 55000); } catch(e){}
       try { setTimeout(function(){ _gdReorganizarSemData(); }, 70000); } catch(e){}
       // v1.9.5.3: quando o app VOLTA (ou a rede volta), tenta o que ficou adiado —
       // com uma folga para a conectividade estabilizar. Sem isso, o que foi adiado
