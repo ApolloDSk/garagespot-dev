@@ -1369,7 +1369,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.4.0';
+const GS_VERSION = 'v2.4.5.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -2563,7 +2563,6 @@ function gsAlterarDataPrevista(gs){
       addHistorico(h.apt, 'data_prevista', vaga, txt, usuarioStr, gs);
       try{ addLogSistema(txt + ' (' + gs + ', Apt ' + (h.apt || '?') + ')', { aud:true, acao:'data_prevista_alterada', quem:usuarioStr, alvo:gs, origem:'usuario' }); }catch(e){}
       try{ if(vaga) ref(vaga); upd(); _gsPendAtualizarPainel(); }catch(e){}
-      try{ _hhjMarcar(gs, 'data prevista alterada'); }catch(e){}
       closeOv();
       showToast('✅ ' + txt, 4000);
     });
@@ -3018,7 +3017,6 @@ function executarMove(ms, destId, usuario){
       saveV(destId,ms.apt,ms.model,ms.color,ms.plate,ms.guest,ms.obs);
       addHistorico(ms.apt,'movimentacao_vaga',destId,'Movido de '+ms.id+' para '+destId,usuarioStr,hospedagem);
       _gsBackupAuto('movimentação de vaga '+ms.id+'→'+destId);   // v1.9.6.3
-      try{ _hhjMarcar(hospedagem, 'mudança de vaga'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
       refByApt(ms.apt);upd();_refrescarRecargaTodos();closeOv();setTimeout(positionPilares,150);
     };
   } else {
@@ -3820,7 +3818,6 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     // horário. (Impor vistoria obrigatória aqui é decisão de outra rodada.)
     _gsBackupAuto('check-in '+numH, {completo:true});
     // v1.9.6.6: hospedagem nova nasce com documento em `Hospedados Hoje`.
-    try{ _hhjMarcar(numH, 'check-in'); }catch(e){}
   } else if(isCheckin===false){
     // v1.9.9.2: quem chama (`_clkVRotear`/`showOcc`) já devolveu o GS à vaga ANTES
     // de apagar o registro de passeio — logo `d.hospedagem` é a fonte certa aqui.
@@ -3842,7 +3839,6 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
     // apaga o registro de PASSEIO. Não disparava cadência nenhuma (só o check-in,
     // logo acima, disparava). Agora o par saída/volta fica consistente na nuvem.
     _gsBackupAuto('retorno do passeio '+apt);
-    try{ _hhjMarcar(hospNum, 'retorno do passeio'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
   } else {
     _gsSincronizarHospPares(id);   // v1.9.7.0: invariante do merge também na edição
     ref(id);refByApt(d.apt);
@@ -4065,7 +4061,6 @@ function _doOutExec(id, aptKey, hospNum, usuarioStr){
     // horário. Um carro fora da garagem é exatamente o estado que precisa estar
     // atualizado na nuvem se o aparelho se perder.
     _gsBackupAuto('saída para passeio '+aptKey);
-    try{ _hhjMarcar(hospNum, 'saída para passeio'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
   }
 }
 
@@ -4454,12 +4449,15 @@ function showDet(id, fromPasseio){
     </div>
     <div style="margin:8px 0 10px">${rows.map(([l,v])=>`<div class="dr"><span class="dl">${l}</span><span class="dv">${v}</span></div>`).join('')}</div>
     <div id="att-det-area"></div>
+    ${hospedagemNum && _hhjAtiva(hospedagemNum)?`<button class="bcx" id="det-gerar-pdf" style="width:100%;margin-top:8px">📄 Gerar PDF</button>`:''}
     <div style="display:flex;gap:7px;margin-top:8px">
       <button class="bcx" style="flex:1" onclick="closeOv()">Fechar</button>
       <button class="bcx" style="flex:1;color:#185FA5;border-color:#185FA5" id="btn-edit">✏️ Editar</button>
     </div>`;
   document.getElementById('ov').classList.add('on');
   document.getElementById('btn-edit').onclick=()=>showEdit(id, fromPasseio);
+  // v2.4.5.0 (Bloco B): o documento desta hospedagem, com salvar/compartilhar — não vai ao Drive
+  const _bPdf = document.getElementById('det-gerar-pdf'); if(_bPdf) _bPdf.onclick = function(){ gerarPdfHospedagem(hospedagemNum); };
   if(_dViz){ try{ _gsVizinhaLigarBotoes(document.getElementById('det-vizinha')); }catch(e){} }
 }
 
@@ -4651,7 +4649,6 @@ function showEdit(id, fromPasseio){
       }
       try { if(typeof renderAgrupadoresPainel==='function' && document.getElementById('painel-wrap')?.style?.display!=='none') renderAgrupadoresPainel(); } catch(e){}
       _gsBackupAuto('edição de hospedagem '+(hospNum||novoApt));   // v1.9.6.3
-      try{ _hhjMarcar(hospNum, 'edição de dados'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo (movimentação/passeio/recarga/edição).
       showToast('✓ Dados atualizados',2500);
       showDet(fromPasseio?novoApt:id, fromPasseio);
     });
@@ -7074,6 +7071,7 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-sep">Relatórios e análises</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showRelatorios')">📊 <span>Relatórios</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showGestaoVistorias')">📋 <span>Vistorias</span></div>
+    <div class="gestao-menu-item" id="gestao-hrel-agora" onclick="gerarRelatorioHospedadosAgora()">🏨 <span>Relatório de hospedados agora</span></div>
     <div class="gestao-menu-sep">Configurações</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showConfiguracoesSistema')">⚙ <span>Configurações do Sistema</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showConexoes')">🔗 <span>Backup e Conexões</span></div>
@@ -8142,7 +8140,6 @@ function assinarVistoria(id){
       // v1.9.6.6 — GATILHO OBRIGATÓRIO: a assinatura é um dos três motivos pelos
       // quais o Hospedados Hoje existe. `_vtAnexarDocumento` já cobre o caminho em
       // que o documento é recomposto; esta marcação garante o caso em que não é.
-      try{ _hhjMarcar((v&&(v.hospedagem||v.hospedagem_gs))||'', 'assinatura de vistoria '+id); }catch(e){}
     });
   };
 }
@@ -10192,7 +10189,6 @@ async function _nciFotosSalvarESegue(){
     console.log('[BUG #1] salvou', _nciFotos.length, 'fotos em', chaveAnexo, '— total agora:', ANEXOS[chaveAnexo].length, '— anexos persistidos após nova vistoria');
     // v1.9.6.6 — GATILHO OBRIGATÓRIO: as fotos da etapa do check-in também
     // alimentam o documento vivo.
-    try{ _hhjMarcar(_nciD && (_nciD._gsExistente || _nciD.gs), 'fotos do check-in'); }catch(e){}
   }
   _nciFotos=[];
   _nciFotosPromisesPendentes = [];
@@ -10329,7 +10325,6 @@ function _nciCommitCheckin(){
     ANEXOS[keyH].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
     saveAnexos();
     // v1.9.6.6 — GATILHO OBRIGATÓRIO: a vistoria de entrada do check-in.
-    try{ _hhjMarcar(gs, 'vistoria de entrada ' + numero); }catch(e){}
   }
 }
 
@@ -10374,7 +10369,6 @@ function _nciCommitNovaVistoriaAdicional(){
     ANEXOS[anexoKey].push({name:nome,type:'image/png',data:d.documento_final_b64,isImg:true,vistoria:numero,tipo:'vistoria'});
     saveAnexos();
     // v1.9.6.6 — GATILHO OBRIGATÓRIO: vistoria adicional.
-    try{ _hhjMarcar(gs, 'vistoria adicional ' + numero); }catch(e){}
   }
   // v1.9.6.3: vistoria adicional cria documento e anexo e não disparava cadência
   // nenhuma. COMPLETA porque o que ela produz é justamente uma FOTO — o rolante,
@@ -10626,7 +10620,9 @@ function abrirDetalhesAguardando(gs){
     html:`<div class="vst-modal-info">${rows.map(function(r){return '<div class="vst-modal-info-row"><span>'+r[0]+'</span><span>'+_vtEsc(r[1])+'</span></div>';}).join('')}</div>
       <div style="font-size:11px;font-weight:700;color:#185FA5;margin:8px 0 4px;text-transform:uppercase;letter-spacing:.4px">Anexos (${anexos.length})</div>
       <div class="anx-lista">${anxLista}</div>`,
-    botoes:[{label:'Fechar',cls:'primary',action:'close'}]
+    // v2.4.5.0 (Bloco B): "Gerar PDF" também para a hospedagem sem vaga
+    botoes:[].concat(_hhjAtiva(gs) ? [{label:'📄 Gerar PDF', action:function(){ gerarPdfHospedagem(gs); }}] : [],
+                     [{label:'Fechar',cls:'primary',action:'close'}])
   });
 }
 
@@ -10934,7 +10930,6 @@ function _vtAnexarDocumento(vagaId,v){
   // estrangulamento de TODA vistoria: criação, edição e assinatura passam por aqui
   // para recompor o documento final. Um gatilho só, no lugar por onde tudo passa,
   // vale mais que três espalhados que alguém esquece de manter.
-  try{ _hhjMarcar(gs, 'vistoria/assinatura ' + v.numero); }catch(e){}
 }
 
 function _vtRecomporVistoria(id){
@@ -11045,7 +11040,6 @@ function _aplicarDesignacao(vagaId,pendenteId,usuario){
   showToast('✅ '+p.gs+' · Apt. '+p.apt+' → vaga '+vagaId,3500);
   if(typeof addLogSistema==='function') addLogSistema('NCI designação: '+p.gs+' → '+vagaId+' por '+(usuario&&usuario.nome?usuario.nome:usuario));
   _gsBackupAuto('designação '+p.gs); // v1.9.4.11
-  try{ _hhjMarcar(p.gs, 'designação de vaga'); }catch(e){}   // v1.9.6.6
 }
 // ── BACKUP LOCAL ──────────────────────────────────────────────────────────
 // ATENÇÃO (v1.9.5.0): `ultimo_backup` e `falha_backup` são do BACKUP LOCAL — estão
@@ -15243,21 +15237,18 @@ async function _gdTentarPDFsPendentes(opts){
 const GD_PASTA_HOJE = 'Hospedados Hoje';
 const HHJ_LS        = 'garagespot_hhoje';
 
-// AGRUPAMENTO (resposta ao item 3.1.4). 20 segundos contados do ÚLTIMO toque.
-// Por quê: o manobrista age em rajada — abre a hospedagem, tira 8 fotos seguidas,
-// assina, fecha. Sem agrupamento seriam 8 gerações e 8 envios de megabytes durante
-// a rajada, que é justamente o pior momento possível. Com 20 s a rajada inteira
-// vira UM documento. Curto o bastante para o gestor ver a atualização em menos de
-// meio minuto; longo o bastante para nenhuma sequência humana normal escapar dele.
-const HHJ_DEBOUNCE_MS = 20000;
-// Respiro entre dois documentos quando há vários pendentes: um por vez, nunca
-// em paralelo, com folga para a interface entre eles.
-const HHJ_INTERVALO_MS = 3000;
-// v2.4.4.0: documentos por rodada do trabalhador (o resto fica para a próxima — debounce ou tique de 10 min).
-const HHJ_LOTE_MAX = 3;
-const HHJ_MOTIVO_CONF = 'conferência';
-
-let _hhjTimer = null, _hhjRodando = false;
+// ┌── v2.4.5.0 — UM RELATÓRIO NO LUGAR DE UM DOCUMENTO POR HOSPEDAGEM ──────┐
+// │ O documento vivo por hospedagem era REESCRITO no mesmo arquivo a cada    │
+// │ mudança: o Drive guarda as versões anteriores e a conta enchia. A fila   │
+// │ por hospedagem, o debounce de 20 s e a conferência de 10 min SAÍRAM.     │
+// │ Agora quem gera é `_hrelCiclo` (abaixo): UM PDF com todas as ativas, no  │
+// │ máximo 1×/hora e só com mudança, arquivo NOVO a cada vez, ficam 3.       │
+// │ As ações do operador não disparam mais nada — por construção, nenhuma    │
+// │ geração acontece durante a rajada de toques.                             │
+// │ Ficam daqui: material/assinatura/nome (o relatório e o "Gerar PDF" de    │
+// │ Detalhes usam a MESMA seção) e a retirada do `_EM-ANDAMENTO_` antigo no  │
+// │ check-out.                                                               │
+// └─────────────────────────────────────────────────────────────────────────┘
 
 function _hhjEstado(){
   try{
@@ -15380,9 +15371,8 @@ async function _hhjGerarDoc(gs){
   });
 }
 
-// Atualiza o CONTEÚDO de um PDF que já existe na nuvem, preservando o id (e, com
-// ele, qualquer link que o gestor tenha guardado). Criar um arquivo novo a cada
-// atualização encheria a pasta de duplicatas do mesmo hóspede.
+// Atualiza o CONTEÚDO de um PDF que já existe na nuvem, preservando o id. v2.4.5.0: o relatório nunca reescreve;
+// quem usa isto é a fila pesada (achado pelo nome com tamanho errado recebe o conteúdo no MESMO arquivo).
 async function _hhjAtualizarBin(token, id, b64, mime){
   const lim = 'gsbnd' + Date.now() + Math.random().toString(36).slice(2, 8);
   const meta = JSON.stringify({ mimeType: mime });
@@ -15418,13 +15408,11 @@ async function _hhjLixeira(token, id){
   return await r.json();
 }
 
-// Gera e envia o documento de UMA hospedagem. Nunca é chamada de dentro de uma
-// ação do manobrista — só do trabalhador de segundo plano.
 // v2.4.4.0 (Hospedados Hoje completo) — ASSINATURA do que vai no documento: dados da hospedagem, carro/vaga,
 // movimentações, anexos (com ou sem conteúdo NESTE dispositivo) e vistorias (documento e assinatura presentes).
-// Com servidor, quem envia ao Drive é o RESPONSÁVEL, mas a ação pode ter sido feita no OUTRO dispositivo — o
-// `_hhjMarcar` de lá nunca chega aqui. A conferência compara esta assinatura com a do último envio e marca o
-// que mudou (ou nunca subiu). Só lê: nada de PDF, nada de rede.
+// Com servidor, quem envia ao Drive é o RESPONSÁVEL, mas a ação pode ter sido feita no OUTRO dispositivo — por
+// isso a decisão vem dos DADOS, não da ação. v2.4.5.0: é a base de `_hrelAssinatura` ("algo mudou" no relatório).
+// Só lê: nada de PDF, nada de rede.
 function _hhjAssinatura(gs){
   try{
     const m = _hhjMaterial(gs);
@@ -15445,62 +15433,8 @@ function _hhjAssinatura(gs){
   }catch(e){ return ''; }
 }
 
-async function _hhjEnviarUm(gs){
-  if(!_hhjAtiva(gs)) { await _hhjRetirar(gs); return { retirado:true }; }
-  const assin = _hhjAssinatura(gs);   // antes de gerar: mudança durante a geração volta a marcar na próxima conferência
-  const doc = await _hhjGerarDoc(gs);
-  if(!doc) throw new Error('gerador de PDF indisponível');
-  await _pdfCeder();                                   // respiro antes de serializar
-  const b64 = doc.output('datauristring').split(',')[1];
-  const nome = _hhjNome(gs);
-  return await _gdComToken(async function(token){
-    const pasta = await _hhjPastaId(token);
-    const est = _hhjEstado();
-    const reg = est.arquivos[gs];
-    // 1) id lembrado. 2) busca pelo NOME (aparelho restaurado, ou id perdido).
-    //    3) só então cria. Esta ordem é o que impede duplicata.
-    let id = (reg && reg.id) || '';
-    if(id){
-      try{ await _hhjAtualizarBin(token, id, b64, 'application/pdf'); }
-      catch(e){
-        if(e && e.gdAuth) throw e;
-        if(!(e && e.gdDet && e.gdDet.status === 404)) throw e;
-        id = '';                                       // alguém apagou no Drive: recria
-      }
-    }
-    if(!id){
-      // v1.9.6.8: numa TROCA DE APARTAMENTO o nome muda (ele carrega o apto), então
-      // procurar só pelo nome NOVO não acharia o arquivo que já existe — e o app
-      // criaria um SEGUNDO para a mesma hospedagem. Procura-se pelo nome antigo
-      // também; achando, é o mesmo arquivo, e ele será renomeado logo abaixo.
-      let achado = await _hhjAcharPorNome(token, pasta, nome);
-      if(!achado && reg && reg.nome && reg.nome !== nome){
-        achado = await _hhjAcharPorNome(token, pasta, reg.nome);
-      }
-      if(achado && achado.id){ id = achado.id; await _hhjAtualizarBin(token, id, b64, 'application/pdf'); }
-      else {
-        const criado = await _gdEnviarArquivoBin(token, pasta, nome, b64, 'application/pdf');
-        id = (criado && criado.id) || '';
-      }
-    }
-    // RENOMEIA em vez de criar outro: uma hospedagem tem UM documento vivo, e o
-    // nome tem de refletir o apartamento atual. `_gdRenomear` mexe só em metadados
-    // — preserva id e conteúdo, e não reenvia um byte.
-    if(id && reg && reg.nome && reg.nome !== nome){
-      try{
-        await _gdRenomear(token, id, nome);
-        addLogSistema('Hospedados Hoje: documento de ' + gs + ' renomeado — ' + reg.nome + ' → ' + nome);
-      }catch(eR){ console.warn('[HHJ] rename falhou (o conteúdo já está certo):', eR && eR.message); }
-    }
-    const e2 = _hhjEstado();
-    e2.arquivos[gs] = { id:id, nome:nome, ts:Date.now(), assin:assin };
-    delete e2.pendentes[gs];
-    _hhjSalvar(e2);
-    return { id:id, nome:nome };
-  }, false);
-}
-
-// Tira o documento provisório da pasta. Chamado no check-out e pela conferência.
+// Tira o documento provisório da pasta. Chamado no check-out (v2.4.5.0: os `_EM-ANDAMENTO_` deixaram de ser
+// gerados; os que já estão no Drive saem no check-out, ou pela arrumação do relatório).
 // NUNCA falha para fora: um provisório que sobrou é conserto da próxima rodada.
 async function _hhjRetirar(gs){
   if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return;   // v1.9.9.4 (a conferência retira depois)
@@ -15523,145 +15457,277 @@ async function _hhjRetirar(gs){
   }catch(e){ console.warn('[HHJ] não retirou', gs, '—', e && e.message); return false; }
 }
 
-// ── O GATILHO ──────────────────────────────────────────────────────────────
-// É a ÚNICA função chamada de dentro das ações do manobrista, e ela é O(1): grava
-// um marcador pequeno e (re)arma um temporizador. Nada de PDF, nada de rede, nada
-// que possa demorar. Se ela falhar, falha em silêncio — a ação segue igual.
-function _hhjMarcar(gs, motivo){
-  try{
-    if(!gs || !_hhjAtiva(gs)) return;
-    const est = _hhjEstado();
-    est.pendentes[gs] = { ts:Date.now(), motivo:String(motivo || '') };
-    _hhjSalvar(est);
-    if(_hhjTimer) clearTimeout(_hhjTimer);
-    _hhjTimer = setTimeout(function(){ _hhjTimer = null; _hhjProcessar(); }, HHJ_DEBOUNCE_MS);
-  }catch(e){ console.warn('[HHJ] marcação ignorada:', e && e.message); }
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.5.0 — RELATÓRIO ÚNICO DE HOSPEDADOS (substitui um `_EM-ANDAMENTO_` por hospedagem)
+// ════════════════════════════════════════════════════════════════════════════
+// Decisão do Douglas (28/10/2026). O documento vivo por hospedagem era REESCRITO no mesmo arquivo a cada
+// mudança — o Drive guarda as versões anteriores e a conta enchia; e a arrumação de 10 min com fila por
+// hospedagem custava ~13 PDFs com fotos na primeira rodada do tablet. Agora:
+// • UM PDF com todas as hospedagens ativas: página índice (vaga, apto, GS, hóspede, entrada, saída prevista,
+//   situação) e depois uma seção completa por hospedagem, na ordem do índice — a MESMA seção do documento
+//   de hospedagem em andamento (`buildRegistroDoc` com `opts.doc`), nada de segundo desenho;
+// • gerado pelo RESPONSÁVEL no máximo a cada 1 hora e SÓ se algo mudou (assinatura das ativas); o gestor
+//   pede na hora pela Gestão ("Relatório de hospedados agora");
+// • cada relatório é um ARQUIVO NOVO com data e hora no nome (nunca reescrito → o Drive não acumula versões)
+//   e ficam os HREL_MANTER mais recentes; os mais antigos são APAGADOS DE VEZ (sem lixeira — ver `_hrelApagar`).
+// ⚠️ EXCEÇÃO EXPLÍCITA, aprovada pelo Douglas, à regra "o app não apaga documentos": vale SÓ para estes
+// relatórios provisórios (nome em HREL_RE_NOME, dentro de `Hospedados Hoje`). Nunca para PDFs de
+// fechamento, recarga, backups ou auditoria — a arrumação só olha esta pasta e só este padrão de nome.
+const HREL_LS = 'garagespot_hrel';
+const HREL_INTERVALO_MS = 60 * 60000;
+const HREL_MANTER = 3;
+const HREL_RE_NOME = /^HOSPEDADOS_\d{4}-\d{2}-\d{2}_\d{2}h\d{2}(-\d{2})?\.pdf$/;
+let _hrelRodando = false;
+
+function _hrelEstado(){
+  const base = { assin:'', ts:0, nome:'', falhas:0, pendente:false, erro:'' };
+  try{ return Object.assign(base, JSON.parse(localStorage.getItem(HREL_LS) || 'null') || {}); }
+  catch(e){ return base; }
+}
+function _hrelSalvar(e){
+  try{ _gsSetItemSeguro(HREL_LS, JSON.stringify(e), 'relatório de hospedados'); }catch(x){}
 }
 
-// Trabalhador de segundo plano. UM documento por vez, com respiro entre eles.
-// Qualquer condição ruim: sai calado e tenta no tique de 10 min.
-async function _hhjProcessar(){
-  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return;   // v1.9.9.4
-  if(_hhjRodando) return;
-  try{
-    if(!_gdDisponivel() || !_gdConectado()) return;
-    if(DRIVE_STATUS.nuvem_cheio) return;
-    if(_gdEnviando) return;                            // backup completo tem prioridade
-    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    if(typeof gsPronto === 'function' && !gsPronto()) return;
-    // MODAL ABERTO = manobrista no meio de alguma coisa. A regra do projeto é que a
-    // fluidez da operação tem prioridade sobre a completude do recurso, e gerar um
-    // PDF de megabytes por baixo de um modal aberto é exatamente o oposto disso.
-    // Adiar não custa nada: o tique de 10 min retoma.
-    try{
-      const ov = document.getElementById('ov');
-      if(ov && ov.classList.contains('on')) return;
-    }catch(e){}
-    const est = _hhjEstado();
-    // v2.4.4.0: o que o operador acabou de fazer vem antes do que a conferência achou; e no máximo
-    // HHJ_LOTE_MAX documentos por rodada — a primeira conferência no hotel acha ~13 hospedagens sem
-    // documento, e 13 PDFs com fotos seguidos no tablet de 2 GB seria o oposto da regra da fluidez.
-    const alvos = Object.keys(est.pendentes || {}).sort(function(a, b){
-      const pa = est.pendentes[a] || {}, pb = est.pendentes[b] || {};
-      const ca = pa.motivo === HHJ_MOTIVO_CONF ? 1 : 0, cb = pb.motivo === HHJ_MOTIVO_CONF ? 1 : 0;
-      return (ca - cb) || ((pa.ts || 0) - (pb.ts || 0));
-    }).slice(0, HHJ_LOTE_MAX);
-    if(!alvos.length) return;
-    _hhjRodando = true;
-    for(const gs of alvos){
-      try{
-        const ov2 = document.getElementById('ov');
-        if(ov2 && ov2.classList.contains('on')) break;   // o operador abriu algo no meio do lote: o resto espera
-        await _hhjEnviarUm(gs);
-      }catch(e){
-        // A FALHA NÃO CUSTA A AÇÃO NEM O REGISTRO: o pendente continua na fila e a
-        // próxima rodada tenta de novo. Só o documento de consulta atrasa.
-        const e2 = _hhjEstado();
-        e2.falhas = (e2.falhas || 0) + 1;
-        _hhjSalvar(e2);
-        console.warn('[HHJ] documento de', gs, 'não subiu (fica pendente):', e && e.message);
-        try{ addLogSistema('Hospedados Hoje: documento de ' + gs + ' não subiu — ' +
-          ((e && e.message) || 'erro') + ' (fica pendente)'); }catch(_){}
-        break;                                         // rede ruim: para o lote aqui
-      }
-      await new Promise(function(r){ setTimeout(r, HHJ_INTERVALO_MS); });
-    }
-  }catch(e){ console.warn('[HHJ] lote não rodou:', e && e.message); }
-  finally{ _hhjRodando = false; }
+// As linhas do índice, já na ordem do relatório: na garagem (pela vaga), a passeio, sem vaga (pelo apto).
+function _hrelLinhas(){
+  const ordem = { 'Na garagem':0, 'A passeio':1, 'Sem vaga':2 };
+  const num = function(a, b){ return String(a || '').localeCompare(String(b || ''), 'pt-BR', { numeric:true }); };
+  return _hhjAtivas().map(function(gs){
+    const h = HOSPEDAGENS[gs] || {};
+    const vaga = _vagaIdDoGs(gs) || '';
+    const p = (PASSEIO && PASSEIO[gs]) || null;
+    const onde = vaga ? 'Na garagem' : (p ? 'A passeio' : 'Sem vaga');
+    const atrasado = gsCheckoutEstado(h) === 'atrasado';
+    const d = (vaga && S[vaga]) || p || h;
+    return { gs:gs, vaga:vaga, apt:h.apt || '', hospede:(d && d.guest) || h.guest || '',
+             entrada:h.checkin_ts || 0, saida:h.saida_prevista || '', onde:onde, atrasado:atrasado,
+             situacao:atrasado ? 'Check-out atrasado · ' + onde.toLowerCase() : onde };
+  }).sort(function(a, b){
+    return (ordem[a.onde] - ordem[b.onde]) || (a.onde === 'Na garagem' ? num(a.vaga, b.vaga) : 0) || num(a.apt, b.apt) || num(a.gs, b.gs);
+  });
 }
 
-// v2.4.4.0 — RECONCILIAÇÃO: toda hospedagem ATIVA tem documento, e ele reflete o que o app tem agora.
-// Antes só `_hhjMarcar` punha alguém na fila, e só no dispositivo onde a ação aconteceu. Com o servidor
-// ligado, ação feita no dispositivo que NÃO é o responsável ficava presa na fila dele (que não envia), e o
-// responsável — que envia — nunca sabia; hospedagem sem ação recente no responsável nunca ganhava documento.
-// Roda no responsável (ou sem servidor), no tique, antes do trabalhador. Não gera nada: só marca.
-function _hhjReconciliar(){
-  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return 0;
-  try{
-    if(!_gdDisponivel() || !_gdConectado()) return 0;
-    const est = _hhjEstado();
-    let n = 0;
-    _hhjAtivas().forEach(function(gs){
-      if(est.pendentes[gs]) return;
-      const reg = est.arquivos[gs];
-      if(reg && reg.id && reg.assin && reg.assin === _hhjAssinatura(gs)) return;
-      est.pendentes[gs] = { ts:Date.now(), motivo:HHJ_MOTIVO_CONF };
-      n++;
+// "Algo mudou": a assinatura de cada hospedagem ativa (dados, carro/vaga, movimentações, anexos, vistorias —
+// `_hhjAssinatura`) mais a situação do índice. Com servidor, o que o outro dispositivo fez chega pelos dados.
+function _hrelAssinatura(){
+  const txt = _hrelLinhas().map(function(l){ return l.gs + '=' + _hhjAssinatura(l.gs) + ':' + l.situacao; }).join('|') || 'nenhuma';
+  let x = 5381;
+  for(let i = 0; i < txt.length; i++) x = ((x * 33) ^ txt.charCodeAt(i)) >>> 0;
+  return x.toString(36) + '.' + txt.length.toString(36);
+}
+
+function _hrelNome(ts){
+  const d = new Date(ts);
+  return 'HOSPEDADOS_' + _localISO(d) + '_' + _hLocal(d).replace(':', 'h') + '.pdf';
+}
+
+// Monta o relatório aos poucos: cada seção prepara as fotos cedendo a tela (`buildRegistroDocAsync`) e há um
+// respiro entre uma seção e a seguinte. `progresso(i, n)` é opcional (o botão da Gestão mostra o andamento).
+async function _hrelGerarDoc(progresso){
+  if(!window.jspdf) return null;
+  const t0 = Date.now();
+  const linhas = _hrelLinhas();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'p', unit:'mm', format:'a4' });
+  const quando = Date.now();
+  let y = _pdfBarraMarca(doc, 'Relatório de hospedados', 'Hotel Gumz · ' + fmtDt(quando));
+  y = _pdfCabecalhoDoc(doc, y, {
+    eyebrow:'Documento provisório · hospedagens ativas',
+    titulo:'Relatório de hospedados',
+    refs:[['Empresa', 'Hotel Gumz'], ['Gerado em', fmtDt(quando)], ['Hospedagens ativas', String(linhas.length)]],
+  });
+  doc.autoTable({
+    startY:y,
+    head:[['Vaga', 'Apto', 'GS', 'Hóspede', 'Entrada', 'Saída prevista', 'Situação']],
+    body:linhas.map(function(l){
+      return [_pdfTxt(l.vaga || '—'), _pdfTxt(l.apt || '—'), _pdfTxt(l.gs), _pdfTxt(l.hospede || '—'),
+              l.entrada ? fmtDt(l.entrada) : '—', l.saida ? _fmtDataExibicao(l.saida) : '—', _pdfTxt(l.situacao)];
+    }),
+    theme:'plain',
+    headStyles:{ fillColor:PDF_COR.marinho, textColor:255, fontSize:7.5, fontStyle:'bold' },
+    styles:{ fontSize:8, cellPadding:{ top:2.4, bottom:2.4, left:2, right:2 }, textColor:PDF_COR.texto, lineColor:PDF_COR.linha, lineWidth:{ bottom:0.1 } },
+    alternateRowStyles:{ fillColor:[250, 251, 253] },
+    // 14+14+18+44+30+24+46 = 190 = PDF_W
+    columnStyles:{ 0:{ cellWidth:14, halign:'center', fontStyle:'bold' }, 1:{ cellWidth:14, halign:'center' },
+      2:{ cellWidth:18, fontStyle:'bold' }, 3:{ cellWidth:44 }, 4:{ cellWidth:30, fontSize:7.5 },
+      5:{ cellWidth:24, fontSize:7.5 }, 6:{ cellWidth:46 } },
+    margin:{ left:PDF_L, right:PDF_L },
+    didParseCell:function(data){
+      try{ if(data.section === 'body' && data.column.index === 6 && linhas[data.row.index].atrasado){ data.cell.styles.textColor = PDF_COR.vermelho; data.cell.styles.fontStyle = 'bold'; } }catch(e){}
+    },
+  });
+  if(!linhas.length){
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text('Nenhuma hospedagem ativa neste momento.', PDF_L, ((doc.lastAutoTable && doc.lastAutoTable.finalY) || y) + 10);
+  }
+  for(let i = 0; i < linhas.length; i++){
+    await _pdfCeder();
+    if(typeof progresso === 'function'){ try{ progresso(i + 1, linhas.length); }catch(e){} }
+    const gs = linhas[i].gs;
+    try{ await _gsArqHidratar(['h_' + gs]); }catch(e){}
+    const m = _hhjMaterial(gs);
+    await buildRegistroDocAsync(m.apt, m.dv, m.hist, m.snapshot, null, {
+      titulo:'Hospedagem em andamento',
+      eyebrow:'Relatório de hospedados · ' + (i + 1) + ' de ' + linhas.length,
+      semSelo:true,
+      doc:doc,
     });
-    if(n){
-      _hhjSalvar(est);
-      try{ addLogSistema('Hospedados Hoje: ' + n + ' documento(s) a gerar ou atualizar (conferência das hospedagens ativas)'); }catch(e){}
-    }
-    return n;
-  }catch(e){ console.warn('[HHJ] reconciliação não rodou:', e && e.message); return 0; }
-}
-function _hhjCiclo(){
-  try{ _hhjReconciliar(); }catch(e){}
-  return _hhjProcessar().then(function(){ return _hhjConferir(); }, function(){});
+  }
+  _pdfFooter(doc);
+  return { doc:doc, n:linhas.length, quando:quando, ms:Date.now() - t0 };
 }
 
-// CONFERÊNCIA DA PASTA. Garante as duas promessas que não podem depender de um
-// envio ter dado certo na hora: ninguém que já saiu continua lá, e sem hospedagem
-// ativa a pasta fica VAZIA. Roda no tique, depois do lote.
-async function _hhjConferir(){
-  if(_gsSuspenso('Hospedados Hoje') || _gsDriveSoA('Hospedados Hoje')) return;   // v1.9.9.4
+// Envia como arquivo NOVO e arruma a pasta: ficam os HREL_MANTER relatórios mais recentes (os demais são apagados
+// de vez por `_hrelApagar`); e o provisório
+// `_EM-ANDAMENTO_` de hospedagem já encerrada vai para a LIXEIRA (o check-out feito no outro dispositivo não o retira —
+// só o responsável envia; antes a arrumação de 10 min fazia isto). Provisório de hospedagem ATIVA fica:
+// sai no check-out dela. Qualquer outro nome na pasta: intocado.
+// v2.4.5.0 (decisão do Douglas, 29/10): o relatório que sai é APAGADO DE VEZ (DELETE), sem passar pela lixeira.
+// A lixeira conta no espaço da conta por 30 dias; com um relatório de ~8–15 MB por hora isso daria GBs parados,
+// e o relatório é provisório e se gera de novo. É a ÚNICA exclusão definitiva do app — por isso a trava do nome
+// mora AQUI DENTRO e não em quem chama: nome fora de HREL_RE_NOME é recusado, seja qual for o caminho.
+// PDFs de fechamento, recarga, backups, auditoria e os `_EM-ANDAMENTO_` continuam na regra da lixeira.
+async function _hrelApagar(token, f){
+  if(!f || !f.id || !HREL_RE_NOME.test(f.name || '')) throw new Error('exclusão definitiva recusada: ' + (f && f.name));
   try{
-    if(!_gdDisponivel() || !_gdConectado()) return;
-    if(_gdEnviando) return;
-    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    if(typeof gsPronto === 'function' && !gsPronto()) return;
+    await _gdFetch(GD_API + '/files/' + encodeURIComponent(f.id), { method:'DELETE' }, token, 'apagar relatório de hospedados antigo');
+  }catch(e){
+    if(e && e.gdDet && e.gdDet.status === 404) return;   // já não existe (outro aparelho, ou apagado à mão): nada a fazer
+    throw e;
+  }
+}
+
+async function _hrelEnviar(doc, quando){
+  const b64 = doc.output('datauristring').split(',')[1];
+  const bytes = Math.floor(b64.length * 3 / 4);
+  return await _gdComToken(async function(token){
+    const pasta = await _hhjPastaId(token);
+    let nome = _hrelNome(quando);
+    const antes = await _gdFilhos(token, pasta);
+    if(antes.some(function(f){ return f && f.name === nome; })) nome = nome.replace(/\.pdf$/, '-' + String(new Date(quando).getSeconds()).padStart(2, '0') + '.pdf');
+    const criado = await _gdEnviarArquivoBin(token, pasta, nome, b64, 'application/pdf');
+    const filhos = await _gdFilhos(token, pasta);
+    // o nome carrega data e hora: ordenado SEM a extensão, `…20h00` vem antes de `…20h00-05`
+    const chave = function(f){ return String(f.name).replace(/\.pdf$/, ''); };
+    const rels = filhos.filter(function(f){ return f && f.mimeType !== GD_MIME_PASTA && HREL_RE_NOME.test(f.name || ''); })
+      .sort(function(a, b){ return chave(a) < chave(b) ? 1 : (chave(a) > chave(b) ? -1 : 0); });
+    const velhos = rels.slice(HREL_MANTER);
+    for(const f of velhos){
+      await _hrelApagar(token, f);
+      addLogSistema('Relatório de hospedados: ' + f.name + ' apagado (ficam os ' + HREL_MANTER + ' mais recentes)');
+    }
     const ativas = {};
-    _hhjAtivas().forEach(function(g){ ativas[_hhjNome(g)] = true; });
-    await _gdComToken(async function(token){
-      const pasta = await _hhjPastaId(token);
-      const filhos = await _gdFilhos(token, pasta);
-      const presentes = {};
-      for(const f of filhos){
-        if(!f || f.mimeType === GD_MIME_PASTA) continue;
-        presentes[f.name] = true;
-        if(ativas[f.name]) continue;                   // hospedagem ainda ativa: fica
-        await _hhjLixeira(token, f.id);
-        addLogSistema('Hospedados Hoje: documento retirado (hospedagem encerrada) — ' + f.name);
+    _hhjAtivas().forEach(function(g){ ativas[g] = true; });
+    for(const f of filhos){
+      const mm = f && /^_EM-ANDAMENTO_(GS[\w-]*?)_apt/.exec(f.name || '');
+      if(!mm || ativas[mm[1]]) continue;
+      await _hhjLixeira(token, f.id);
+      addLogSistema('Hospedados Hoje: documento retirado (hospedagem encerrada) — ' + f.name);
+    }
+    return { id:(criado && criado.id) || '', nome:nome, bytes:bytes, apagados:velhos.length };
+  }, false);
+}
+
+function _hrelPodeEnviar(){
+  return !_gsSuspenso('Relatório de hospedados') && !_gsDriveSoA('Relatório de hospedados') &&
+         _gdDisponivel() && _gdConectado() && !DRIVE_STATUS.nuvem_cheio;
+}
+function _hrelFmt(g, r){
+  return g.n + (g.n === 1 ? ' hospedagem' : ' hospedagens') + ' · ' + (r.bytes / 1048576).toFixed(1).replace('.', ',') + ' MB · ' +
+         (g.ms / 1000).toFixed(1).replace('.', ',') + ' s';
+}
+// Gera e envia; grava a assinatura SÓ depois de enviado (falha = tenta de novo no próximo tique).
+async function _hrelGerarEEnviar(assin, origem, progresso){
+  const g = await _hrelGerarDoc(progresso);
+  if(!g) throw new Error('gerador de PDF indisponível');
+  await _pdfCeder();
+  try{
+    const r = await _hrelEnviar(g.doc, g.quando);
+    const e = _hrelEstado();
+    e.assin = assin; e.ts = Date.now(); e.nome = r.nome; e.pendente = false; e.erro = '';
+    _hrelSalvar(e);
+    addLogSistema('Relatório de hospedados (' + origem + '): ' + _hrelFmt(g, r) + ' — enviado ' + r.nome);
+    return { g:g, r:r };
+  }catch(err){
+    const e = _hrelEstado();
+    e.falhas = (e.falhas || 0) + 1; e.pendente = true; e.erro = String((err && err.message) || 'erro');
+    _hrelSalvar(e);
+    try{ addLogSistema('Relatório de hospedados: não subiu — ' + e.erro + ' (tenta de novo no próximo tique)'); }catch(_){}
+    err.hrelDoc = g;
+    throw err;
+  }
+}
+
+// O tique (página e nativo, a cada 10 min) e o reenvio chamam isto. Sai calado em qualquer condição ruim.
+// `opts.reenvio` (gesto do usuário no rodapé): o relatório que FALHOU não espera completar a hora.
+async function _hrelCiclo(opts){
+  opts = opts || {};
+  if(_gsSuspenso('Relatório de hospedados') || _gsDriveSoA('Relatório de hospedados')) return { motivo:'não é o responsável' };
+  if(_hrelRodando) return { motivo:'já gerando' };
+  try{
+    if(!_gdDisponivel() || !_gdConectado()) return { motivo:'Drive não conectado' };
+    if(DRIVE_STATUS.nuvem_cheio) return { motivo:'Drive cheio' };
+    if(_gdEnviando) return { motivo:'backup enviando' };
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return { motivo:'sem rede' };
+    if(typeof gsPronto === 'function' && !gsPronto()) return { motivo:'app iniciando' };
+    // MODAL ABERTO = operador no meio de alguma coisa: a fluidez vem antes; o próximo tique retoma.
+    try{ const ov = document.getElementById('ov'); if(ov && ov.classList.contains('on')) return { motivo:'janela aberta' }; }catch(e){}
+    const est = _hrelEstado();
+    const assin = _hrelAssinatura();
+    if(assin === est.assin) return { motivo:'sem mudança' };
+    if(est.ts && Date.now() - est.ts < HREL_INTERVALO_MS && !(opts.reenvio && est.pendente)) return { motivo:'menos de 1 hora' };
+    _hrelRodando = true;
+    const x = await _hrelGerarEEnviar(assin, 'automático');
+    return { enviado:x.r.nome, n:x.g.n, bytes:x.r.bytes, ms:x.g.ms };
+  }catch(e){ console.warn('[HREL] relatório não rodou:', e && e.message); return { motivo:'falha', erro:e && e.message }; }
+  finally{ _hrelRodando = false; }
+}
+
+// Gestão → "Relatório de hospedados agora": gera na hora (mesmo sem mudança), envia ao Drive se este for o
+// dispositivo responsável e abre a entrega (salvar / compartilhar).
+async function gerarRelatorioHospedadosAgora(){
+  if(_hrelRodando){ showToast('O relatório de hospedados já está sendo gerado…', 3000); return; }
+  showM('<div class="mt">📄 Relatório de hospedados</div><div class="ms" id="hrel-prog">Montando o relatório…</div>');
+  const prog = function(t){ const el = document.getElementById('hrel-prog'); if(el) el.textContent = t; };
+  _hrelRodando = true;
+  let g = null, envio = '';
+  try{
+    if(_hrelPodeEnviar()){
+      try{
+        const x = await _hrelGerarEEnviar(_hrelAssinatura(), 'pedido do gestor', function(i, n){ prog('Montando… hospedagem ' + i + ' de ' + n); });
+        g = x.g; envio = 'Enviado ao Drive · ' + x.r.nome;
+      }catch(e){
+        g = e && e.hrelDoc;
+        if(!g) throw e;
+        envio = 'Não foi ao Drive agora (' + ((e && e.message) || 'erro') + ') — tenta de novo sozinho';
       }
-      // v2.4.4.0: hospedagem ATIVA sem o documento na pasta (nunca subiu, apagado ou posto na lixeira à mão)
-      // → volta à fila, e sem o id lembrado (atualizar um arquivo da lixeira o deixaria lá).
-      const e3 = _hhjEstado();
-      let faltou = 0;
-      _hhjAtivas().forEach(function(g){
-        if(presentes[_hhjNome(g)]) return;
-        if(e3.arquivos[g]) delete e3.arquivos[g];
-        if(!e3.pendentes[g]){ e3.pendentes[g] = { ts:Date.now(), motivo:HHJ_MOTIVO_CONF }; faltou++; }
-      });
-      if(faltou) _hhjSalvar(e3);
-      return true;
-    }, false);
-    // limpa do registro local o que não é mais ativo
-    const est = _hhjEstado();
-    let mudou = false;
-    Object.keys(est.arquivos || {}).forEach(function(g){ if(!_hhjAtiva(g)){ delete est.arquivos[g]; mudou = true; } });
-    Object.keys(est.pendentes || {}).forEach(function(g){ if(!_hhjAtiva(g)){ delete est.pendentes[g]; mudou = true; } });
-    if(mudou) _hhjSalvar(est);
-  }catch(e){ console.warn('[HHJ] conferência não rodou:', e && e.message); }
+    } else {
+      g = await _hrelGerarDoc(function(i, n){ prog('Montando… hospedagem ' + i + ' de ' + n); });
+      envio = (gsSrvAtivo() && !gsSouResponsavel()) ? 'o envio ao Drive fica com o dispositivo responsável' : 'Drive não conectado — não foi ao Drive';
+    }
+  }catch(e){
+    _hrelRodando = false;
+    closeOv(); showToast('⚠️ Não foi possível gerar o relatório: ' + ((e && e.message) || 'erro'), 5000);
+    return;
+  }
+  _hrelRodando = false;
+  if(!g){ closeOv(); showToast('⚠️ Gerador de PDF indisponível', 4000); return; }
+  await _pdfEntregar('Relatório de hospedados', g.doc, _hrelNome(g.quando).replace(/\.pdf$/, ''),
+    g.n + (g.n === 1 ? ' hospedagem' : ' hospedagens') + ' · ' + envio);
+}
+
+// Detalhes → "Gerar PDF" (Bloco B): o documento daquela hospedagem ativa — o mesmo conteúdo da seção do
+// relatório —, com salvar e compartilhar. NÃO vai ao Drive. O nome não começa com `GS` de propósito: a
+// varredura do histórico (`_gdHistClassificar`) nunca o confunde com um PDF de fechamento.
+async function gerarPdfHospedagem(gs){
+  if(!gs || !_hhjAtiva(gs)){ showToast('Hospedagem encerrada ou não encontrada', 3000); return; }
+  showM('<div class="mt">📄 Gerar PDF · ' + _vtEsc(gs) + '</div><div class="ms">Montando o documento…</div>');
+  let doc = null;
+  try{ doc = await _hhjGerarDoc(gs); }catch(e){ console.warn('[PDF] documento da hospedagem:', e && e.message); }
+  if(!doc){ closeOv(); showToast('⚠️ Não foi possível gerar o PDF', 4000); return; }
+  const h = HOSPEDAGENS[gs] || {};
+  await _pdfEntregar('Hospedagem em andamento', doc, _hhjNome(gs).replace(/^_/, '').replace(/\.pdf$/, ''),
+    gs + ' · Apt ' + (h.apt || '—') + ' · não vai ao Drive');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -17432,7 +17498,6 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga();
   showToast('⚡ Recarga iniciada — Vaga '+vagaId);
   _gsBackupAuto('recarga iniciada '+vagaId); // v1.9.4.11
-  try{ _hhjMarcar(hospedagem, 'recarga iniciada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
 }
 
 // ── v1.9.6.1 — PROLONGAR RECARGA ───────────────────────────────────────────
@@ -17501,7 +17566,6 @@ function _prolongarRecargaAplicar(vagaId){
   if(document.getElementById('recarga-wrap')?.style?.display !== 'none') renderTelaRecarga();
   showToast('⏱ Recarga prolongada até ' + hrNovo, 3500);
   _gsBackupAuto('recarga prolongada ' + vagaId);
-  try{ _hhjMarcar(r && r.hospedagem, 'recarga prolongada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
 }
 
 function showRecargaModal(vagaId){
@@ -18046,7 +18110,6 @@ async function _rcEncerrarConfirmar(vagaId, r, usuario, usuarioStr){
   // v1.9.9.1: o backup é o elo com histórico de estourar memória neste tablet —
   // e era o suspeito nº 1 do travamento. Protegido.
   try{ _gsBackupAuto('recarga encerrada '+vagaId); }catch(e){ console.warn('[RECARGA] backup pós-encerramento falhou:', e && e.message); }
-  try{ _hhjMarcar(r && r.hospedagem, 'recarga encerrada'); }catch(e){}   // v1.9.6.7: gatilho do documento vivo.
   try{ if(typeof ref === 'function') ref(vagaId); }catch(e){ console.warn('[RECARGA] redesenho da vaga falhou:', e && e.message); }
   try{ if(document.getElementById('recarga-wrap')?.style?.display!=='none') renderTelaRecarga(); }catch(e){ console.warn('[RECARGA] redesenho da tela falhou:', e && e.message); }
 
@@ -19402,7 +19465,7 @@ async function _gdReautenticarPeloUsuario(origem){
 function _gdContarPendentes(){
   const c = { backup:0, pdfs:0, hospedagens:0 };
   try{ c.pdfs = _gdPdfsPendentes().length; }catch(e){}
-  try{ c.hospedagens = Object.keys((_hhjEstado().pendentes) || {}).length; }catch(e){}
+  try{ c.hospedagens = _hrelEstado().pendente ? 1 : 0; }catch(e){}   // v2.4.5.0: o relatório que não subiu
   try{
     c.backup = (DRIVE_STATUS.nuvem_falha || DRIVE_STATUS.nuvem_falha_transitoria ||
                 DRIVE_STATUS.nuvem_pendente) ? 1 : 0;
@@ -19436,8 +19499,8 @@ async function _gdReenviarPendentes(motivo, opts_progresso){
   passo('enviando documentos…');
   try{ await _gdTentarPDFsPendentes({todos:true}); }catch(e){ console.warn('[DRIVE] reenvio de PDFs:', e && e.message); }
   await _gsCeder();
-  passo('enviando hospedados hoje…');
-  try{ await _hhjProcessar(); }catch(e){ console.warn('[DRIVE] reenvio de Hospedados Hoje:', e && e.message); }
+  passo('enviando o relatório de hospedados…');
+  try{ await _hrelCiclo({ reenvio:true }); }catch(e){ console.warn('[DRIVE] reenvio do relatório de hospedados:', e && e.message); }
   await _gsCeder();
   // ⚠️ A VARREDURA DO HISTÓRICO (`_gdHistProcessar`) NÃO ENTRA AQUI, e não é
   // esquecimento. MEDIDO: com ela no mesmo gesto, dois dos três PDFs pendentes
@@ -21311,7 +21374,10 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
   opts=opts||{};
   const _tit=opts.titulo||'Comprovante de Check-out';
   const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
+  // v2.4.5.0: `opts.doc` = a seção entra numa página nova do documento recebido (relatório de hospedados);
+  // o rodapé fica com quem montou o documento inteiro. Ausente, nada muda.
+  const doc=opts.doc||new jsPDF({orientation:'p',unit:'mm',format:'a4'});
+  if(opts.doc) doc.addPage();
   const L=10,W=190;
   const hospNum=dv.hospedagem||((hist||[]).find(e=>e.tipo==='checkin')?.hospedagem)||'';
   // v1.9.9.0 — ORDEM FIXA, aplicada UMA vez e usada por tudo o que vem abaixo
@@ -21654,7 +21720,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
     console.log('[Parte5] anexos restantes (catch-all) no PDF:', restantes.length);
   }catch(e){ console.error('[PDF checkout] erro páginas extras:',e); }
 
-  _pdfFooter(doc); // v1.9.4.12: passada ÚNICA, carimba todas as páginas de uma vez
+  if(!opts.doc) _pdfFooter(doc); // v1.9.4.12: passada ÚNICA, carimba todas as páginas de uma vez
   return doc;
 }
 
@@ -22113,7 +22179,6 @@ function addAnexo(id, fromPasseio, file){
       const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
       if(apt) addHistorico(apt,'edicao',fromPasseio?'':id,`Foto adicionada: ${nome}`,'',hospNum);
       // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto nova entra no documento vivo.
-      try{ _hhjMarcar(hospNum, 'foto adicionada'); }catch(e){}
       resolve(true);
     };
     reader.onload = e=>{
@@ -22141,7 +22206,6 @@ function removeAnexo(id, fromPasseio, idx){
     const hospNum = fromPasseio ? (PASSEIO[id]?.hospedagem||'') : (S[id]?.hospedagem||'');
     if(apt && nome) addHistorico(apt,'edicao',fromPasseio?'':id,`Foto removida: ${nome}`,'',hospNum);
     // v1.9.6.6 — GATILHO OBRIGATÓRIO: foto removida também altera o documento vivo.
-    try{ _hhjMarcar(hospNum, 'foto removida'); }catch(e){}
   }
 }
 
@@ -23890,7 +23954,7 @@ const GS_CFG_AP_LS = 'garagespot_cfg_aparelho';
 // 60 s por evaluateJavascript (não sofre a limitação de timers de página oculta). Cada tique faz o ciclo
 // INTEIRO: sinal, recebimento, fila leve, fila de arquivos e — no responsável — envio ao Drive.
 let _gsTiqueRodando = false, _gsTiqueN = 0, _gsTiqueUltConsulta = 0, _gsTiqueUltDriveRec = 0;
-let _gsTiqueUltHhj = 0;   // v2.4.4.0: Hospedados Hoje também pelo tique nativo (o setInterval da página é limitado com a tela oculta)
+let _gsTiqueUltHhj = 0;   // v2.4.4.0: Hospedados Hoje também pelo tique nativo (o setInterval da página é limitado com a tela oculta); v2.4.5.0: o relatório
 async function gsSegPlanoBatimento(){
   const p = _gsSegPlano(); if(!p || !gsSrvAtivo()) return;
   try{
@@ -23934,7 +23998,7 @@ async function gsTiqueNativo(origem){
     }
     try{ await _gdLerCota(); }catch(e){}   // v2.4.4.0 (Bloco C): a cada ciclo (com teto de 10 min), só quem envia ao Drive
     try{ await gsDriveConferenciaDiaria(); }catch(e){}   // v2.4.4.0 (Bloco D): 1×/dia, amostra dos últimos 7 dias
-    if(Date.now() - _gsTiqueUltHhj > 10 * 60000){ _gsTiqueUltHhj = Date.now(); try{ _hhjCiclo(); }catch(e){} }   // sem await: o trabalhador tem a própria trava e o próprio lote
+    if(Date.now() - _gsTiqueUltHhj > 10 * 60000){ _gsTiqueUltHhj = Date.now(); try{ _hrelCiclo(); }catch(e){} }   // sem await: o relatório tem a própria trava
     try{ _gsSyncAtualizarRodape(); }catch(e){}
   }finally{
     _gsTiqueRodando = false;
@@ -24919,7 +24983,6 @@ function _gsSyncPersistirLocal(m){
 function _gsSyncRedesenhar(m){
   if(!m || !m.algo) return;
   // v2.4.4.0: mudança vinda do OUTRO dispositivo também atualiza o Hospedados Hoje (só o responsável envia)
-  try{ Object.keys(m.tokens || {}).forEach(function(t){ if(t && HOSPEDAGENS[t]) _hhjMarcar(t, 'recebido do servidor'); }); }catch(e){}
   const p = _gsSync.redesenhoPendente;
   if(p){ Object.assign(m.vagas, p.vagas); Object.assign(m.recargas, p.recargas); Object.assign(m.tokens, p.tokens); m.rebuild = m.rebuild || p.rebuild; _gsSync.redesenhoPendente = null; }
   let ocupado = false;
@@ -25935,7 +25998,6 @@ async function _gsPesadaBaixarUm(){
   _gsPesada.conhecidos[x.id] = 1; await _gsPesadaGravarJSON('conhecidos.json', _gsPesada.conhecidos);
   try{ const v = _vagaIdDoGs(x.gs); if(v) ref(v); _gsSyncAvisarModal([x.gs]); _gsPendAtualizarPainel(); }catch(e){}
   _gsPesadaComplementarAgendar(x.gs);
-  try{ _hhjMarcar(x.gs, 'arquivo recebido do servidor'); }catch(e){}   // v2.4.4.0: a foto/vistoria do outro dispositivo entra no documento vivo
   return true;
 }
 // v2.4.4.0 (Bloco D) — CONFERÊNCIA REAL: o arquivo existe, está fora da lixeira, na pasta certa e com o tamanho
@@ -29094,17 +29156,15 @@ Promise.resolve(true).then(async (ativo)=>{
       // Arquivamento da TRILHA na nuvem. É o que autoriza o teto de 1000 a
       // descartar alguma coisa; enquanto não roda, a trilha só cresce.
       _gsTique(function(){ _gdArquivarAuditoria(); }, 375);
-      // Hospedados Hoje: retentativa do que ficou pendente e conferência da pasta
-      // (ninguém que já saiu pode continuar lá). O caminho normal é o debounce de
-      // 20 s disparado pela própria ação; isto é a rede de segurança.
-      _gsTique(function(){ _hhjCiclo(); }, 450);
+      // v2.4.5.0: relatório de hospedados (no máximo 1×/hora e só com mudança — a decisão é dele).
+      _gsTique(function(){ _hrelCiclo(); }, 450);
       // Esvaziamento do balde `_Sem data de check-in`. Para sozinho quando termina.
       _gsTique(function(){ _gdReorganizarSemData(); }, 525);
       try { setTimeout(function(){ _gdHistProcessar(); }, 25000); } catch(e){}
       // v1.9.6.6: as três tarefas novas entram escalonadas DEPOIS da varredura do
       // histórico, para não disputarem rede nem CPU com o arranque nem entre si.
       try { setTimeout(function(){ _gdArquivarAuditoria(); }, 40000); } catch(e){}
-      try { setTimeout(function(){ _hhjCiclo(); }, 55000); } catch(e){}
+      try { setTimeout(function(){ _hrelCiclo(); }, 55000); } catch(e){}
       try { setTimeout(function(){ _gdReorganizarSemData(); }, 70000); } catch(e){}
       // v1.9.5.3: quando o app VOLTA (ou a rede volta), tenta o que ficou adiado —
       // com uma folga para a conectividade estabilizar. Sem isso, o que foi adiado
