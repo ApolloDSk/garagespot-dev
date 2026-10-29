@@ -1369,7 +1369,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.5.0';
+const GS_VERSION = 'v2.4.6.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -11129,6 +11129,10 @@ const GS_CONFIG_RESTAURAVEL = [
   // orientação é preferência de tela. Ambas entravam no arquivo e não voltavam.
   'garagespot_poda_config',
   'garagespot_orientacao_aviso_visto',
+  // v2.4.6.0 — retenção na nuvem: escolha do gestor. O resultado (`garagespot_retencao_resultado`) é
+  // registro DESTE dispositivo (o que ele liberou) e não volta — repô-lo atribuiria a este aparelho o
+  // que outro fez.
+  'garagespot_retencao_config',
 ];
 
 // Relê em memória o que acabou de ser restaurado, para valer sem reabrir o app.
@@ -11168,8 +11172,115 @@ function _gsContagensAtuais(){
   };
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.6.0 — BACKUP COMPLETO ENXUTO (decisão do Douglas, 29/10/2026)
+// ════════════════════════════════════════════════════════════════════════════
+// Medido no Drive do hotel: cada `backup_completo` tinha 85–106 MB e crescia. O que pesa são as IMAGENS
+// (foto ~250 KB, documento de vistoria ~560 KB, medidos nos arquivos reais da `dev`), e as de hospedagens
+// ENCERRADAS se acumulavam no dispositivo responsável por dois caminhos: (1) o check-out feito no OUTRO
+// dispositivo não apaga o `h_<gs>` deste (só quem fez o check-out apaga); (2) os documentos e assinaturas
+// de vistoria nunca saem do dispositivo. Essas imagens já estão no PDF de fechamento.
+//
+// ⚠️ EXCEÇÃO À REGRA "O BACKUP DEVOLVE TUDO", aprovada pelo Douglas — e estreita POR ARQUIVO, não por idade:
+// sai do backup só a imagem de hospedagem ENCERRADA cujo PDF de fechamento está CONFIRMADO no Drive
+// (pelo servidor: `pdf_fechamento` com `drive_ok_em`; sem servidor: registro local `nuvem_ok`). Sem essa
+// confirmação a imagem continua no backup — o PDF é o que a substitui, e sem ele não há substituto.
+// A vistoria CONTINUA no backup (é registro: avarias, dados, quem fez); só os campos de imagem saem, com
+// `sem_imagem:true` — o mesmo marcador da exportação de emergência, que o importador já sabe completar.
+// Exportar backup completo (arquivo do gestor) e a cópia de segurança do modo substituir continuam INTEIROS.
+const GS_ENX_CAMPOS_VIST = ['documento_final_b64', 'assinatura', 'assinatura_b64'];
+function _gsFechamentoNaNuvem(gs){
+  try{
+    if(!gs) return false;
+    const srv = (typeof _gsPesada !== 'undefined' && _gsPesada && _gsPesada.srv) || {};
+    const ks = Object.keys(srv);
+    for(let i = 0; i < ks.length; i++){
+      const x = srv[ks[i]];
+      if(x && x.gs === gs && x.tipo === 'pdf_fechamento' && x.drive_ok_em) return true;
+    }
+    const re = new RegExp('(^|_)' + String(gs).replace(/[^A-Za-z0-9]/g, '') + '(_|$)');
+    return _gsPDFsRegistro().some(function(p){ return p && p.nuvem_ok && (p.tipo || 'fechamento') === 'fechamento' && re.test(String(p.nome || '').replace(/\.pdf$/i, '')); });
+  }catch(e){ return false; }   // na dúvida, a imagem fica no backup
+}
+// O que o backup enxuto deixa de fora agora. Só lê.
+function _gsEnxutoPlano(){
+  const out = { gs:[], baldes:[], vistorias:[] };
+  try{
+    const ok = {};
+    const encerradaComPdf = function(gs){
+      if(ok[gs] !== undefined) return ok[gs];
+      const h = HOSPEDAGENS && HOSPEDAGENS[gs];
+      return (ok[gs] = !!(h && h.checkout_ts && _gsFechamentoNaNuvem(gs)));
+    };
+    Object.keys(ANEXOS || {}).forEach(function(k){
+      if(k.indexOf('h_') !== 0) return;              // baldes legados v_/p_: sem dono certo, ficam
+      const gs = k.slice(2);
+      if(Array.isArray(ANEXOS[k]) && ANEXOS[k].length && encerradaComPdf(gs)){ out.baldes.push(k); if(out.gs.indexOf(gs) < 0) out.gs.push(gs); }
+    });
+    Object.keys(VISTORIAS || {}).forEach(function(id){
+      const v = VISTORIAS[id]; if(!v) return;
+      const gs = v.hospedagem || v.hospedagem_gs; if(!gs) return;
+      if(!GS_ENX_CAMPOS_VIST.some(function(c){ return !!v[c]; })) return;
+      if(encerradaComPdf(gs)){ out.vistorias.push(id); if(out.gs.indexOf(gs) < 0) out.gs.push(gs); }
+    });
+  }catch(e){ console.warn('[BACKUP] plano do enxuto falhou (backup sai inteiro):', e && e.message); return { gs:[], baldes:[], vistorias:[] }; }
+  return out;
+}
+// Quanto cada parte pesa no backup completo, em caracteres do JSON (≈ bytes). Só lê; nada de foto é carregado.
+function _gsBackupComposicao(){
+  const r = { fotos_ativas:0, fotos_encerradas:0, fotos_outras:0, vist_ativas:0, vist_encerradas:0, dados:0,
+              n_fotos_encerradas:0, n_vist_encerradas:0, enxuto:0, total:0 };
+  try{
+    const plano = _gsEnxutoPlano();
+    const fora = {}; plano.baldes.forEach(function(k){ fora[k] = 1; });
+    const foraV = {}; plano.vistorias.forEach(function(id){ foraV[id] = 1; });
+    const tamItem = function(a){ if(!a) return 0; const d = a.data || a.base64Original; return d ? String(d).length : ((a._arq && a._arq.tam) || 0); };
+    Object.keys(ANEXOS || {}).forEach(function(k){
+      (ANEXOS[k] || []).forEach(function(a){
+        const t = tamItem(a);
+        if(k.indexOf('h_') !== 0){ r.fotos_outras += t; return; }
+        const h = HOSPEDAGENS && HOSPEDAGENS[k.slice(2)];
+        if(h && h.checkout_ts){ r.fotos_encerradas += t; r.n_fotos_encerradas++; } else r.fotos_ativas += t;
+        if(fora[k]) r.enxuto += t;
+      });
+    });
+    Object.keys(VISTORIAS || {}).forEach(function(id){
+      const v = VISTORIAS[id]; if(!v) return;
+      let t = 0; GS_ENX_CAMPOS_VIST.forEach(function(c){ if(typeof v[c] === 'string') t += v[c].length; });
+      const h = HOSPEDAGENS && HOSPEDAGENS[v.hospedagem || v.hospedagem_gs];
+      if(h && h.checkout_ts){ r.vist_encerradas += t; if(t) r.n_vist_encerradas++; } else r.vist_ativas += t;
+      if(foraV[id]) r.enxuto += t;
+    });
+    try{ r.dados = JSON.stringify(_gsMontarSnapshot(false)).length; }catch(e){}
+    r.total = r.fotos_ativas + r.fotos_encerradas + r.fotos_outras + r.vist_ativas + r.vist_encerradas + r.dados;
+  }catch(e){ r.erro = (e && e.message) || String(e); }
+  return r;
+}
+
 // Monta o snapshot. `comFotos` inclui ANEXOS+VISTORIAS (o IndexedDB) em base64.
-function _gsMontarSnapshot(comFotos){
+// v2.4.6.0: `opts.enxuto` deixa de fora as imagens de hospedagens encerradas com PDF no Drive (ver acima).
+// Sem `opts` o snapshot é o INTEIRO de sempre — exportação, cópia de segurança do substituir, emergência.
+function _gsMontarSnapshot(comFotos, opts){
+  let idb = null, enx = null;
+  if(comFotos){
+    idb = { anexos: ANEXOS || {}, vistorias: VISTORIAS || {} };
+    if(opts && opts.enxuto){
+      const p = _gsEnxutoPlano();
+      if(p.baldes.length || p.vistorias.length){
+        const ax = {}; Object.keys(ANEXOS || {}).forEach(function(k){ if(p.baldes.indexOf(k) < 0) ax[k] = ANEXOS[k]; });
+        const vs = {}; Object.keys(VISTORIAS || {}).forEach(function(id){
+          if(p.vistorias.indexOf(id) < 0){ vs[id] = VISTORIAS[id]; return; }
+          const c = Object.assign({}, VISTORIAS[id]);
+          GS_ENX_CAMPOS_VIST.forEach(function(k){ delete c[k]; });
+          c.sem_imagem = true;
+          vs[id] = c;
+        });
+        idb = { anexos: ax, vistorias: vs };
+        enx = { gs:p.gs, baldes:p.baldes, vistorias:p.vistorias,
+                criterio:'imagens de hospedagens encerradas com o PDF de fechamento confirmado no Drive' };
+      }
+    }
+  }
   const snap = {
     schemaVersion: GS_BACKUP_SCHEMA,
     appVersion: (typeof GS_VERSION !== 'undefined' ? GS_VERSION : '?'),
@@ -11178,7 +11289,7 @@ function _gsMontarSnapshot(comFotos){
     exportado_em: (typeof fmtDt === 'function' ? fmtDt(Date.now()) : new Date().toISOString()),
     contagens: _gsContagensAtuais(),
     localStorage: _gsSnapshotLocalStorage(),
-    indexeddb: comFotos ? { anexos: ANEXOS || {}, vistorias: VISTORIAS || {} } : null,
+    indexeddb: idb,
     // compat/legibilidade: os mesmos dados pequenos no formato v1.7 (fotos e
     // vistorias NÃO são duplicadas aqui — só vão em `indexeddb`).
     versao: '1.7',
@@ -11195,6 +11306,7 @@ function _gsMontarSnapshot(comFotos){
     // v1.9.9.3: a fila de recarga passou a ser gravada — e o backup devolve tudo.
     fila_recarga: (typeof FILA_RECARGA !== 'undefined' && Array.isArray(FILA_RECARGA)) ? FILA_RECARGA : [],
   };
+  if(enx) snap.enxuto = enx;   // v2.4.6.0: o arquivo DIZ o que deixou de fora e por quê
   return snap;
 }
 
@@ -11231,7 +11343,13 @@ function _gsValidarSnapshot(snap){
       if(_s){
         const _ax = snap.sem_fotos ? null : ((snap.indexeddb && snap.indexeddb.anexos) || ANEXOS);
         const _vs = (snap.indexeddb && snap.indexeddb.vistorias) || VISTORIAS;
-        const _sx = snap.sem_fotos ? Object.assign({}, _s, { anexos:{ total:0, por_gs:{} } }) : _s;
+        let _sx = snap.sem_fotos ? Object.assign({}, _s, { anexos:{ total:0, por_gs:{} } }) : _s;
+        // v2.4.6.0: o que o enxuto deixou de fora DE PROPÓSITO não é falta (só as chaves anotadas no próprio arquivo)
+        if(!snap.sem_fotos && snap.enxuto && Array.isArray(snap.enxuto.baldes) && snap.enxuto.baldes.length){
+          const pg = Object.assign({}, (_s.anexos && _s.anexos.por_gs) || {});
+          snap.enxuto.baldes.forEach(function(k){ delete pg[_gsChaveSentAnexo(k)]; });
+          _sx = Object.assign({}, _s, { anexos:{ total:(_s.anexos && _s.anexos.total) || 0, por_gs:pg } });
+        }
         const _f = _gsSentFaltas(_sx, _ax || {}, _vs);
         if(_f.length){
           _gsBackupPausadoMotivo = 'possível perda de dados';
@@ -11670,8 +11788,12 @@ async function fazerBackupLocal(motivo, opts){
       if(typeof addLogSistema === 'function') addLogSistema('Backup pausado (' + (motivo || '?') + '): modo protegido — a última cópia boa é preservada');
       return {ok:false, erro:'backup pausado: modo protegido (possível perda de dados)', pausado:true};
     }
-    const comFotos = (opts.comFotos !== false);
-    const snap = _gsMontarSnapshot(comFotos);
+    let comFotos = (opts.comFotos !== false);
+    // v2.4.6.0: com o servidor ligado o completo é DIÁRIO (+ manual/recuperação, que vêm com `forcar`).
+    // Qualquer outro pedido de completo vira LEVE — a mudança nunca se perde, só não leva as imagens,
+    // que já viajam pelo servidor. É aqui, no ponto único, para nenhum gatilho escapar.
+    if(comFotos && !opts.forcar && _gsCadenciaDiaria() && !_gsCompletoDiarioDevido(Date.now())) comFotos = false;
+    const snap = _gsMontarSnapshot(comFotos, { enxuto:true });
     const val = _gsValidarSnapshot(snap);
     if(!val.ok){
       console.warn('[BACKUP] abortado:', val.motivo);
@@ -11741,7 +11863,8 @@ async function fazerBackupLocal(motivo, opts){
     // v1.9.9.1: o TAMANHO entra no log. Sem ele, a próxima falha de memória volta
     // a ser discutida por impressão em vez de medida.
     if(typeof addLogSistema === 'function') addLogSistema('Backup ('+snap.tipo+'): '+(motivo||'manual')+' — '+nome+
-      (pacote ? ' · '+_gsMB(pacote.bytes) : ''));
+      (pacote ? ' · '+_gsMB(pacote.bytes) : '') +
+      (snap.enxuto ? ' · enxuto: sem as imagens de ' + snap.enxuto.gs.length + ' hospedagem(ns) encerrada(s) com PDF no Drive' : ''));
     // v1.9.5.0 — NUVEM: espelha no Drive só a cadência COMPLETA (a leve roda a cada
     // mudança; subir tudo isso viraria centenas de arquivos por dia na conta do
     // hotel). Fire-and-forget: o backup local ACIMA já está gravado, então nenhuma
@@ -11790,6 +11913,25 @@ try {
 //     o freio nunca custar dado real.
 const GS_MIN_ENTRE_COMPLETOS_MS = 30 * 60 * 1000;
 let _gsUltimaAssinatura = '';
+
+// ── v2.4.6.0 — COMPLETO DIÁRIO COM O SERVIDOR LIGADO ───────────────────────
+// Medido no Drive do hotel (28/10): 4 completos no mesmo dia (09h44, 16h03, 16h04, 19h48), ~100 MB cada.
+// A causa está no código: check-in, check-out, vistoria e exclusão de anexo pedem completo SEM freio
+// (`{completo:true}`), e abertura (>1 h), tique periódico (>1 h) e minimizar (>30 min) somam os seus.
+// Com o servidor, cada ação já sobe na hora (fila leve) e cada imagem pela fila de arquivos; o
+// `_ESTADO-ATUAL` (leve, sobrescrito) continua indo à nuvem a cada mudança. O completo deixou de ser a
+// proteção do minuto a minuto e virou o PONTO DE RETORNO — e para isso um por dia basta.
+// Horário: a partir das 03:00 (o mais calmo do hotel). Se o app não estiver rodando às 3h, o primeiro
+// tique depois disso faz. Nunca mais de um por "dia de backup" (03:00 → 03:00), fora o manual.
+// Sem servidor (v1.9.9.5) nada muda: a cadência antiga continua, porque lá o completo É a proteção.
+const GS_BK_DIARIO_HORA = 3;
+function _gsCadenciaDiaria(){ try{ return typeof gsSrvAtivo === 'function' && gsSrvAtivo(); }catch(e){ return false; } }
+function _gsCompletoDiarioDevido(agora){
+  const d = new Date(agora);
+  const corte = new Date(d.getFullYear(), d.getMonth(), d.getDate(), GS_BK_DIARIO_HORA, 0, 0, 0).getTime();
+  const ultimoCorte = agora >= corte ? corte : corte - 24 * 60 * 60 * 1000;
+  return !_gsUltimoCompletoTs || _gsUltimoCompletoTs < ultimoCorte;
+}
 
 // Assinatura barata do estado: contagens + carimbo da última escrita relevante.
 // Não serializa fotos de propósito — o custo teria de ser pago a cada minimização.
@@ -11855,7 +11997,7 @@ function _gsConferirBackupNaAbertura(){
     //    fila de pendências. Não gera arquivo local novo: seria caro e inútil,
     //    já que o dado local está em dia — o que falta é ele estar na nuvem.
     const desde = Date.now() - (_gsUltimoCompletoTs || 0);
-    const localVencido = !_gsUltimoCompletoTs || desde > GS_BACKUP_INTERVALO_COMPLETO;
+    const localVencido = _gsCadenciaDiaria() ? _gsCompletoDiarioDevido(Date.now()) : (!_gsUltimoCompletoTs || desde > GS_BACKUP_INTERVALO_COMPLETO);   // v2.4.6.0
 
     let nuvemAtrasada = false;
     try{
@@ -11906,7 +12048,7 @@ function _gsBackupAuto(motivo, opts){
     const atraso = (opts.imediato ? 0 : 15000);
     _gsBackupTimer = setTimeout(function(){
       _gsBackupTimer = null;
-      const passou = (Date.now() - (_gsUltimoCompletoTs || 0)) > GS_BACKUP_INTERVALO_COMPLETO;
+      const passou = _gsCadenciaDiaria() ? _gsCompletoDiarioDevido(Date.now()) : ((Date.now() - (_gsUltimoCompletoTs || 0)) > GS_BACKUP_INTERVALO_COMPLETO);   // v2.4.6.0: diário com servidor
       const comFotos = !!opts.completo || passou;
       fazerBackupLocal(motivo || 'automático', {comFotos:comFotos})
         .catch(function(e){ console.warn('[BACKUP] automático falhou:', e); });
@@ -11916,7 +12058,7 @@ function _gsBackupAuto(motivo, opts){
 
 async function fazerBackupAgora(){
   showToast('Gerando backup completo...',3000);
-  const r=await fazerBackupLocal('Manual', {comFotos:true});
+  const r=await fazerBackupLocal('Manual', {comFotos:true, forcar:true});
   if(r.ok){
     const c=r.contagens||{};
     showToast('✅ Backup completo salvo: '+r.nome+' · '+(c.hospedagens||0)+' hosp., '+(c.anexos||0)+' anexos, '+(c.usuarios||0)+' func.',5000);
@@ -11962,17 +12104,9 @@ const GS_PODA_DIAS_LOCAL = 7;
 // antes de causar dano: é exatamente essa a proteção que se quer.
 const GS_PODA_TETO = 40;
 
-// Escada da NUVEM, mais generosa que a local porque lá o espaço é folgado e o
-// custo de guardar é quase nulo — o que se protege aqui é a capacidade de voltar
-// no tempo, e ela vale mais do que alguns MB.
-//   • 30 dias: tudo. É a janela em que um problema costuma ser percebido; dentro
-//     dela se recupera QUALQUER ponto, sem buraco.
-//   • 30 dias a 6 meses: 1 por semana. Cobre uma temporada inteira; para algo
-//     notado com semanas de atraso, granularidade semanal é o que de fato se usa.
-//   • Acima de 6 meses: 1 por mês. A essa altura o valor é de referência
-//     histórica, não de recuperação operacional.
-const GD_PODA_TUDO_DIAS   = 30;
-const GD_PODA_SEMANAL_ATE = 180;   // 6 meses
+// Retenção da NUVEM: v2.4.6.0 — ver `_gsRetConfig` (últimos 7 dias + 1 por mês dos últimos 3 meses,
+// configurável). A escada antiga (30 dias / semanal até 6 meses / mensal para sempre) saiu por decisão
+// do Douglas depois de medido o Drive do hotel.
 
 function _gsPodaConfig(){
   try{
@@ -12295,14 +12429,6 @@ async function _gsPodaExecutarPDFs(){
 // pasta de auditoria também nunca é alcançada. As duas coisas estão travadas por
 // spec (`pdf-na-nuvem-nunca-e-apagado`, `auditoria-na-nuvem-nunca-e-podada`) e
 // por `GD_PASTAS_INTOCAVEIS`.
-function _gdPodaChaveSemana(d){
-  // Segunda-feira da semana daquele arquivo — agrupador estável, sem depender de locale.
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = (x.getDay() + 6) % 7;             // 0 = segunda
-  x.setDate(x.getDate() - dow);
-  return _localISO(x);
-}
-
 function _gdPodaPlanejarNuvem(arquivos, agora){
   const out = { remover:[], manter:[], teto:GS_PODA_TETO, truncado:false };
   const candidatos = [];
@@ -12315,24 +12441,30 @@ function _gdPodaPlanejarNuvem(arquivos, agora){
     if(!t){ out.manter.push({ nome:nome, motivo:'sem data confiável — na dúvida, fica' }); return; }
     // v1.9.9.4: o último backup completo bom fica FIXADO também na nuvem.
     if(_gsNomeUltimoBom() === nome){ out.manter.push({ nome:nome, motivo:'é o último backup completo bom (fixado)' }); return; }
+    // v2.4.6.0: só a série de COMPLETOS entra na retenção (é a única que a exclusão definitiva aceita)
+    if(!GD_RET_RE_COMPLETO.test(nome)){ out.manter.push({ nome:nome, motivo:'não é backup completo' }); return; }
     candidatos.push({ id:f.id, nome:nome, ts:t, size:Number(f.size||0) });
   });
   candidatos.sort(function(a,b){ return b.ts - a.ts; });      // recente → antigo
-  const vistoSemana = {}, vistoMes = {};
+  // v2.4.6.0 — RETENÇÃO DO DOUGLAS (29/10): os completos dos últimos N dias (7) + 1 por mês dos últimos
+  // M meses (3); o resto é APAGADO DE VEZ. Antes: 30 dias tudo / 1 por semana até 6 meses / 1 por mês
+  // para sempre, e na LIXEIRA — com ~100 MB por arquivo isso era 1,44 GB de backups + 2,67 GB na lixeira.
+  const cfg = _gsRetConfig();
+  const dLim = new Date(agora); dLim.setMonth(dLim.getMonth() - cfg.meses);
+  const limiteMeses = dLim.getTime();
+  const vistoMes = {};
   candidatos.forEach(function(c, ix){
     const dias = (agora - c.ts) / (24*60*60*1000);
     if(ix === 0){ out.manter.push({ nome:c.nome, motivo:'é o backup mais recente' }); return; }
-    if(dias <= GD_PODA_TUDO_DIAS){ out.manter.push({ nome:c.nome, motivo:'dentro dos ' + GD_PODA_TUDO_DIAS + ' dias — tudo é mantido' }); return; }
-    const d = new Date(c.ts);
-    if(dias <= GD_PODA_SEMANAL_ATE){
-      const k = _gdPodaChaveSemana(d);
-      if(!vistoSemana[k]){ vistoSemana[k] = true; out.manter.push({ nome:c.nome, motivo:'representante da semana de ' + k }); return; }
-      out.remover.push({ id:c.id, nome:c.nome, ts:c.ts, motivo:'já há um backup guardado nessa semana' });
+    if(dias <= cfg.dias){ out.manter.push({ nome:c.nome, motivo:'dentro dos ' + cfg.dias + ' dias — todos ficam' }); return; }
+    if(c.ts >= limiteMeses){
+      const d = new Date(c.ts);
+      const km = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      if(!vistoMes[km]){ vistoMes[km] = true; out.manter.push({ nome:c.nome, motivo:'o do mês de ' + km }); return; }
+      out.remover.push({ id:c.id, nome:c.nome, ts:c.ts, size:c.size, motivo:'já há um backup guardado nesse mês' });
       return;
     }
-    const km = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-    if(!vistoMes[km]){ vistoMes[km] = true; out.manter.push({ nome:c.nome, motivo:'representante do mês de ' + km }); return; }
-    out.remover.push({ id:c.id, nome:c.nome, ts:c.ts, motivo:'já há um backup guardado nesse mês' });
+    out.remover.push({ id:c.id, nome:c.nome, ts:c.ts, size:c.size, motivo:'mais antigo que ' + cfg.meses + ' mes(es)' });
   });
   out.remover.sort(function(a,b){ return (a.ts||0) - (b.ts||0); });
   if(out.remover.length > GS_PODA_TETO){
@@ -12353,16 +12485,127 @@ async function _gdPodaSimularNuvem(){
   return _gdPodaPlanejarNuvem(arquivos, Date.now());
 }
 
-// LIXEIRA, não exclusão definitiva: `PATCH {trashed:true}` dá 30 dias de
-// arrependimento e é reversível pelo próprio Drive. Apagar de vez seria ganhar
-// nada e perder a única chance de desfazer um engano.
-async function _gdPodaLixeira(token, id){
-  const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,trashed', {
-    method:'PATCH',
-    headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ trashed:true }),
-  }, token, 'mover backup para a lixeira');
-  return await r.json();
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.6.0 — RETENÇÃO NO DRIVE E LIMPEZA DA LIXEIRA (decisão do Douglas, 29/10/2026)
+// ════════════════════════════════════════════════════════════════════════════
+// Até a v2.4.5.0 a poda da nuvem mandava para a LIXEIRA (30 dias de arrependimento). Medido no hotel: a
+// lixeira do app tinha 110 arquivos e 2,67 GB — e a lixeira CONTA no espaço da conta. O Douglas decidiu:
+// backups antigos podem ser APAGADOS DE VEZ; documentos nunca.
+//
+// A trava mora DENTRO de `_gdApagarDeVez`, não em quem chama (o mesmo desenho de `_hrelApagar`):
+//   • fora da lixeira: só `backup_completo_….json` (a série de backups — e a pasta de backups é a única listada);
+//   • na lixeira: só `backup_completo_`, `HOSPEDADOS_` e `_EM-ANDAMENTO_` (provisórios), há mais de 7 dias.
+// Nome fora disso é RECUSADO sem chamar o Drive. PDF de fechamento, recarga, auditoria, CSV, `_ESTADO-ATUAL`
+// e o backup mais recente nunca passam. PDF de fechamento achado na lixeira é TIRADO de lá e registrado.
+const GD_RET_RE_COMPLETO = /^backup_completo_.+\.json$/;
+const GD_LIX_RE_APAGAVEL = /^(backup_completo_.+\.json|HOSPEDADOS_.+\.pdf|_EM-ANDAMENTO_.+\.pdf)$/;
+const GD_LIX_DIAS = 7;
+const GS_RET_LS = 'garagespot_retencao_config';        // configuração (gestor) — vai no backup
+const GS_RET_ULT_LS = 'garagespot_retencao_resultado'; // o que a última rodada fez e o total liberado
+function _gsRetConfig(){
+  const p = { dias:7, meses:3, lixeira:true };
+  try{
+    const c = JSON.parse(localStorage.getItem(GS_RET_LS) || 'null') || {};
+    const dias = parseInt(c.dias, 10), meses = parseInt(c.meses, 10);
+    if(dias >= 1 && dias <= 90) p.dias = dias;
+    if(meses >= 0 && meses <= 24) p.meses = meses;
+    if(c.lixeira === false) p.lixeira = false;
+  }catch(e){}
+  return p;
+}
+function _gsRetResultado(){ try{ return JSON.parse(localStorage.getItem(GS_RET_ULT_LS) || 'null') || {}; }catch(e){ return {}; } }
+function _gsRetSomar(parte){
+  try{
+    const r = _gsRetResultado();
+    r.ts = Date.now();
+    r.ultima = Object.assign({}, r.ultima && (Date.now() - (r.ultima.ts || 0)) < 60000 ? r.ultima : {}, parte, { ts:Date.now() });
+    r.total_bytes = (r.total_bytes || 0) + (parte.bytes || 0);
+    r.total_qtd = (r.total_qtd || 0) + (parte.qtd || 0);
+    localStorage.setItem(GS_RET_ULT_LS, JSON.stringify(r));
+  }catch(e){}
+}
+function _gdLixEhFechamento(nome){
+  const n = String(nome || '');
+  return /\.pdf$/i.test(n) && !/^(HOSPEDADOS_|_EM-ANDAMENTO_|EM-ANDAMENTO_|Recarga_)/i.test(n) && /(^|[_-])GS[0-9A-Z]+([_.-]|$)/.test(n);   // também o formato antigo `checkout-GS002-…`
+}
+async function _gdApagarDeVez(token, f, naLixeira){
+  const nome = String((f && f.name) || '');
+  const ok = !!(f && f.id) && (naLixeira ? (f.trashed !== false && GD_LIX_RE_APAGAVEL.test(nome)) : GD_RET_RE_COMPLETO.test(nome));
+  if(!ok || nome === GD_ROLANTE_NOME || _gsNomeUltimoBom() === nome) throw new Error('exclusão definitiva recusada: ' + nome);
+  try{
+    await _gdFetch(GD_API + '/files/' + encodeURIComponent(f.id), { method:'DELETE' }, token,
+      naLixeira ? 'apagar de vez da lixeira' : 'apagar backup antigo');
+  }catch(e){
+    if(e && e.gdDet && e.gdDet.status === 404) return;   // já não existe: nada a fazer
+    throw e;
+  }
+}
+// Plano da lixeira (só lê): o que sai de vez, o que volta (PDF de fechamento) e o que fica.
+function _gdLixPlanejar(itens, agora){
+  const out = { apagar:[], devolver:[], ficar:[], teto:GS_PODA_TETO, truncado:false };
+  (itens || []).forEach(function(f){
+    if(!f || f.mimeType === GD_MIME_PASTA) return;
+    const nome = String(f.name || ''), bytes = Number(f.size || 0) || 0;
+    if(_gdLixEhFechamento(nome)){ out.devolver.push({ id:f.id, nome:nome, bytes:bytes }); return; }
+    if(!GD_LIX_RE_APAGAVEL.test(nome)){ out.ficar.push({ nome:nome, bytes:bytes, motivo:'não é backup nem relatório provisório' }); return; }
+    const t = Date.parse(f.trashedTime || '') || 0;
+    if(!t){ out.ficar.push({ nome:nome, bytes:bytes, motivo:'sem data de lixeira — na dúvida, fica' }); return; }
+    const dias = (agora - t) / 86400000;
+    if(dias < GD_LIX_DIAS){ out.ficar.push({ nome:nome, bytes:bytes, motivo:'na lixeira há ' + Math.floor(dias) + 'd (sai com ' + GD_LIX_DIAS + 'd)' }); return; }
+    out.apagar.push({ id:f.id, name:nome, nome:nome, bytes:bytes, trashed:true, motivo:'na lixeira há ' + Math.floor(dias) + 'd' });
+  });
+  out.apagar.sort(function(a, b){ return b.bytes - a.bytes; });
+  out.apagarQtd = out.apagar.length;   // antes do teto: é o que a limpeza libera ao todo (em dias seguidos)
+  out.apagarBytes = out.apagar.reduce(function(s2, a){ return s2 + a.bytes; }, 0);
+  if(out.apagar.length > GS_PODA_TETO){ out.truncado = true; out.excedente = out.apagar.length - GS_PODA_TETO; out.apagar = out.apagar.slice(0, GS_PODA_TETO); }
+  return out;
+}
+async function _gdLixListar(token){
+  return await _gdUsoListar(token, 'trashed=true', 'id,name,size,mimeType,trashedTime,trashed');
+}
+async function _gdLixSimular(){
+  if(!_gdDisponivel() || !_gdConectado()) return { indisponivel:true, apagar:[], devolver:[], ficar:[] };
+  const itens = await _gdComToken(function(token){ return _gdLixListar(token); }, false);
+  return _gdLixPlanejar(itens, Date.now());
+}
+async function _gdLixLimpar(){
+  if(_gsSuspenso('limpeza da lixeira do Drive')) return { ok:false, erro:'modo protegido' };
+  if(_gsDriveSoA('limpeza da lixeira do Drive')) return { ok:false, erro:_gsDriveMsg() };
+  if(!_gsRetConfig().lixeira) return { ok:false, erro:'limpeza da lixeira desligada' };
+  if(!_gdDisponivel() || !_gdConectado()) return { ok:false, erro:'nuvem não conectada' };
+  const feitos = [], devolvidos = [];
+  let erro = null, plano = null;
+  try{
+    await _gdComToken(async function(token){
+      plano = _gdLixPlanejar(await _gdLixListar(token), Date.now());
+      for(const d of plano.devolver){
+        try{
+          await _gdFetch(GD_API + '/files/' + encodeURIComponent(d.id) + '?fields=id,trashed', {
+            method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ trashed:false }),
+          }, token, 'tirar PDF de fechamento da lixeira');
+          devolvidos.push(d);
+        }catch(e){ if(e && (e.gdAuth || e.gdCheio)) throw e; }
+      }
+      for(const a of plano.apagar){
+        try{ await _gdApagarDeVez(token, a, true); feitos.push(a); }
+        catch(e){ erro = (e && e.message) || String(e); break; }   // aborta no primeiro tropeço
+      }
+      return true;
+    }, false);
+  }catch(e){ erro = erro || (e && e.message) || String(e); }
+  devolvidos.forEach(function(d){
+    try{ addLogSistema('Lixeira do Drive: PDF de fechamento ' + d.nome + ' estava na lixeira — DEVOLVIDO à pasta', { aud:true, acao:'lixeira_pdf_devolvido', alvo:d.nome }); }catch(e){}
+  });
+  const bytes = feitos.reduce(function(s, a){ return s + (a.bytes || 0); }, 0);
+  feitos.forEach(function(a){
+    try{ addLogSistema('Lixeira do Drive: ' + a.nome + ' apagado de vez (' + a.motivo + ', ' + _gsMB(a.bytes) + ')', { aud:true, acao:'lixeira_apagado', alvo:a.nome }); }catch(e){}
+  });
+  if(feitos.length || devolvidos.length) _gsRetSomar({ lixeira_qtd:feitos.length, lixeira_bytes:bytes, devolvidos:devolvidos.length, qtd:feitos.length, bytes:bytes });
+  if(erro){
+    try{ addLogSistema('Limpeza da lixeira do Drive ABORTADA após ' + feitos.length + ' arquivo(s): ' + erro, { aud:true, acao:'poda_abortada', alvo:String(erro).slice(0, 80) }); }catch(e){}
+    return { ok:false, erro:erro, apagados:feitos.length, devolvidos:devolvidos.length, bytes:bytes, plano:plano };
+  }
+  return { ok:true, apagados:feitos.length, devolvidos:devolvidos.length, bytes:bytes, plano:plano };
 }
 
 async function _gdPodaExecutarNuvem(){
@@ -12378,16 +12621,17 @@ async function _gdPodaExecutarNuvem(){
     await _gdComToken(async function(token){
       for(let i = 0; i < plano.remover.length; i++){
         const it = plano.remover[i];
-        try{ await _gdPodaLixeira(token, it.id); feitos.push(it); }
+        try{ await _gdApagarDeVez(token, { id:it.id, name:it.nome }, false); feitos.push(it); }   // v2.4.6.0: de vez
         catch(e){ erro = (e && e.message) || String(e); break; }   // aborta no primeiro tropeço
       }
       return true;
     }, false);
   }catch(e){ erro = erro || (e && e.message) || String(e); }
   feitos.forEach(function(a){
-    try{ addLogSistema('Limpeza: backup da nuvem para a lixeira — ' + a.nome + ' (' + a.motivo + ')',
+    try{ addLogSistema('Retenção: backup da nuvem apagado de vez — ' + a.nome + ' (' + a.motivo + (a.size ? ', ' + _gsMB(a.size) : '') + ')',
       {aud:true, acao:'poda_backup_nuvem', alvo:a.nome}); }catch(e){}
   });
+  if(feitos.length){ const b = feitos.reduce(function(s, a){ return s + (a.size || 0); }, 0); _gsRetSomar({ backups_qtd:feitos.length, backups_bytes:b, qtd:feitos.length, bytes:b }); }
   if(erro){
     try{ addLogSistema('Limpeza da nuvem ABORTADA após ' + feitos.length + ' arquivo(s): ' + erro,
       {aud:true, acao:'poda_abortada', alvo:String(erro).slice(0,80)}); }catch(e){}
@@ -12429,6 +12673,11 @@ async function _gsPodaRodarSeLigada(){
     if(cfg.nuvem){
       const rn = await _gdPodaExecutarNuvem();
       if(rn && rn.apagados) console.log('[PODA] nuvem:', rn.apagados, 'arquivo(s)');
+      // v2.4.6.0: a lixeira do Drive (só backups e provisórios há mais de 7 dias; PDF de fechamento volta)
+      if(_gsRetConfig().lixeira){
+        const rx = await _gdLixLimpar();
+        if(rx && (rx.apagados || rx.devolvidos)) console.log('[PODA] lixeira do Drive:', rx.apagados, 'apagado(s),', rx.devolvidos, 'devolvido(s)');
+      }
     }
   }catch(e){ console.warn('[PODA] execução automática falhou (ignorada):', e && e.message); }
 }
@@ -12461,9 +12710,56 @@ function _renderPodaStatus(){
       saem <strong>só depois de confirmados na nuvem</strong> e de passados <strong>${GS_PODA_DIAS_LOCAL} dias
       dessa confirmação</strong>. Sem confirmação, ficam.
     </div>
+    ${_gsRetPoliticaHTML()}
+    <button class="bcx" id="btn-ret-config" onclick="configurarRetencao()" style="width:100%;margin-bottom:6px">⚙️ Configurar retenção na nuvem</button>
     <button class="bcx" id="btn-poda-simular" onclick="simularLimpeza()" style="width:100%">🔍 Simular limpeza (não apaga nada)</button>
     <button class="bcx" id="btn-poda-toggle" onclick="alternarLimpeza()" style="width:100%;margin-top:6px">${c.ligada?'Desligar limpeza automática':'Ligar limpeza automática'}</button>
   </div>`;
+}
+
+// v2.4.6.0 — o texto da política e o que ela já liberou (caixa de limpeza e Uso do Drive)
+function _gsRetPoliticaHTML(){
+  const c = _gsRetConfig(), r = _gsRetResultado();
+  const u = r.ultima || {};
+  let h = `<div id="ret-politica" style="background:#FFF8E6;border:1px solid #BA7517;border-radius:6px;padding:8px 10px;color:#633806;font-size:11px;line-height:1.55;margin-bottom:8px">
+      <strong>Retenção dos backups na nuvem:</strong> ficam os backups completos dos <strong>últimos ${c.dias} dias</strong>
+      e <strong>1 por mês dos últimos ${c.meses} ${c.meses === 1 ? 'mês' : 'meses'}</strong>; os mais antigos são <strong>apagados de vez</strong>
+      (o mais recente e o último backup bom nunca saem).<br>
+      <strong>Lixeira do Drive:</strong> ${c.lixeira ? 'backups e relatórios provisórios que estão lá há mais de ' + GD_LIX_DIAS + ' dias são apagados de vez; PDF de fechamento achado na lixeira é <strong>devolvido</strong> à pasta.' : 'limpeza DESLIGADA.'}<br>
+      Nunca são apagados: PDFs de fechamento, recarga, auditoria, planilhas e o estado atual.`;
+  if(r.ts) h += `<div style="margin-top:4px;color:#0F6E56">Já liberado: <strong>${_gdUsoTam(r.total_bytes || 0)}</strong> (${r.total_qtd || 0} arquivo(s)).` +
+    ` Última vez: ${_vtEsc(fmtDt(r.ts))} — ${u.backups_qtd || 0} backup(s) ${_gdUsoTam(u.backups_bytes || 0)}, ${u.lixeira_qtd || 0} da lixeira ${_gdUsoTam(u.lixeira_bytes || 0)}${u.devolvidos ? ', ' + u.devolvidos + ' PDF(s) devolvido(s)' : ''}.</div>`;
+  return h + '</div>';
+}
+// Configurar é ação de gestor: PIN + trilha.
+function configurarRetencao(){
+  showEntrarPIN(function(){
+    const c = _gsRetConfig();
+    const opDias = [3, 5, 7, 10, 14, 30].map(function(d){ return '<option value="' + d + '"' + (d === c.dias ? ' selected' : '') + '>' + d + ' dias</option>'; }).join('');
+    const opMeses = [0, 1, 2, 3, 6, 12].map(function(m){ return '<option value="' + m + '"' + (m === c.meses ? ' selected' : '') + '>' + (m === 0 ? 'nenhum' : m + (m === 1 ? ' mês' : ' meses')) + '</option>'; }).join('');
+    const mc = document.getElementById('mc');
+    mc.innerHTML = `<div class="mt">⚙️ Retenção na nuvem</div>
+      <div class="ms">Backups completos no Google Drive. Documentos nunca são apagados.</div>
+      <label style="font-size:12px;display:block;margin:8px 0 4px">Guardar todos os backups dos últimos</label>
+      <select id="ret-dias" class="fi" style="width:100%">${opDias}</select>
+      <label style="font-size:12px;display:block;margin:10px 0 4px">Depois disso, 1 backup por mês dos últimos</label>
+      <select id="ret-meses" class="fi" style="width:100%">${opMeses}</select>
+      <label style="font-size:12px;display:flex;gap:8px;align-items:center;margin:12px 0 4px"><input type="checkbox" id="ret-lixeira" ${c.lixeira ? 'checked' : ''}>
+        Apagar da lixeira do Drive os backups e relatórios provisórios com mais de ${GD_LIX_DIAS} dias</label>
+      <button class="bsv" id="ret-salvar" style="width:100%;margin-top:12px">Salvar</button>
+      <button class="bcx" onclick="showConexoes()" style="width:100%;margin-top:6px">← Voltar</button>`;
+    document.getElementById('ov').classList.add('on');
+    document.getElementById('ret-salvar').onclick = function(){
+      const novo = { dias:parseInt(document.getElementById('ret-dias').value, 10), meses:parseInt(document.getElementById('ret-meses').value, 10),
+                     lixeira:!!document.getElementById('ret-lixeira').checked };
+      try{ _gsSetItemSeguro(GS_RET_LS, JSON.stringify(novo), 'configuração da retenção'); }catch(e){}
+      const ef = _gsRetConfig();
+      try{ addLogSistema('Retenção na nuvem configurada: ' + ef.dias + ' dias + 1 por mês de ' + ef.meses + ' mes(es); lixeira ' + (ef.lixeira ? 'LIGADA' : 'DESLIGADA'),
+        { aud:true, acao:'retencao_configurada', alvo:ef.dias + 'd/' + ef.meses + 'm' }); }catch(e){}
+      showToast('✅ Retenção salva — rode a simulação para conferir', 4000);
+      _gdReabrirConexoes();
+    };
+  });
 }
 
 // Ligar/desligar é ação de gestor: pede o PIN e deixa rastro.
@@ -12493,6 +12789,8 @@ async function simularLimpeza(){
   const pdfs  = _gsPodaSimularPDFs();          // v1.9.6.6 — mesma transparência
   let nuvem = { remover:[], manter:[], indisponivel:true };
   try{ nuvem = await _gdPodaSimularNuvem(); }catch(e){ nuvem = { remover:[], manter:[], erro:(e&&e.message)||String(e) }; }
+  let lix = { apagar:[], devolver:[], ficar:[], indisponivel:true };   // v2.4.6.0
+  try{ lix = await _gdLixSimular(); }catch(e){ lix = { apagar:[], devolver:[], ficar:[], erro:(e&&e.message)||String(e) }; }
   const fmtL = function(it){
     const q = it.ts ? fmtDt(it.ts) : '—';
     return `<div style="padding:5px 0;border-bottom:1px solid #eee"><div style="color:#333;word-break:break-all">${_vtEsc(it.nome)}</div>
@@ -12524,9 +12822,14 @@ async function simularLimpeza(){
      <div class="gestao-menu-sep" style="margin-top:14px">Na nuvem</div>
      ${nuvem.indisponivel?'<div style="color:#999;font-size:11px;padding:4px 0">Drive não conectado — nada a analisar.</div>':''}
      ${nuvem.erro?`<div style="color:#A32D2D;font-size:11px;padding:4px 0">Não deu para listar: ${_vtEsc(nuvem.erro)}</div>`:''}
-     ${(!nuvem.indisponivel&&!nuvem.erro)?bloco('Iriam para a lixeira do Drive', '#A32D2D', nuvem.remover, 'Nada seria movido agora.'):''}
+     ${(!nuvem.indisponivel&&!nuvem.erro)?bloco('Seriam apagados de vez do Drive', '#A32D2D', nuvem.remover, 'Nada seria apagado agora.'):''}
      ${(!nuvem.indisponivel&&!nuvem.erro&&nuvem.truncado)?`<div style="color:#854F0B;font-size:11px;padding:4px 0">Teto de ${nuvem.teto} por execução: outros ${nuvem.excedente} ficariam para a próxima.</div>`:''}
-     ${(!nuvem.indisponivel&&!nuvem.erro)?bloco('Ficariam', '#0F6E56', nuvem.manter, 'Nenhum backup na nuvem.'):''}`;
+     ${(!nuvem.indisponivel&&!nuvem.erro)?bloco('Ficariam', '#0F6E56', nuvem.manter, 'Nenhum backup na nuvem.'):''}
+     <div class="gestao-menu-sep" style="margin-top:14px">Lixeira do Drive (arquivos do app)</div>
+     ${lix.erro?`<div style="color:#A32D2D;font-size:11px;padding:4px 0">Não deu para listar: ${_vtEsc(lix.erro)}</div>`:''}
+     ${(!lix.indisponivel&&!lix.erro)?bloco('Seriam apagados de vez da lixeira', '#A32D2D', lix.apagar.map(function(a){ return { nome:a.nome, motivo:a.motivo + ' · ' + _gdUsoTam(a.bytes) }; }), 'Nada seria apagado agora.'):''}
+     ${(!lix.indisponivel&&!lix.erro&&lix.devolver.length)?bloco('PDFs de fechamento que voltariam da lixeira', '#0F6E56', lix.devolver.map(function(a){ return { nome:a.nome, motivo:'documento — nunca é apagado' }; }), ''):''}
+     ${(!lix.indisponivel&&!lix.erro)?`<div style="color:#999;font-size:11px;padding:4px 0">Ficariam na lixeira: ${lix.ficar.length} arquivo(s).</div>`:''}`;
   try{ addLogSistema('Simulação de limpeza consultada', {aud:true, acao:'poda_simulada'}); }catch(e){}
 }
 
@@ -12626,8 +12929,21 @@ async function _gdUsoLevantar(progresso){
     out.maiores = out.maiores.slice(0, 20);
     aviso('Lendo a lixeira…');
     try{
-      const lix = await _gdUsoListar(token, 'trashed=true', 'id,size,mimeType');
+      const lix = await _gdUsoListar(token, 'trashed=true', 'id,name,size,mimeType,trashedTime');
       lix.forEach(function(f){ if(f && f.mimeType !== GD_MIME_PASTA){ out.lixeira.qtd++; out.lixeira.bytes += Number(f.size || 0) || 0; } });
+      // v2.4.6.0: o que é a lixeira, por tipo, e quanto a limpeza liberaria agora
+      const pl = _gdLixPlanejar(lix, Date.now());
+      const tipos = {};
+      lix.forEach(function(f){
+        if(!f || f.mimeType === GD_MIME_PASTA) return;
+        const n = String(f.name || '');
+        const t = /^backup_completo_/.test(n) ? 'Backups completos' : /^HOSPEDADOS_/.test(n) ? 'Relatórios de hospedados'
+          : /^_EM-ANDAMENTO_/.test(n) ? 'Provisórios _EM-ANDAMENTO_' : _gdLixEhFechamento(n) ? 'PDFs de fechamento' : 'Outros';
+        const T = tipos[t] || (tipos[t] = { qtd:0, bytes:0 }); T.qtd++; T.bytes += Number(f.size || 0) || 0;
+      });
+      out.lixeira.tipos = tipos;
+      out.lixeira.liberaria = pl.apagarBytes;
+      out.lixeira.liberariaQtd = pl.apagarQtd;
     }catch(e){ if(e && (e.gdAuth || e.gdCheio)) throw e; out.lixeira.erro = (e && e.message) || 'falhou'; }
     // VERSÕES guardadas dos arquivos REESCRITOS no mesmo id (PATCH): o Drive guarda as anteriores por um tempo.
     const alvo = reescritos.slice(0, GD_USO_MAX_REVISOES);
@@ -12694,6 +13010,31 @@ async function showUsoDrive(){
     });
   });
   h += linha('Na lixeira (arquivos do app)', u.lixeira.erro ? 'não consultado' : (u.lixeira.qtd + ' arq. · ' + _gdUsoTam(u.lixeira.bytes)));
+  // v2.4.6.0 — lixeira por tipo, retenção e composição do backup
+  if(u.lixeira.tipos){
+    Object.keys(u.lixeira.tipos).forEach(function(t){
+      const T = u.lixeira.tipos[t];
+      h += '<div class="uso-lix-tipo" style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 14px;color:#777;font-size:11px"><span>' + _vtEsc(t) + '</span><span style="white-space:nowrap">' + T.qtd + ' · ' + _gdUsoTam(T.bytes) + '</span></div>';
+    });
+    h += '<div id="uso-lix-liberaria" style="color:#633806;font-size:11px;padding:2px 0 2px 14px">A limpeza da lixeira apagaria agora ' + (u.lixeira.liberariaQtd || 0) + ' arquivo(s) · ' + _gdUsoTam(u.lixeira.liberaria || 0) +
+      (u.lixeira.liberariaQtd > GS_PODA_TETO ? ' (até ' + GS_PODA_TETO + ' por dia)' : '') + '</div>';
+  }
+  h += '<div class="gestao-menu-sep" style="margin-top:12px">Retenção</div>' + _gsRetPoliticaHTML();
+  try{
+    const cp = _gsBackupComposicao();
+    h += '<div class="gestao-menu-sep" style="margin-top:12px">O que vai no backup completo (este dispositivo)</div>';
+    h += '<div id="uso-composicao">';
+    h += linha('Fotos de hospedagens ativas', _gdUsoTam(cp.fotos_ativas));
+    h += linha('Fotos de hospedagens encerradas (' + cp.n_fotos_encerradas + ')', _gdUsoTam(cp.fotos_encerradas));
+    if(cp.fotos_outras) h += linha('Fotos sem hospedagem identificada', _gdUsoTam(cp.fotos_outras));
+    h += linha('Vistorias (documento e assinatura) de ativas', _gdUsoTam(cp.vist_ativas));
+    h += linha('Vistorias de encerradas (' + cp.n_vist_encerradas + ')', _gdUsoTam(cp.vist_encerradas));
+    h += linha('Dados (hospedagens, histórico, trilha…)', _gdUsoTam(cp.dados));
+    h += linha('Total sem o enxuto', _gdUsoTam(cp.total), true);
+    h += linha('Fica de fora no enxuto', _gdUsoTam(cp.enxuto));
+    h += linha('Backup completo enxuto', _gdUsoTam(Math.max(0, cp.total - cp.enxuto)), true);
+    h += '<div style="color:#999;font-size:11px;line-height:1.5;padding:4px 0">Fica de fora só a imagem de hospedagem encerrada cujo PDF de fechamento já está no Drive. Tamanhos aproximados (texto do arquivo).</div></div>';
+  }catch(e){}
   h += '<div class="gestao-menu-sep" style="margin-top:12px">Os 20 maiores arquivos</div>';
   h += u.maiores.length ? u.maiores.map(function(m, i){
     return '<div class="uso-maior" style="padding:4px 0;border-bottom:1px solid #eee"><div style="color:#333;word-break:break-all">' + (i + 1) + '. ' + _vtEsc(m.nome) + ' · <strong>' + _gdUsoTam(m.bytes) + '</strong></div>' +
@@ -13581,9 +13922,20 @@ async function _gsEscreverVerbatim(n){
   //    ser esvaziado NO LUGAR. Reatribuir lançaria TypeError e derrubaria a
   //    restauração inteira no meio — exatamente o que o fail-safe existe para
   //    evitar, mas sem motivo nenhum para provocá-lo.
+  // v2.4.6.0: o backup ENXUTO deixou de fora, DE PROPÓSITO, as imagens de hospedagens encerradas com PDF no
+  // Drive (a lista vai no próprio arquivo). Substituir não pode apagá-las do aparelho só por isso: o que o
+  // arquivo declarou omitido e o aparelho ainda tem, FICA. Nada além do que o arquivo declarou.
+  const _enx = (n.bruto && n.bruto.enxuto) || null;
+  const _guardaA = {}, _guardaV = {};
+  if(_enx){
+    (_enx.baldes || []).forEach(function(k){ if(Array.isArray(ANEXOS[k]) && ANEXOS[k].length) _guardaA[k] = ANEXOS[k]; });
+    (_enx.vistorias || []).forEach(function(id){ if(VISTORIAS[id]) _guardaV[id] = VISTORIAS[id]; });
+  }
   _gsSubstEsvaziar(ANEXOS);
   if(n.anexos && typeof n.anexos === 'object') Object.assign(ANEXOS, n.anexos);
+  Object.keys(_guardaA).forEach(function(k){ if(!ANEXOS[k]) ANEXOS[k] = _guardaA[k]; });
   VISTORIAS = (n.vistorias && typeof n.vistorias === 'object') ? n.vistorias : {};
+  Object.keys(_guardaV).forEach(function(id){ if(VISTORIAS[id] && VISTORIAS[id].sem_imagem && !_guardaV[id].sem_imagem) VISTORIAS[id] = _guardaV[id]; });
   if(_gsArqModoArquivos()){   // v1.9.9.5: um arquivo por item, índices refeitos
     const ra = await _gsArqAgendarSync({}), rv = await _gsArqAgendarSyncVist({});
     if(!(ra && ra.ok && rv && rv.ok)) throw new Error('gravação nos arquivos falhou');
@@ -16348,7 +16700,16 @@ async function _gdTentarPendente(){
     if(!temPendencia) return;
     if(_gdEnviando) return;                        // envio vivo, não empilha
     if(Date.now() < _gdProxTentativaTs) return;    // ainda no intervalo de espera
-    const snap = await _gsLerSnapshotIDB();
+    // v2.4.6.0 — ACHADO: nos ARQUIVOS (v1.9.9.5) a cópia do IDB não é mais gravada (`fazerBackupLocal` pula
+    // `_gsGuardarSnapshotIDB`), então a retentativa reenviava o ÚLTIMO snapshot de antes da migração — um
+    // backup velho com nome de data velha. Agora, nos arquivos, ela monta o estado ATUAL (enxuto), conferido
+    // pela mesma validação de qualquer backup. É o que faz o completo diário adiado (madrugada, tela apagada)
+    // subir certo quando o app volta à frente.
+    let snap = null;
+    if(_gsArqModoArquivos()){
+      snap = _gsMontarSnapshot(true, { enxuto:true });
+      if(!_gsValidarSnapshot(snap).ok) return;
+    } else snap = await _gsLerSnapshotIDB();
     if(!snap) return;                              // sem snapshot completo, nada a reenviar
     // v1.9.9.1: a retentativa era o SEGUNDO lugar que serializava o snapshot com
     // as fotos numa string só — e ela roda sozinha, no tique, sem ninguém por
@@ -16369,7 +16730,7 @@ async function fazerBackupNuvemAgora(){
   }
   if(!_gdConectado()){ showToast('Conecte o Google Drive primeiro.', 4000); return {ok:false, erro:'Google Drive não conectado'}; }
   showToast('Enviando backup para o Google Drive…', 3000);
-  const snap = _gsMontarSnapshot(true);
+  const snap = _gsMontarSnapshot(true, { enxuto:true });   // v2.4.6.0
   const val = _gsValidarSnapshot(snap);
   if(!val.ok){ showToast('⚠️ Envio abortado: ' + val.motivo, 5000); return {ok:false, erro:val.motivo}; }
   const nome = _gdNomeBackup();
@@ -28684,7 +29045,7 @@ async function _gsExecutarRecuperacao(){
     _gsSairProtegido('recuperação somando ' + res.usados.length + ' backup(s)');
     try{ _atualizarContadores(); }catch(e){}
     try{ addLogSistema('Recuperação concluída: ' + res.usados.join(', '), { aud:true, acao:'recuperacao_concluida', origem:'usuario' }); }catch(e){}
-    try{ await fazerBackupLocal('recuperação', { comFotos:true }); }catch(e){}
+    try{ await fazerBackupLocal('recuperação', { comFotos:true, forcar:true }); }catch(e){}
     res.ok = true;
     return res;
   }
@@ -28710,7 +29071,7 @@ async function _gsExecutarRecuperacao(){
   _gsSairProtegido('recuperação somando ' + res.usados.length + ' backup(s)');
   try{ _atualizarContadores(); }catch(e){}
   try{ addLogSistema('Recuperação concluída: ' + res.usados.join(', '), { aud:true, acao:'recuperacao_concluida', origem:'usuario' }); }catch(e){}
-  try{ await fazerBackupLocal('recuperação', { comFotos:true }); }catch(e){}
+  try{ await fazerBackupLocal('recuperação', { comFotos:true, forcar:true }); }catch(e){}
   res.ok = true;
   return res;
 }
@@ -29160,6 +29521,9 @@ Promise.resolve(true).then(async (ativo)=>{
       _gsTique(function(){ _hrelCiclo(); }, 450);
       // Esvaziamento do balde `_Sem data de check-in`. Para sozinho quando termina.
       _gsTique(function(){ _gdReorganizarSemData(); }, 525);
+      // v2.4.6.0: limpeza/retenção também no tique (1×/24 h pela própria trava). Antes só rodava 20 s
+      // depois de ABRIR o app — e com o serviço em segundo plano o app fica aberto por dias.
+      _gsTique(function(){ if(_gsPodaLigada()) _gsPodaRodarSeLigada(); }, 560);
       try { setTimeout(function(){ _gdHistProcessar(); }, 25000); } catch(e){}
       // v1.9.6.6: as três tarefas novas entram escalonadas DEPOIS da varredura do
       // histórico, para não disputarem rede nem CPU com o arranque nem entre si.
