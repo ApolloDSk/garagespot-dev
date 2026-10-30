@@ -1369,7 +1369,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.6.1';
+const GS_VERSION = 'v2.4.6.2';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -11844,6 +11844,7 @@ async function fazerBackupLocal(motivo, opts){
     try{
       let bkps=JSON.parse(localStorage.getItem('garagespot_backups_local')||'[]');
       bkps.unshift({ts:Date.now(),nome,tipo:snap.tipo,contagens:snap.contagens,arquivo:gravouArquivo,
+        tam:(pacote ? pacote.bytes : (json ? json.length : undefined)),   // v2.4.6.2: o que a limpeza libera
         filas_vazias:(typeof gsSrvAtivo === 'function' && gsSrvAtivo()) ? !gsFilasDoServidorPendentes() : undefined});   // v2.4.6.1 (C2)
       _gsSetItemSeguro('garagespot_backups_local',JSON.stringify(bkps),'registro de backups');
     }catch(e2){}
@@ -12157,8 +12158,11 @@ function _gsPodaAvaliarLocal(reg, agora, maisRecenteTs){
   //    duplo de propósito: nome sozinho seria frágil demais para autorizar apagar.
   if(nome.indexOf('backup_') !== 0) return { podar:false, motivo:'não é um arquivo de backup do app' };
   if(!/\.json$/i.test(nome))        return { podar:false, motivo:'não é .json — fora do escopo da limpeza' };
-  // 2. O mais recente NUNCA sai, aconteça o que acontecer.
-  if(reg.ts === maisRecenteTs)      return { podar:false, motivo:'é o backup mais recente' };
+  // 2. O mais recente NUNCA sai, aconteça o que acontecer. v2.4.6.2: o mais recente DE CADA TIPO (leve, completo…)
+  //    — `maisRecenteTs` pode ser o mapa {tipo: ts} de `_gsPodaMaisRecentes` ou, como antes, um número só.
+  if(maisRecenteTs && typeof maisRecenteTs === 'object'){
+    if(reg.ts === maisRecenteTs[_gsBkTipo(reg)]) return { podar:false, motivo:'é o backup ' + _gsBkTipo(reg) + ' mais recente' };
+  } else if(reg.ts === maisRecenteTs) return { podar:false, motivo:'é o backup mais recente' };
   { const na = _gsPodaRecusaRecente(reg, agora); if(na) return na; }   // v2.4.4.0
   // v1.9.9.4: o ÚLTIMO BACKUP COMPLETO BOM (o do registro de integridade, que só
   // um backup aprovado na conferência atualiza) fica fixado.
@@ -12176,18 +12180,85 @@ function _gsPodaAvaliarLocal(reg, agora, maisRecenteTs){
   return { podar:true, motivo:'na nuvem há ' + Math.floor(dias) + 'd (≥ ' + GS_PODA_DIAS_LOCAL + 'd)' };
 }
 
+// v2.4.6.2 — TODOS OS TIPOS DE BACKUP LOCAL. Medido no celular A (30/10): 238 backups no dispositivo e a limpeza
+// nunca liberava nenhum. Causa: só um backup CONFIRMADO NO DRIVE podia sair, e o LEVE nunca vai ao Drive como
+// arquivo (sobe o rolante `_ESTADO-ATUAL`, sobrescrito) — nenhum leve jamais seria confirmado; e a cobertura pelo
+// responsável (C2) exigia a marca `filas_vazias`, que só existe desde a v2.4.6.1. Agora um backup também fica
+// COBERTO quando um backup MAIS NOVO deste dispositivo está coberto: um completo confirmado no Drive (o estado
+// inteiro, depois dele) ou um feito com as filas do servidor vazias e coberto pelo responsável (tudo o que este
+// dispositivo tinha antes já estava no servidor). A janela de 7 dias conta da cobertura DESSE mais novo. Peneiras
+// de sempre: o mais recente DE CADA TIPO nunca sai, o último bom fica fixado.
+function _gsBkTipo(reg){
+  if(reg && reg.tipo) return String(reg.tipo);
+  const m = /^backup_(completo|leve|sem_fotos)_/.exec(String((reg && reg.nome) || ''));
+  return m ? m[1] : 'outro';
+}
+function _gsPodaMaisRecentes(bkps){
+  const r = {};
+  (bkps || []).forEach(function(b){ if(!b) return; const t = _gsBkTipo(b); if(!(r[t] >= b.ts)) r[t] = b.ts; });
+  return r;
+}
+function _gsPodaCoberturaDerivada(bkps){
+  const ancoras = (bkps || []).filter(function(b){
+    return b && b.nuvem_ok && b.nuvem_ts && !b.coberto_derivado && (_gsBkTipo(b) === 'completo' || b.filas_vazias === true);
+  });
+  const out = {};
+  (bkps || []).forEach(function(b){
+    if(!b || b.nuvem_ok || !b.ts) return;
+    let melhor = null;
+    ancoras.forEach(function(x){ if(x.ts > b.ts && (!melhor || x.nuvem_ts < melhor.nuvem_ts)) melhor = x; });
+    if(melhor) out[b.nome] = { nuvem_ts:melhor.nuvem_ts, por:'backup mais novo coberto (' + melhor.nome + ')' };
+  });
+  return out;
+}
+// Arquivo `backup_*.json` em GarageSpot/Dados que NÃO está no registro (registro perdido, gravação que não chegou a
+// registrar, instalação anterior): sem registro a limpeza nunca o enxergava. Entra no registro com a data do NOME
+// (ou do arquivo); sem data, fica de fora — nada se apaga por um palpite.
+function _gsBkDataDoNome(nome){
+  const m = /(\d{4})-(\d{2})-(\d{2})[_T](\d{2})[h:-](\d{2})(?:[m:-](\d{2}))?/.exec(String(nome || ''));
+  if(!m) return 0;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+async function _gsPodaAdotarOrfaos(){
+  const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+  if(!F) return 0;
+  let n = 0;
+  try{
+    const d = await F.readdir({ path:'GarageSpot/Dados', directory:'DOCUMENTS' });
+    const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
+    const tem = {}; bkps.forEach(function(b){ if(b && b.nome) tem[b.nome] = true; });
+    ((d && d.files) || []).forEach(function(f){
+      const nome = typeof f === 'string' ? f : String((f && f.name) || '');
+      if(!/^backup_.+\.json$/.test(nome) || tem[nome]) return;
+      const ts = _gsBkDataDoNome(nome) || Number((f && f.mtime) || 0);
+      if(!ts) return;
+      bkps.push({ ts:ts, nome:nome, tipo:_gsBkTipo({ nome:nome }), arquivo:true, orfao:true, tam:Number((f && f.size) || 0) || undefined });
+      n++;
+    });
+    if(n){
+      bkps.sort(function(a, b){ return (b && b.ts || 0) - (a && a.ts || 0); });
+      _gsSetItemSeguro('garagespot_backups_local', JSON.stringify(bkps), 'registro de backups');
+      try{ addLogSistema('Limpeza: ' + n + ' backup(s) do dispositivo que estavam fora do registro passaram a ser acompanhados',
+        { aud:true, acao:'poda_backup_adotado', alvo:String(n) }); }catch(e){}
+    }
+  }catch(e){ console.warn('[PODA] backups fora do registro (ignorado):', e && e.message); }
+  return n;
+}
+
 // SOMENTE LEITURA. Não apaga, não grava, não marca nada. Pode rodar à vontade.
 function _gsPodaSimularLocal(){
   const out = { remover:[], manter:[], teto:GS_PODA_TETO, truncado:false };
   try{
     const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
     const agora = Date.now();
-    let maisRecenteTs = 0;
-    bkps.forEach(function(b){ if(b && b.ts > maisRecenteTs) maisRecenteTs = b.ts; });
+    const maisRecenteTs = _gsPodaMaisRecentes(bkps);
+    const cob = _gsPodaCoberturaDerivada(bkps);   // v2.4.6.2: só leitura — a simulação vê o que a rodada marcaria
     bkps.forEach(function(b){
       if(!b) return;
+      if(cob[b.nome]) b = Object.assign({}, b, { nuvem_ok:true, nuvem_ts:cob[b.nome].nuvem_ts, coberto_por:cob[b.nome].por });
       const v = _gsPodaAvaliarLocal(b, agora, maisRecenteTs);
-      const linha = { nome:b.nome, ts:b.ts, tipo:b.tipo, motivo:v.motivo };
+      const linha = { nome:b.nome, ts:b.ts, tipo:b.tipo, motivo:v.motivo, tam:b.tam };
       if(v.podar) out.remover.push(linha); else out.manter.push(linha);
     });
     // Mais antigos primeiro: se o teto cortar, some o lixo mais velho.
@@ -12244,6 +12315,7 @@ async function _gsPodaApagarLista(lista, apagarFn){
   return out;
 }
 
+function _gsSomaTam(l){ return (l || []).reduce(function(s2, a){ return s2 + (Number(a && a.tam) || 0); }, 0); }
 // Executa a poda LOCAL. O registro só é regravado no fim, refletindo o disco.
 async function _gsPodaExecutarLocal(){
   if(_gsSuspenso('limpeza local')) return { ok:false, erro:'modo protegido' };   // v1.9.9.4
@@ -12272,9 +12344,9 @@ async function _gsPodaExecutarLocal(){
   if(erro){
     try{ addLogSistema('Limpeza ABORTADA após ' + apagados.length + ' arquivo(s): ' + erro,
       {aud:true, acao:'poda_abortada', alvo:String(erro).slice(0,80)}); }catch(e){}
-    return { ok:false, erro:erro, apagados:apagados.length, plano:plano };
+    return { ok:false, erro:erro, apagados:apagados.length, plano:plano, bytes:_gsSomaTam(apagados) };
   }
-  return { ok:true, apagados:apagados.length, plano:plano };
+  return { ok:true, apagados:apagados.length, plano:plano, bytes:_gsSomaTam(apagados) };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -12579,23 +12651,29 @@ function _gsBkNuvemPublicar(ts, nome){
   }catch(e){}
 }
 function _gsPodaMarcarCobertos(){
-  let n = 0;
+  let n = 0, nd = 0;
   try{
-    if(!gsSrvAtivo()) return 0;
-    const pub = JSON.parse(localStorage.getItem(GS_BK_NUVEM_EMP_LS) || 'null');
-    if(!pub || !pub.ts) return 0;
     const bkps = JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]');
-    bkps.forEach(function(b){
+    const pub = gsSrvAtivo() ? JSON.parse(localStorage.getItem(GS_BK_NUVEM_EMP_LS) || 'null') : null;
+    if(pub && pub.ts) bkps.forEach(function(b){
       if(!b || b.nuvem_ok || b.filas_vazias !== true || !(b.ts < pub.ts)) return;
       b.nuvem_ok = true; b.nuvem_ts = Date.now(); b.coberto_por = pub.nome || 'backup do responsável'; n++;
     });
-    if(n){
+    // v2.4.6.2: o que é MAIS VELHO que um backup coberto também está coberto (todos os tipos, inclusive leves)
+    const cob = _gsPodaCoberturaDerivada(bkps);
+    bkps.forEach(function(b){
+      const c = b && cob[b.nome]; if(!c) return;
+      b.nuvem_ok = true; b.nuvem_ts = c.nuvem_ts; b.coberto_por = c.por; b.coberto_derivado = true; nd++;
+    });
+    if(n || nd){
       _gsSetItemSeguro('garagespot_backups_local', JSON.stringify(bkps), 'registro de backups');
-      try{ addLogSistema('Limpeza: ' + n + ' backup(s) deste dispositivo cobertos pelo backup do responsável no Drive (' + (pub.nome || '?') + ') — saem depois de ' + GS_PODA_DIAS_LOCAL + ' dias',
+      if(n) try{ addLogSistema('Limpeza: ' + n + ' backup(s) deste dispositivo cobertos pelo backup do responsável no Drive (' + (pub.nome || '?') + ') — saem depois de ' + GS_PODA_DIAS_LOCAL + ' dias',
         { aud:true, acao:'poda_backup_coberto', alvo:String(n) }); }catch(e){}
+      if(nd) try{ addLogSistema('Limpeza: ' + nd + ' backup(s) deste dispositivo cobertos por um backup MAIS NOVO já coberto — saem ' + GS_PODA_DIAS_LOCAL + ' dias depois dessa cobertura',
+        { aud:true, acao:'poda_backup_coberto_mais_novo', alvo:String(nd) }); }catch(e){}
     }
-  }catch(e){ console.warn('[PODA] cobertura pelo responsável (ignorada):', e && e.message); }
-  return n;
+  }catch(e){ console.warn('[PODA] cobertura (ignorada):', e && e.message); }
+  return n + nd;
 }
 
 // C3 — QUANTO O APP OCUPA NESTE DISPOSITIVO (Uso do Drive → "Neste dispositivo"). Só lê.
@@ -12607,8 +12685,16 @@ async function gsUsoDispositivo(){
   }catch(e){}
   const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
   if(F){
-    try{ const d = await F.readdir({ path:'GarageSpot/Dados', directory:'DOCUMENTS' }); r.backups = 0;
-      ((d && d.files) || []).forEach(function(f){ if(f && typeof f === 'object' && /^backup_/.test(f.name || '')){ r.backups += Number(f.size || 0); r.backups_qtd++; } }); }catch(e){}
+    try{ const d = await F.readdir({ path:'GarageSpot/Dados', directory:'DOCUMENTS' }); r.backups = 0; r.backups_tipos = {};
+      ((d && d.files) || []).forEach(function(f){ if(f && typeof f === 'object' && /^backup_/.test(f.name || '')){
+        const tam = Number(f.size || 0); r.backups += tam; r.backups_qtd++;
+        // v2.4.6.2: por tipo, com a data do mais antigo e do mais novo (pelo nome; sem data no nome, pelo arquivo)
+        const t = /\.parcial$/.test(f.name) ? 'parcial' : _gsBkTipo({ nome:f.name });
+        const ts = _gsBkDataDoNome(f.name) || Number(f.mtime || 0);
+        const g = r.backups_tipos[t] || (r.backups_tipos[t] = { qtd:0, bytes:0, de:0, ate:0 });
+        g.qtd++; g.bytes += tam;
+        if(ts){ if(!g.de || ts < g.de) g.de = ts; if(ts > g.ate) g.ate = ts; }
+      } }); }catch(e){}
     try{ const d = await F.readdir({ path:'GarageSpot', directory:'DOCUMENTS' }); r.pdfs = 0;
       ((d && d.files) || []).forEach(function(f){ if(f && typeof f === 'object' && /\.pdf$/i.test(f.name || '')){ r.pdfs += Number(f.size || 0); r.pdfs_qtd++; } }); }catch(e){}
   }
@@ -12808,6 +12894,22 @@ function _gsNomeUltimoBom(){
   try{ const m = JSON.parse(localStorage.getItem(GS_BACKUP_META_LS) || 'null'); return (m && m.nome) ? String(m.nome) : ''; }
   catch(e){ return ''; }
 }
+const GS_PODA_LOCAL_RETOMAR_LS = 'garagespot_poda_local_retomar';
+// Uma rodada da limpeza LOCAL: acompanha os arquivos fora do registro, marca coberturas, apaga (teto de 40) e,
+// se o teto cortou, agenda a continuação em ~10 min (o tique de 10 min a alcança).
+async function _gsPodaLocalRodada(){
+  try{ await _gsPodaAdotarOrfaos(); }catch(e){}   // v2.4.6.2
+  try{ _gsPodaMarcarCobertos(); }catch(e){}       // v2.4.6.1 (C2) + v2.4.6.2
+  const rl = await _gsPodaExecutarLocal();
+  if(rl && rl.apagados){ console.log('[PODA] local:', rl.apagados, 'arquivo(s)'); _gsLimpDispSomar('backups', rl.apagados, rl.bytes || 0); }
+  try{
+    if(rl && rl.ok && rl.plano && rl.plano.truncado){
+      localStorage.setItem(GS_PODA_LOCAL_RETOMAR_LS, String(Date.now() + 9 * 60 * 1000));
+      addLogSistema('Limpeza do dispositivo: ' + rl.plano.excedente + ' backup(s) ainda a apagar — continua em ~10 min', { aud:true, acao:'poda_local_retomara', alvo:String(rl.plano.excedente) });
+    }
+  }catch(e){}
+  return rl;
+}
 async function _gsPodaRodarSeLigada(){
   try{
     if(_gsSuspenso('limpeza (poda)')) return;   // v1.9.9.4
@@ -12815,6 +12917,15 @@ async function _gsPodaRodarSeLigada(){
     let ult = 0, ret = 0;
     try{ ult = parseInt(localStorage.getItem(GS_PODA_ULT_LS) || '0', 10) || 0; }catch(e){}
     try{ ret = parseInt(localStorage.getItem(GS_PODA_RETOMAR_LS) || '0', 10) || 0; }catch(e){}
+    // v2.4.6.2: a limpeza LOCAL que parou no teto (40 por rodada) também é retomada em ~10 min
+    if(ult && (Date.now() - ult) < 24*60*60*1000){
+      let retL = 0;
+      try{ retL = parseInt(localStorage.getItem(GS_PODA_LOCAL_RETOMAR_LS) || '0', 10) || 0; }catch(e){}
+      if(retL && Date.now() >= retL){
+        try{ localStorage.removeItem(GS_PODA_LOCAL_RETOMAR_LS); }catch(e){}
+        await _gsPodaLocalRodada();
+      }
+    }
     // v2.4.6.1: a limpeza da NUVEM que ficou pela metade é retomada na rodada seguinte, sem esperar o dia
     if(ult && (Date.now() - ult) < 24*60*60*1000){
       if(!ret || Date.now() < ret) return;
@@ -12828,9 +12939,7 @@ async function _gsPodaRodarSeLigada(){
     }
     try{ localStorage.removeItem(GS_PODA_RETOMAR_LS); }catch(e){}
     try{ localStorage.setItem(GS_PODA_ULT_LS, String(Date.now())); }catch(e){}
-    try{ _gsPodaMarcarCobertos(); }catch(e){}   // v2.4.6.1 (C2)
-    const rl = await _gsPodaExecutarLocal();
-    if(rl && rl.apagados){ console.log('[PODA] local:', rl.apagados, 'arquivo(s)'); _gsLimpDispSomar('backups', rl.apagados, 0); }
+    await _gsPodaLocalRodada();
     // v1.9.6.6: os PDFs do APARELHO, com a mesma regra. Só o aparelho — a cópia da
     // nuvem nunca é tocada por caminho nenhum.
     const rp = await _gsPodaExecutarPDFs();
@@ -13144,12 +13253,21 @@ async function _gsUsoDispRender(){
   h += lin('Fotos e anexos', tam(u.fotos));
   h += lin('Documentos e assinaturas de vistoria', tam(u.vistorias));
   h += lin('Backups no dispositivo (' + u.backups_qtd + ')', tam(u.backups));
+  if(u.backups_tipos){   // v2.4.6.2
+    const ROT = { leve:'leves (sem fotos)', completo:'completos', sem_fotos:'exportações sem fotos', parcial:'gravações interrompidas', outro:'outros' };
+    ['completo', 'leve', 'sem_fotos', 'parcial', 'outro'].forEach(function(t){
+      const g = u.backups_tipos[t]; if(!g) return;
+      const per = g.de ? ' · ' + _dLocal(g.de) + (g.ate && _dLocal(g.ate) !== _dLocal(g.de) ? ' a ' + _dLocal(g.ate) : '') : '';
+      h += '<div class="uso-disp-tipo" data-tipo="' + t + '" style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 12px;font-size:11px;color:#888"><span>' +
+        g.qtd + ' ' + ROT[t] + per + '</span><span style="white-space:nowrap">' + _gdUsoTam(g.bytes) + '</span></div>';
+    });
+  }
   h += lin('PDFs no dispositivo (' + u.pdfs_qtd + ')', tam(u.pdfs));
   h += lin('Total do app aqui', _gdUsoTam(tot), true);
   if(u.navegador != null) h += lin('Banco do navegador (IndexedDB etc.)', _gdUsoTam(u.navegador));
   h += '<div id="uso-disp-liberado" style="color:#0F6E56;font-size:11px;padding:4px 0">Liberado pelas limpezas neste dispositivo: ' +
     (L.anexos_qtd || 0) + ' foto(s)/anexo(s) de hospedagens encerradas · ' + _gdUsoTam(L.anexos_bytes || 0) + '; ' +
-    (L.backups_qtd || 0) + ' backup(s) local(is)' + (L.ts ? ' · última vez ' + _vtEsc(fmtDt(L.ts)) : '') + '</div>';
+    (L.backups_qtd || 0) + ' backup(s) local(is)' + (L.backups_bytes ? ' · ' + _gdUsoTam(L.backups_bytes) : '') + (L.ts ? ' · última vez ' + _vtEsc(fmtDt(L.ts)) : '') + '</div>';
   el.innerHTML = h;
 }
 async function showUsoDrive(){
