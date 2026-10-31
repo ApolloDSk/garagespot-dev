@@ -264,6 +264,31 @@ html.font-large{zoom:1.13}
 .ab{padding:12px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;text-align:left;display:flex;align-items:center;gap:9px;font-family:inherit}
 .ab:active{filter:brightness(.92)}
 .ao{background:#FAEEDA;color:#633806}.ad{background:#f5f4f0;color:#222}.ac{background:#FCEBEB;color:#791F1F}
+/* v2.4.7.0 — BOTÕES DOS MODAIS, padrão "B2" (aprovado pelo Douglas). Aviso NÃO tem caixa (linha com ícone de
+   informação); a ação principal é COR SÓLIDA com texto branco (contraste ≥ 4,5:1, inclusive no amarelo); opção
+   secundária = cor clara + borda + seta; Cancelar/Fechar só texto. Alvo de toque ≥ 48 px (tablet). O Painel
+   (Dashboard) não usa nenhuma destas classes. */
+.b2-aviso{position:relative;padding-left:27px;font-size:13px;color:#3F3F46;line-height:1.45;margin:2px 0 12px}
+.b2-aviso::before{content:'i';position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;border:1.5px solid #52525B;color:#52525B;font:italic 700 12px/15px Georgia,'Times New Roman',serif;text-align:center;box-sizing:border-box}
+.b2-alerta{background:#FDECEC;border:1px solid #F0B4B4;border-radius:10px;padding:10px 12px;font-size:13px;color:#8E1F1F;margin-bottom:10px;line-height:1.4}
+.b2-acoes{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.b2-lado{display:flex;gap:8px;margin-top:8px}.b2-lado>*{flex:1}
+.b2s,.b2c{min-height:48px;padding:12px 16px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:9px;width:100%;text-align:left;box-sizing:border-box;line-height:1.3}
+.b2s{border:1.5px solid transparent;color:#fff}
+.b2s:active,.b2c:active{filter:brightness(.9)}
+.b2s:disabled,.b2c:disabled{opacity:.55;cursor:default}
+.b2s.verm{background:#C53030}.b2s.amar{background:#A16207}.b2s.azul{background:#1D5FA8}.b2s.verde{background:#0F6E56}
+.b2c{border:1.5px solid}
+.b2c.amar{background:#FFF6E0;border-color:#E0A526;color:#6B4200}
+.b2c.azul{background:#EAF3FF;border-color:#7FB0E8;color:#134A86}
+.b2c.verm{background:#FDECEC;border-color:#E39A9A;color:#8E1F1F}
+.b2c.verde{background:#EAF7F1;border-color:#86C9AE;color:#0B5240}
+.b2c.cinza{background:#F5F4F0;border-color:#D6D3CC;color:#27272A}
+.b2c::after,.b2-seta::after{content:'\203A';margin-left:auto;padding-left:8px;font-size:22px;line-height:1;font-weight:400;opacity:.8}
+.b2-lado .b2s,.b2-lado .b2c{justify-content:center;text-align:center}
+.b2-lado .b2c::after,.b2-lado .b2-seta::after{content:none}
+.b2t{background:none;border:none;color:#52525B;font-size:14px;font-weight:600;min-height:44px;padding:10px;cursor:pointer;font-family:inherit;width:100%;text-align:center;margin-top:2px}
+.b2t:active{color:#111;text-decoration:underline}
 .dr{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0efea;font-size:12px}
 .dl{color:#888}.dv{font-weight:700;color:#111}
 .warn-box{background:#FFF8E6;border:1.5px solid #BA7517;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#633806;line-height:1.5}
@@ -1369,7 +1394,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.6.2';
+const GS_VERSION = 'v2.4.7.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -1813,7 +1838,7 @@ function gsReparosVizinhaAbrir(){
       '<strong>Vaga ' + _vtEsc(x.vaga) + '</strong> · ' + _vtEsc(x.carro) + '<br>' + _vtEsc(x.de) + ' → <strong>' + _vtEsc(x.para) + '</strong>' +
       '<br><span style="color:#666">A ' + _vtEsc(x.de) + ' continua na vaga ' + _vtEsc(x.dona) + ' (' + _vtEsc(x.carroDona) + ') · ' + _vtEsc(_dtLocal(x.ts)) + ' · ' + _vtEsc(x.origem || '') + '</span></div>'; }).join('') +
     '<div class="ms" style="font-size:11px;color:#666">Confira no mapa: tocando em cada vaga, o título mostra o GS daquele carro.</div>' +
-    '<div class="ag"><button class="bsv" id="gs-rv-ok">✓ Conferido</button><button class="bcx" onclick="closeOv()">Fechar</button></div>');
+    '<div class="b2-acoes"><button class="b2s verde" id="gs-rv-ok">✓ Conferido</button><button class="b2t" onclick="closeOv()">Fechar</button></div>');
   document.getElementById('gs-rv-ok').onclick = function(){
     const todos = gsReparosVizinhaLer();
     todos.forEach(function(x){ if(x && !x.conferido) x.conferido = Date.now(); });
@@ -1832,18 +1857,18 @@ function gsVizinhaManualAbrir(idx){
   let corpo, botoes = '';
   if(m.tipo === 'dois'){
     corpo = 'As vagas <strong>' + _vtEsc(m.vagas[0]) + '</strong> (' + _vtEsc(m.carros[0]) + ') e <strong>' + _vtEsc(m.vagas[1]) + '</strong> (' + _vtEsc(m.carros[1]) + ') estão com o mesmo <strong>' + _vtEsc(m.de) + '</strong> sem estarem unidas, e ' + _vtEsc(m.motivo) + '. O app não sabe qual é o certo.';
-    botoes = m.vagas.map(function(v){ return '<button class="bcx gs-vm-liberar" data-vaga="' + _vtEsc(v) + '">🅿️ O carro da ' + _vtEsc(v) + ' não está mais aqui — liberar a vaga</button>'; }).join('');
+    botoes = m.vagas.map(function(v){ return '<button class="b2c cinza gs-vm-liberar" data-vaga="' + _vtEsc(v) + '">🅿️ O carro da ' + _vtEsc(v) + ' não está mais aqui — liberar a vaga</button>'; }).join('');
   } else {
     corpo = 'A vaga <strong>' + _vtEsc(m.vaga) + '</strong> (' + _vtEsc(m.carro) + ') está com o <strong>' + _vtEsc(m.de) + '</strong>, que é do carro da vaga ' + _vtEsc(m.dona) + ' (' + _vtEsc(m.carroDona) + ').';
     if(m.candidatos.length > 1) corpo += '<br>Há <strong>' + m.candidatos.length + '</strong> hospedagens ativas com os dados deste carro: ' + _vtEsc(m.candidatos.map(function(c){ return c.gs + (c.onde ? ' (' + c.onde + ')' : ''); }).join(', ')) + '.';
     else if(m.candidatos.length === 1) corpo += '<br>A hospedagem ativa com os dados deste carro, ' + _vtEsc(m.candidatos[0].gs) + ', já está em ' + _vtEsc(m.candidatos[0].onde) + '.';
     else corpo += '<br>Nenhuma hospedagem ATIVA tem os dados deste carro' + (m.encerradas.length ? ' — a dele, ' + _vtEsc(m.encerradas.map(function(c){ return c.gs + (c.checkout_ts ? ' (encerrada em ' + _dtLocal(c.checkout_ts) + ')' : ''); }).join(', ')) + ', já foi encerrada. O carro provavelmente já saiu.' : '.');
     botoes = m.candidatos.map(function(c){ return c.onde ? '' : '<button class="bsv gs-vm-religar" data-gs="' + _vtEsc(c.gs) + '">🔗 É a ' + _vtEsc(c.gs) + ' — religar a vaga ' + _vtEsc(m.vaga) + '</button>'; }).join('') +
-      '<button class="bcx gs-vm-liberar" data-vaga="' + _vtEsc(m.vaga) + '">🅿️ O carro não está mais aqui — liberar a vaga ' + _vtEsc(m.vaga) + '</button>';
+      '<button class="b2c cinza gs-vm-liberar" data-vaga="' + _vtEsc(m.vaga) + '">🅿️ O carro não está mais aqui — liberar a vaga ' + _vtEsc(m.vaga) + '</button>';
   }
   showM('<div class="mt">⚠️ Vaga com o GS do carro vizinho</div><div class="ms" id="gs-vm-texto" style="margin-bottom:4px">' + corpo + '</div>' + aviso +
     '<div class="ms" style="font-size:11px;color:#666">Resolver à mão: escolha o que está certo na garagem. Nenhuma hospedagem é encerrada ou apagada.</div>' +
-    '<div class="ag">' + botoes + '<button class="bcx" onclick="closeOv()">Fechar</button></div>');
+    '<div class="b2-acoes">' + botoes + '<button class="b2t" onclick="closeOv()">Fechar</button></div>');
   // v2.4.3.0: as ações vivem em funções próprias (gsVizinhaReligar/gsVizinhaLiberar) — o cartão de Pendências e
   // o menu da vaga no mapa chamam as MESMAS, sem caminho paralelo
   document.querySelectorAll('#mc .gs-vm-religar').forEach(function(btn){
@@ -1956,11 +1981,11 @@ function _gsEscolherHosp(res, ctx, onEscolha, onCancelar){
   // SEM NENHUMA candidata: não há o que perguntar. Bloqueia com mensagem clara.
   if(!cands.length){
     showM('<div class="mt">⚠️ Hospedagem não identificada</div>' +
-      '<div class="warn-box" style="font-size:12px">Não foi possível identificar a hospedagem ' +
+      '<div class="b2-aviso">Não foi possível identificar a hospedagem ' +
       'deste carro' + (ctx.apt ? ' (Apt. ' + _vtEsc(String(ctx.apt)) + ')' : '') + '.<br><br>' +
       'A ação foi <strong>cancelada</strong> para não deixar a hospedagem aberta sem ninguém ' +
       'saber. Procure o gestor: os dados do carro estão preservados.</div>' +
-      '<button class="bcx" id="geh-fechar" style="width:100%;margin-top:8px">Fechar</button>');
+      '<button class="b2t" id="geh-fechar">Fechar</button>');
     setTimeout(function(){
       const b=document.getElementById('geh-fechar'); if(b) b.onclick=_cancelar;
     },0);
@@ -1986,9 +2011,9 @@ function _gsEscolherHosp(res, ctx, onEscolha, onCancelar){
       (ctx.apt?('O Apt. '+_vtEsc(String(ctx.apt))+' tem '):'Há ') + cands.length +
       ' hospedagens ativas. Escolha a do carro que está ' + _vtEsc(ctx.acao||'saindo') + '.</div>' +
     cands.map(function(gs,i){
-      return '<button class="ab ao" id="geh-'+i+'" style="margin-bottom:6px;text-align:left">'+_linha(gs)+'</button>';
+      return '<button class="b2c amar" id="geh-'+i+'" style="margin-bottom:6px;text-align:left">'+_linha(gs)+'</button>';
     }).join('') +
-    '<button class="bcx" id="geh-cancelar" style="width:100%;margin-top:4px">Cancelar</button>');
+    '<button class="b2t" id="geh-cancelar">Cancelar</button>');
   setTimeout(function(){
     cands.forEach(function(gs,i){
       const b=document.getElementById('geh-'+i);
@@ -3005,9 +3030,9 @@ function executarMove(ms, destId, usuario){
         <div class="szb ${ssz==='small'?'sel':''}" id="f-szs" onclick="setSz('small')">Pequeno</div>
         <div class="szb ${ssz==='large'?'sel':''}" id="f-szl" onclick="setSz('large')">Grande</div>
       </div>
-      <div class="b2">
-        <button class="bcx" id="mv-cancel">Cancelar</button>
-        <button class="bsv" id="mv-ok">Confirmar</button>
+      <div class="b2-lado">
+        <button class="b2t" id="mv-cancel">Cancelar</button>
+        <button class="b2s verde" id="mv-ok">Confirmar</button>
       </div>`;
     document.getElementById('ov').classList.add('on');
     document.getElementById('mv-cancel').onclick=function(){ closeOv(); };
@@ -3208,7 +3233,7 @@ function perguntarHMerge(id, apt, model, color, plate, guest, obs, usuario){
       ? `· Apt. <strong>${S[aId].apt}</strong> atrás`
       : '';
     const lado = (parseInt(v) > parseInt(id)) ? 'direita' : 'esquerda';
-    return `<button class="ab ao" id="hm-${v}" style="margin-bottom:6px">
+    return `<button class="b2c amar" id="hm-${v}" style="margin-bottom:6px">
       Vaga ${v} · ${lado} ${aInfo}
     </button>`;
   }).join('');
@@ -3217,7 +3242,7 @@ function perguntarHMerge(id, apt, model, color, plate, guest, obs, usuario){
     <div class="mt">Mesclar com vaga ao lado?</div>
     <div class="ms" style="margin-bottom:10px">Apt. ${apt} · Vaga ${id}</div>
     ${opcoesHTML}
-    <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:6px">Não, só esta vaga</button>`;
+    <button class="b2t" onclick="closeOv()">Não, só esta vaga</button>`;
   document.getElementById('ov').classList.add('on');
 
   livres.forEach(v=>{
@@ -3333,11 +3358,11 @@ function _clkVRotear(id, apt, usuario){
         ${fora.map((f,i)=>{
           const inf=[f.d.model,f.d.color,f.d.plate].filter(Boolean).join(' · ')||'Sem detalhes';
           const hr=f.d.saida_ts?(' · saiu '+_dtLocal(new Date(f.d.saida_ts))):'';
-          return '<button class="ab ao" id="cv-ret-'+i+'" style="margin-bottom:6px;text-align:left">'+
+          return '<button class="b2c amar" id="cv-ret-'+i+'" style="margin-bottom:6px;text-align:left">'+
                  '<strong>'+_vtEsc(f.gs)+'</strong><br><span style="font-size:11px;opacity:.85">'+_vtEsc(inf)+_vtEsc(hr)+'</span></button>';
         }).join('')}
-        <button class="bcx" id="cv-ret-nao" style="width:100%;margin-top:4px">Corrigir apartamento</button>
-        <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:4px">Cancelar</button>`;
+        <button class="b2c cinza" id="cv-ret-nao" style="width:100%;margin-top:4px">Corrigir apartamento</button>
+        <button class="b2t" onclick="closeOv()">Cancelar</button>`;
       fora.forEach((f,i)=>{
         const b=document.getElementById('cv-ret-'+i);
         if(b) b.onclick=function(){ _retornar(f.gs); };
@@ -3352,12 +3377,12 @@ function _clkVRotear(id, apt, usuario){
     const info=[dp.model,dp.color,dp.plate].filter(Boolean).join(' · ');
     mc.innerHTML=`
       <div class="mt">🚗 Carro retornando?</div>
-      <div class="warn-box">Apt. ${_vtEsc(apt)} está na lista de passeio${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}
+      <div class="b2-aviso">Apt. ${_vtEsc(apt)} está na lista de passeio${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}
       <br><br>Este carro está voltando do passeio?</div>
-      <div class="ag">
-        <button class="bsv" id="cv-ret-sim">✓ Sim, está voltando</button>
-        <button class="bcx" id="cv-ret-nao">Corrigir apartamento</button>
-        <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <div class="b2-acoes">
+        <button class="b2s verde" id="cv-ret-sim">✓ Sim, está voltando</button>
+        <button class="b2c cinza" id="cv-ret-nao">Corrigir apartamento</button>
+        <button class="b2t" onclick="closeOv()">Cancelar</button>
       </div>`;
     document.getElementById('cv-ret-sim').onclick=function(){ _retornar(gsUnico); };
     document.getElementById('cv-ret-nao').onclick=function(){
@@ -3379,10 +3404,10 @@ function _clkVRotear(id, apt, usuario){
         <div style="font-size:11px;color:#888;margin-top:2px">Check-in hoje às ${hrChk} · ${pend.usuario||'—'}</div>
       </div>
       <div class="ms">Confirma designar este carro para a vaga <strong>${id}</strong>?</div>
-      <div class="ag">
-        <button class="bsv" id="cv-desig-sim">✓ Designar vaga ${id}</button>
-        <button class="bcx" id="cv-desig-nao">Corrigir apartamento</button>
-        <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <div class="b2-acoes">
+        <button class="b2s verde" id="cv-desig-sim">✓ Designar vaga ${id}</button>
+        <button class="b2c cinza" id="cv-desig-nao">Corrigir apartamento</button>
+        <button class="b2t" onclick="closeOv()">Cancelar</button>
       </div>`;
     document.getElementById('cv-desig-sim').onclick=function(){
       closeOv();
@@ -3428,10 +3453,10 @@ function _clkVRotear(id, apt, usuario){
         <div style="font-size:11px;color:#888;margin-top:2px">Check-in às ${hrChk} · ${_vtEsc(h.usuario_checkin||'—')}</div>
       </div>
       <div class="ms">Confirma designar este carro para a vaga <strong>${id}</strong>?</div>
-      <div class="ag">
-        <button class="bsv" id="cv-desigh-sim">✓ Designar vaga ${id}</button>
-        <button class="bcx" id="cv-desigh-nao">Corrigir apartamento</button>
-        <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <div class="b2-acoes">
+        <button class="b2s verde" id="cv-desigh-sim">✓ Designar vaga ${id}</button>
+        <button class="b2c cinza" id="cv-desigh-nao">Corrigir apartamento</button>
+        <button class="b2t" onclick="closeOv()">Cancelar</button>
       </div>`;
     document.getElementById('cv-desigh-sim').onclick=function(){
       // Monta MODO_DESIGNACAO com o operador JÁ confirmado (origem vaga_direta = não re-pergunta)
@@ -3457,11 +3482,11 @@ function _clkVRotear(id, apt, usuario){
     const info=[dv.model,dv.color,dv.plate].filter(Boolean).join(' · ');
     mc.innerHTML=`
       <div class="mt">Apt. ${apt} já está numa vaga</div>
-      <div class="warn-box">O Apt. ${apt} já está guardado na vaga <strong>${vagaComApt}</strong>${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}<br><br>Iniciar mesmo assim um <strong>novo check-in</strong> (2º veículo do mesmo apto)?</div>
-      <div class="ag">
-        <button class="bsv" id="cv-2v-sim">＋ Sim, novo check-in (2º veículo)</button>
-        <button class="bcx" id="cv-2v-nao">Corrigir apartamento</button>
-        <button class="bcx" onclick="closeOv()">Cancelar</button>
+      <div class="b2-aviso">O Apt. ${apt} já está guardado na vaga <strong>${vagaComApt}</strong>${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}<br><br>Iniciar mesmo assim um <strong>novo check-in</strong> (2º veículo do mesmo apto)?</div>
+      <div class="b2-acoes">
+        <button class="b2s verde" id="cv-2v-sim">＋ Sim, novo check-in (2º veículo)</button>
+        <button class="b2c cinza" id="cv-2v-nao">Corrigir apartamento</button>
+        <button class="b2t" onclick="closeOv()">Cancelar</button>
       </div>`;
     document.getElementById('cv-2v-sim').onclick=_iniciarNovoCheckin;
     document.getElementById('cv-2v-nao').onclick=_corrigirApt;
@@ -3470,11 +3495,11 @@ function _clkVRotear(id, apt, usuario){
 
   mc.innerHTML=`
     <div class="mt">Apt. ${apt}</div>
-    <div class="warn-box">Apt. ${apt} não tem check-in registrado.<br><br>Deseja iniciar um novo check-in?</div>
-    <div class="ag">
-      <button class="bsv" id="cv-novo-sim">＋ Iniciar check-in</button>
-      <button class="bcx" id="cv-novo-nao">Corrigir apartamento</button>
-      <button class="bcx" onclick="closeOv()">Cancelar</button>
+    <div class="b2-aviso">Apt. ${apt} não tem check-in registrado.<br><br>Deseja iniciar um novo check-in?</div>
+    <div class="b2-acoes">
+      <button class="b2s verde" id="cv-novo-sim">＋ Iniciar check-in</button>
+      <button class="b2c cinza" id="cv-novo-nao">Corrigir apartamento</button>
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
     </div>`;
   document.getElementById('cv-novo-sim').onclick=_iniciarNovoCheckin;
   document.getElementById('cv-novo-nao').onclick=_corrigirApt;
@@ -3529,9 +3554,9 @@ function showOcc(id){
     <label class="fl">Observações</label>
     <input class="fi" id="f-obs" type="text" placeholder="Ex: chave na recepção, veículo danificado...">
     <div id="att-occ-area"></div>
-    <div class="b2">
-      <button class="bcx" onclick="closeOv()">Cancelar</button>
-      <button class="bsv" id="f-btn">Confirmar</button>
+    <div class="b2-lado">
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
+      <button class="b2s verde" id="f-btn">Confirmar</button>
     </div>`;
   document.getElementById('ov').classList.add('on');
   setTimeout(()=>{const e=document.getElementById('f-apt');if(e)e.focus();},80);
@@ -3569,11 +3594,11 @@ function showOcc(id){
           <div class="ms" style="margin-bottom:8px">O Apt. ${_vtEsc(apt)} tem ${_fora.length} carros na lista de passeio.</div>
           ${_fora.map((f,i)=>{
             const inf=[f.d.model,f.d.color,f.d.plate].filter(Boolean).join(' · ')||'Sem detalhes';
-            return '<button class="ab ao" id="f-ret-'+i+'" style="margin-bottom:6px;text-align:left">'+
+            return '<button class="b2c amar" id="f-ret-'+i+'" style="margin-bottom:6px;text-align:left">'+
                    '<strong>'+_vtEsc(f.gs)+'</strong><br><span style="font-size:11px;opacity:.85">'+_vtEsc(inf)+'</span></button>';
           }).join('')}
-          <button class="bcx" id="f-nao" style="width:100%;margin-top:4px">Não — corrigir apartamento</button>
-          <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:4px">Cancelar</button>`;
+          <button class="b2c cinza" id="f-nao" style="width:100%;margin-top:4px">Não — corrigir apartamento</button>
+          <button class="b2t" onclick="closeOv()">Cancelar</button>`;
         _fora.forEach((f,i)=>{
           const b=document.getElementById('f-ret-'+i);
           if(b) b.onclick=function(){ _voltar(f.gs); };
@@ -3588,12 +3613,12 @@ function showOcc(id){
       const info=[dp.model,dp.color,dp.plate].filter(Boolean).join(' · ');
       mc.innerHTML=`
         <div class="mt">🚗 Carro retornando?</div>
-        <div class="warn-box">${_vtEsc(apt)} está na lista de passeio${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}
+        <div class="b2-aviso">${_vtEsc(apt)} está na lista de passeio${info?':<br><strong>'+_vtEsc(info)+'</strong>':'.'}
         <br><br>Este carro está voltando do passeio?</div>
-        <div class="ag">
-          <button class="bsv" id="f-sim">✓ Sim, está voltando</button>
-          <button class="bcx" id="f-nao">Não — corrigir apartamento</button>
-          <button class="bcx" onclick="closeOv()">Cancelar</button>
+        <div class="b2-acoes">
+          <button class="b2s verde" id="f-sim">✓ Sim, está voltando</button>
+          <button class="b2c cinza" id="f-nao">Não — corrigir apartamento</button>
+          <button class="b2t" onclick="closeOv()">Cancelar</button>
         </div>`;
       document.getElementById('f-sim').onclick=function(){ _voltar(_gsUnico); };
       document.getElementById('f-nao').onclick=function(){
@@ -3610,10 +3635,10 @@ function showOcc(id){
           <span style="color:#888;font-size:11px">${info}</span>
         </div>
         <div class="ms">Apt. ${apt} tem check-in pendente. Designar esta vaga <strong>${cur}</strong>?</div>
-        <div class="ag">
-          <button class="bsv" id="f-desig-sim">✓ Designar vaga ${cur}</button>
-          <button class="bcx" id="f-desig-nao">Novo check-in (outro apto)</button>
-          <button class="bcx" onclick="closeOv()">Cancelar</button>
+        <div class="b2-acoes">
+          <button class="b2s verde" id="f-desig-sim">✓ Designar vaga ${cur}</button>
+          <button class="b2c cinza" id="f-desig-nao">Novo check-in (outro apto)</button>
+          <button class="b2t" onclick="closeOv()">Cancelar</button>
         </div>`;
       document.getElementById('f-desig-sim').onclick=function(){
         confirmarUsuario('designando vaga '+cur,function(usuario){
@@ -3640,10 +3665,10 @@ function showOcc(id){
             <span style="color:#888;font-size:10px">Vaga ${dv2Vaga}${dv2.guest?' · '+dv2.guest:''}</span>
           </div>
           <div class="ms">Este e um segundo veiculo do Apt. ${apt}?</div>
-          <div class="ag">
-            <button class="bsv" id="f-dup-sim">Sim, segundo veiculo</button>
-            <button class="bcx" id="f-dup-nao">Nao — corrigir apartamento</button>
-            <button class="bcx" onclick="closeOv()">Cancelar</button>
+          <div class="b2-acoes">
+            <button class="b2s verde" id="f-dup-sim">Sim, segundo veiculo</button>
+            <button class="b2c cinza" id="f-dup-nao">Nao — corrigir apartamento</button>
+            <button class="b2t" onclick="closeOv()">Cancelar</button>
           </div>`;
         document.getElementById('f-dup-sim').onclick=function(){
           // Pede pelo menos 1 campo diferenciador (modelo/cor/placa/nome)
@@ -3661,9 +3686,9 @@ function showOcc(id){
             <input class="fi" id="f-gst2" type="text" placeholder="Nome completo" value="${guest||''}">
             <label class="fl">Observacoes</label>
             <input class="fi" id="f-obs2" type="text" placeholder="Ex: 2o veiculo, chave..." value="${obs||''}">
-            <div class="ag">
-              <button class="bcx" onclick="showOcc('${cur}')">← Voltar</button>
-              <button class="bsv" id="f-id2-ok">Confirmar check-in</button>
+            <div class="b2-acoes">
+              <button class="b2c cinza" onclick="showOcc('${cur}')">← Voltar</button>
+              <button class="b2s verde" id="f-id2-ok">Confirmar check-in</button>
             </div>`;
           setTimeout(()=>document.getElementById('f-mod2')?.focus(),80);
           document.getElementById('f-id2-ok').onclick=function(){
@@ -3716,11 +3741,11 @@ function perguntarCheckin(vagaId, apt, model, color, plate, guest, obs){
   // Pergunta se é check-in
   mc.innerHTML=`
     <div class="mt">🏨 Check-in?</div>
-    <div class="warn-box" style="font-size:12px">O apartamento <strong>${apt}</strong> não possui registro ativo no sistema.<br><br>Este veículo está fazendo check-in agora?</div>
-    <div class="ag">
-      <button class="bsv" id="ci-sim">✅ Sim, é check-in</button>
-      <button class="bcx" id="ci-nao">Não — corrigir apartamento</button>
-      <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+    <div class="b2-aviso">O apartamento <strong>${apt}</strong> não possui registro ativo no sistema.<br><br>Este veículo está fazendo check-in agora?</div>
+    <div class="b2-acoes">
+      <button class="b2s verde" id="ci-sim">✅ Sim, é check-in</button>
+      <button class="b2c cinza" id="ci-nao">Não — corrigir apartamento</button>
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
     </div>`;
   // v1.9.4.11 (Bug B): antes de confirmar o check-in, PEDIR a data de saída
   // prevista — mesmo campo obrigatório que o check-in com vistoria (padrão) já
@@ -3878,8 +3903,9 @@ function showMenu(id){
 
   // v2.4.2.0 (Bloco D): check-out atrasado → aviso e as duas ações no próprio modal
   const _hM=d.hospedagem?HOSPEDAGENS[d.hospedagem]:null;
-  const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" style="background:#FDECEC;border:1px solid #C53030;border-radius:6px;padding:6px 10px;font-size:12px;color:#A32D2D;margin-bottom:8px">⏰ <strong>Check-out atrasado</strong> · saída prevista ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}
-      <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="bcx" id="m-atr-chk" style="flex:1;padding:5px 8px;font-size:12px">🚪 Fazer check-out</button><button type="button" class="bcx" id="m-atr-data" style="flex:1;padding:5px 8px;font-size:12px">📅 Alterar data prevista</button></div></div>`:'';
+  // v2.4.7.0 (B2): caixa vermelha clara com as duas ações SÓLIDAS (check-out vermelho, alterar data amarelo)
+  const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" class="b2-alerta">⏰ <strong>Check-out atrasado</strong> · saída prevista ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}
+      <div class="b2-lado"><button type="button" class="b2s verm" id="m-atr-chk">🚪 Fazer check-out</button><button type="button" class="b2s amar" id="m-atr-data">📅 Alterar data</button></div></div>`:'';
   // v2.4.3.0: vaga com o GS do carro vizinho → aviso e resolução no próprio menu (check-out e passeio ficam travados)
   const _mViz=(typeof gsVizinhaDaVaga==='function')?gsVizinhaDaVaga(id):null;
   const vizHTML=_mViz?`<div id="m-vizinha" style="background:#FFF3E0;border:1px solid #E65100;border-radius:6px;padding:6px 10px;font-size:12px;color:#8A3B00;margin-bottom:8px">⚠️ <strong>Vaga com o GS do carro vizinho</strong>: este carro (${_vtEsc(_gsCarroTexto(d))}) está com o ${_vtEsc(_mViz.de)}, que é do carro da ${_vtEsc(_mViz.dona||'vaga vizinha')}. <strong>Não faça check-out nem passeio por aqui.</strong><div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${_gsVizinhaBotoesHTML(_mViz,'padding:6px 8px;font-size:12px;width:100%')}</div></div>`:'';
@@ -3889,12 +3915,12 @@ function showMenu(id){
     ${atrasoHTML}
     ${vizHTML}
     ${dupWarn}
-    <div class="ag">
-      <button class="ab ao" id="m-out">🛣️ &nbsp;Passeio</button>
-      <button class="ab ad" id="m-det">ℹ️ &nbsp;Detalhes</button>
-      <button class="ab ac" id="m-chk">🚪 &nbsp;Check-out</button>
+    <div class="b2-acoes">
+      <button class="b2c amar" id="m-out">🛣️ &nbsp;Passeio</button>
+      <button class="b2c azul" id="m-det">ℹ️ &nbsp;Detalhes</button>
+      <button class="b2s verm b2-seta" id="m-chk">🚪 &nbsp;Check-out</button>
     </div>
-    <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:9px">Fechar</button>`;
+    <button class="b2t" id="m-fechar" onclick="closeOv()">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
   document.getElementById('m-out').onclick=()=>doOut(id);
   document.getElementById('m-det').onclick=()=>showDet(id);
@@ -3992,12 +4018,12 @@ window.trocarParaGrande = function(id){
 
     // Mostra opções
     const opHTML=opcoes.map((op,i)=>`
-      <button class="ab ao" id="tg-op-${i}" style="margin-bottom:6px">${op.label}</button>`).join('');
+      <button class="b2c amar" id="tg-op-${i}" style="margin-bottom:6px">${op.label}</button>`).join('');
     mc.innerHTML=`
       <div class="mt">🚐 Tornar grande — ${id}</div>
       <div class="ms" style="margin-bottom:10px">Apt. ${apt} · Escolha como mesclar:</div>
       ${opHTML}
-      <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:6px">Cancelar</button>`;
+      <button class="b2t" onclick="closeOv()">Cancelar</button>`;
     document.getElementById('ov').classList.add('on');
 
     opcoes.forEach((op,i)=>{
@@ -4273,14 +4299,15 @@ function doChk(id){
   // carros no mesmo apto, "Check-out — Apt. 101" é ambíguo e perigoso: quem
   // confirma não tem como saber qual dos dois vai sair. O GS resolvido já estava
   // à mão (`_gsChkModal`, calculado logo acima) — só não aparecia na tela.
+  // v2.4.7.0 (padrão B2): título com GS e apto, subtítulo modelo · cor · vaga, aviso sem caixa, ação vermelha sólida
   mc.innerHTML=`
-    <div class="mt">🚪 Check-out — ${_gsRotuloHosp(_gsChkModal, aptKey)}</div>
-    <div class="ms">${[d.model,d.color,d.plate].filter(Boolean).join(' · ')||'Sem detalhes'}</div>
-    ${_temVstPend?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstChk.numero} — pendente de assinatura</small></div>`:`<div class="warn-box" style="font-size:12px">Confirma o check-out deste veículo?</div>`}
-    <div class="ag">
-      <button class="ab ac" id="chk-sim">🚪 ${_temVstPend?'Continuar mesmo assim':'Confirmar check-out'}</button>
-      ${_temVstPend?`<button class="ab ao" onclick="assinarVistoria('${_vstChk.id}')" style="margin-top:0">✍ Assinar vistoria antes</button>`:''}
-      <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+    <div class="mt" id="chk-titulo">Check-out — ${_gsRotuloHosp(_gsChkModal, aptKey)}</div>
+    <div class="ms" id="chk-sub">${_vtEsc([d.model,d.color,'Vaga '+id].filter(Boolean).join(' · '))}</div>
+    ${_temVstPend?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstChk.numero} — pendente de assinatura</small></div>`:`<div class="b2-aviso" id="chk-aviso">O carro sai da vaga e o PDF de fechamento é gerado.</div>`}
+    <div class="b2-acoes">
+      <button class="b2s verm" id="chk-sim">🚪 ${_temVstPend?'Continuar mesmo assim':'Confirmar check-out'}</button>
+      ${_temVstPend?`<button class="b2c amar" onclick="assinarVistoria('${_vstChk.id}')">✍ Assinar vistoria antes</button>`:''}
+      <button class="b2t" id="chk-cancelar" onclick="closeOv()">Cancelar</button>
     </div>`;
   document.getElementById('ov').classList.add('on');
 
@@ -4698,15 +4725,15 @@ function _passeioIdentificar(qk){
     (ativas.length
       ? ativas.map(function(g,i){
           const h=HOSPEDAGENS[g]||{};
-          return '<button class="ab ao" id="pid-'+i+'" style="margin-bottom:6px;text-align:left">'+
+          return '<button class="b2c amar" id="pid-'+i+'" style="margin-bottom:6px;text-align:left">'+
             '<strong>'+_vtEsc(g)+'</strong> · Apt. '+_vtEsc(String(h.apt||'—'))+
             '<br><span style="font-size:11px;opacity:.85">'+
             _vtEsc([h.model,h.color,h.plate].filter(Boolean).join(' · ')||'Sem detalhes')+
             (h.guest?' · '+_vtEsc(h.guest):'')+'</span></button>';
         }).join('')
-      : '<div class="warn-box" style="font-size:12px">Não há hospedagem ativa sem carro a passeio para vincular. ' +
+      : '<div class="b2-aviso">Não há hospedagem ativa sem carro a passeio para vincular. ' +
         'O registro continua guardado — faça o check-in da hospedagem e volte aqui.</div>') +
-    '<button class="bcx" id="pid-fechar" style="width:100%;margin-top:4px">Fechar</button>');
+    '<button class="b2t" id="pid-fechar">Fechar</button>');
   setTimeout(function(){
     ativas.forEach(function(g,i){
       const b=document.getElementById('pid-'+i);
@@ -4747,13 +4774,13 @@ function showPasseioCheckout(gs){
   const _vstP=(_resP.gs && !_resP.ambiguo)?getVistoriaByHosp(_resP.gs):null;
   const _temVstPendP=_vstP&&!_vstP.ts_assinada;
   showM(`<div class="mt">Check-out — ${_gsRotuloHosp(_resP, apt)}</div>
-    <div class="ms">${info||'Sem detalhes'} · 🛣️ A passeio</div>
+    <div class="ms">${_vtEsc([d.model,d.color].filter(Boolean).join(' · ')||'Sem detalhes')} · 🛣️ A passeio</div>
     ${_temVstPendP?`<div class="vst-warn-box">⚠️ Veículo sem vistoria assinada.<br><small style="color:#9B6800">${_vstP.numero} — pendente de assinatura</small></div>`:''}
-    <div class="warn-box" style="font-size:11px">O hóspede fez check-out.<br>O carro será removido do sistema.</div>
-    <div class="ag">
-      <button class="ab ac" id="pco-sim">🚪 ${_temVstPendP?'Continuar mesmo assim':'Confirmar check-out'}</button>
-      ${_temVstPendP?`<button class="ab ao" onclick="assinarVistoria('${_vstP.id}')" style="margin-top:0">✍ Assinar vistoria antes</button>`:''}
-      <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+    <div class="b2-aviso" id="pco-aviso">O carro sai da lista de passeio e o PDF de fechamento é gerado.</div>
+    <div class="b2-acoes">
+      <button class="b2s verm" id="pco-sim">🚪 ${_temVstPendP?'Continuar mesmo assim':'Confirmar check-out'}</button>
+      ${_temVstPendP?`<button class="b2c amar" onclick="assinarVistoria('${_vstP.id}')">✍ Assinar vistoria antes</button>`:''}
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
     </div>`);
   document.getElementById('pco-sim').onclick=function(){
     confirmarUsuario('realizando o check-out',function(usuario){
@@ -4765,10 +4792,10 @@ function showPasseioCheckout(gs){
       const hospNum=(_resP.gs && !_resP.ambiguo)?_resP.gs:(d.hospedagem||'');
       if(!hospNum || !HOSPEDAGENS[hospNum]){
         showM('<div class="mt">⚠️ Hospedagem não identificada</div>' +
-          '<div class="warn-box" style="font-size:12px">Não foi possível identificar a hospedagem deste carro' +
+          '<div class="b2-aviso">Não foi possível identificar a hospedagem deste carro' +
           (apt?(' (Apt. '+_vtEsc(apt)+')'):'')+'.<br><br>O check-out foi <strong>cancelado</strong> e o carro ' +
           'continua na lista de passeio — nada foi perdido. Procure o gestor.</div>' +
-          '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
+          '<button class="b2t" onclick="closeOv()">Fechar</button>');
         try{ addLogSistema('Check-out do passeio BLOQUEADO — hospedagem não identificada (apto '+(apt||'?')+', chave '+gs+')',
           {aud:true, acao:'checkout_passeio_bloqueado', alvo:gs}); }catch(e){}
         return;
@@ -4846,13 +4873,13 @@ window.confirmReset = function(){
                '</strong> · Apt. '+_vtEsc(String(h.apt||'—'))+ondeP+semV+'</div>';
       }).join('');
       showM('<div class="mt">🚫 Não é possível limpar o mapa</div>' +
-        '<div class="warn-box" style="font-size:12px">Há <strong>'+ativas.length+
+        '<div class="b2-aviso">Há <strong>'+ativas.length+
         ' hospedagens ativas</strong>. Faça o check-out antes de limpar o mapa.</div>' +
         '<div style="background:#FFF8E6;border:1px solid #BA7517;border-radius:8px;padding:8px 10px;margin:8px 0">' +
         amostra + (ativas.length>8?('<div style="font-size:11px;color:#633806;padding-top:3px">… e mais '+(ativas.length-8)+'</div>'):'') +
         '</div>' +
         '<div style="font-size:11px;color:#888;margin-bottom:8px">Limpar o mapa agora deixaria estas hospedagens abertas para sempre, sem documento de fechamento.</div>' +
-        '<button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
+        '<button class="b2t" onclick="closeOv()">Fechar</button>');
       try{ addLogSistema('Limpar mapa BLOQUEADO — '+ativas.length+' hospedagem(ns) ativa(s)',
         {aud:true, acao:'mapa_limpo_bloqueado', alvo:String(ativas.length)}); }catch(e){}
       return;
@@ -4860,16 +4887,16 @@ window.confirmReset = function(){
     // 1ª confirmação
     showM(`<div class="mt">Apagar tudo</div>
       <div class="ms">Todos os carros nas vagas e na lista de passeio serão removidos.<br><br>Tem certeza?</div>
-      <div class="ag">
-        <button class="ab ac" id="r1-sim">Sim, apagar tudo</button>
-        <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+      <div class="b2-acoes">
+        <button class="b2s verm" id="r1-sim">Sim, apagar tudo</button>
+        <button class="b2t" onclick="closeOv()">Cancelar</button>
       </div>`);
     document.getElementById('r1-sim').onclick=function(){
       showM(`<div class="mt">Confirmar</div>
         <div class="ms" style="color:#A32D2D;font-weight:600">Confirme uma segunda vez para apagar.</div>
-        <div class="ag">
-          <button class="ab ac" id="r2-sim">Confirmar — apagar agora</button>
-          <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+        <div class="b2-acoes">
+          <button class="b2s verm" id="r2-sim">Confirmar — apagar agora</button>
+          <button class="b2t" onclick="closeOv()">Cancelar</button>
         </div>`);
       document.getElementById('r2-sim').onclick=function(){ executarReset(); };
     };
@@ -5484,9 +5511,9 @@ function showModalUsuarios(){
     // v2.2.0.0: com o servidor ligado, funcionário NUNCA é excluído — é inativado (e pode ser reativado)
     const delBtn=isNovo?'':(gsSrvAtivo()
       ? (u.ativo===false
-          ? `<button id="uf-reativar" onclick="window._reativarUsr('${u.id}')" style="width:100%;background:none;border:1px solid #0F6E56;color:#0F6E56;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">↺ Reativar funcionário</button>`
-          : `<button id="uf-inativar" onclick="window._excluirUsr('${u.id}')" style="width:100%;background:none;border:1px solid #E24B4A;color:#A32D2D;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">🚫 Inativar funcionário</button>`)
-      : `<button onclick="window._excluirUsr('${u.id}')" style="width:100%;background:none;border:1px solid #E24B4A;color:#A32D2D;border-radius:7px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:8px">🗑 Excluir usuário</button>`);
+          ? `<button id="uf-reativar" class="b2c verde" style="margin-bottom:8px" onclick="window._reativarUsr('${u.id}')">↺ Reativar funcionário</button>`
+          : `<div id="uf-del-zona"><button id="uf-inativar" class="b2c verm" style="margin-bottom:8px" onclick="window._confirmarExcluirUsr('${u.id}', true)">🚫 Inativar funcionário</button></div>`)
+      : `<div id="uf-del-zona"><button id="uf-excluir" class="b2c verm" style="margin-bottom:8px" onclick="window._confirmarExcluirUsr('${u.id}', false)">🗑 Excluir usuário</button></div>`);
     const esc=(u&&u.escala)||'padrao';
     const diaAB=(u&&u.diaAB)||'A';
     const turno12=(u&&u.turno12)||'dia';
@@ -5564,6 +5591,17 @@ function showModalUsuarios(){
       renderLista();
     };
     // v1.9.4.10: exclusão INTENCIONAL — pode zerar a lista (permitirVazio)
+    // v2.4.7.0 (B2): inativar/excluir pede confirmação NO PRÓPRIO formulário (antes agia no primeiro toque)
+    window._confirmarExcluirUsr=(uid, inativar)=>{
+      const z=document.getElementById('uf-del-zona'); if(!z) return window._excluirUsr(uid);
+      const alvo=USUARIOS.find(x=>x&&x.id===uid); const nome=_vtEsc(String((alvo&&alvo.nome)||'').split(' ')[0]||'este funcionário');
+      z.innerHTML=inativar
+        ? '<div class="b2-aviso" id="uf-del-aviso">'+nome+' some das listas de novos lançamentos; continua nos PDFs e na trilha e pode ser reativado.</div>'
+        : '<div class="b2-aviso" id="uf-del-aviso">'+nome+' sai do cadastro deste dispositivo. Os registros antigos continuam com o nome.</div>';
+      z.innerHTML+='<div class="b2-acoes" style="margin-bottom:8px"><button class="b2s verm" id="uf-del-ok">'+(inativar?'🚫 Confirmar inativação':'🗑 Confirmar exclusão')+'</button><button class="b2t" id="uf-del-cancelar">Cancelar</button></div>';
+      document.getElementById('uf-del-ok').onclick=function(){ window._excluirUsr(uid); };
+      document.getElementById('uf-del-cancelar').onclick=function(){ window._editUsr(uid); };
+    };
     window._excluirUsr=(uid)=>{
       const alvo=USUARIOS.find(x=>x&&x.id===uid);
       // v2.2.0.0: com o servidor ligado vira INATIVAR — some dos novos lançamentos, fica nos PDFs e na trilha
@@ -7810,9 +7848,9 @@ function _vstPreConfirmar(modo){
       <div style="background:#EEF6FF;border:1.5px solid #378ADD;border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:10px">
         <strong>${autoHosp}</strong><br>Apt. ${apt}
       </div>
-      <div class="ag" style="gap:8px">
-        <button class="bsv" id="vst-vc-sim">✅ Vincular a ${autoHosp}</button>
-        <button class="bcx" id="vst-vc-nao">Não vincular</button>
+      <div class="b2-acoes">
+        <button class="b2s verde" id="vst-vc-sim">✅ Vincular a ${autoHosp}</button>
+        <button class="b2t" id="vst-vc-nao">Não vincular</button>
       </div>`;
     document.getElementById('ov').classList.add('on');
     document.getElementById('vst-vc-sim').onclick=function(){_vstD.hospedagem=autoHosp;modo==='assinar'?_vstStep4():_vstConfirmar(null);};
@@ -7835,12 +7873,12 @@ function _vstPreConfirmar(modo){
       <div style="max-height:220px;overflow-y:auto;margin-bottom:8px">
         ${uniq.map(x=>{
           const haVist=!!getVistoriaByApt(x.apt);
-          return `<button class="ab ao" id="vst-vc-${x.apt}" style="margin-bottom:5px;text-align:left;justify-content:flex-start;font-size:12px">
+          return `<button class="b2c amar" id="vst-vc-${x.apt}" style="margin-bottom:5px;text-align:left;justify-content:flex-start;font-size:12px">
             ${haVist?'✅':'○'} Apt. ${x.apt}${x.hosp?' · <span style="color:#888">'+x.hosp+'</span>':''}
           </button>`;
         }).join('')}
       </div>
-      <button class="bcx" style="width:100%" id="vst-vc-skip">Não vincular agora</button>`;
+      <button class="b2t" id="vst-vc-skip">Não vincular agora</button>`;
     document.getElementById('ov').classList.add('on');
     uniq.forEach(x=>{
       const btn=document.getElementById('vst-vc-'+x.apt);
@@ -8160,10 +8198,10 @@ function deletarVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
   showM(`<div class="mt">🗑 Excluir Vistoria</div>
     <div class="ms">${v.numero} — Apt. ${v.apt} · ${v.modelo}</div>
-    <div class="warn-box" style="font-size:12px">Esta ação é permanente e não pode ser desfeita.</div>
-    <div class="ag">
-      <button class="ab ac" id="vst-del-ok">Excluir permanentemente</button>
-      <button class="bcx" onclick="closeOv()" style="margin-top:4px">Cancelar</button>
+    <div class="b2-aviso">Esta ação é permanente e não pode ser desfeita.</div>
+    <div class="b2-acoes">
+      <button class="b2s verm" id="vst-del-ok">Excluir permanentemente</button>
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
     </div>`);
   document.getElementById('vst-del-ok').onclick=function(){
     confirmarUsuario('excluindo vistoria',function(usuario){
@@ -8497,11 +8535,11 @@ function novoCheckin(){
       const hhmm=_hLocal(new Date(dr._ts||Date.now()));
       mc.innerHTML=`
         <div class="mt">Continuar check-in?</div>
-        <div class="warn-box">Apt <strong>${_vtEsc(dr.apt||'—')}</strong> iniciado às ${hhmm}. Deseja continuar de onde parou?</div>
-        <div class="ag">
-          <button class="bsv" onclick="closeOv();_nciRascContinuar()">Continuar</button>
-          <button class="bcx" onclick="closeOv();_nciRascDescartar();novoCheckin()">Descartar e iniciar novo</button>
-          <button class="bcx" onclick="closeOv()">Cancelar</button>
+        <div class="b2-aviso">Apt <strong>${_vtEsc(dr.apt||'—')}</strong> iniciado às ${hhmm}. Deseja continuar de onde parou?</div>
+        <div class="b2-acoes">
+          <button class="b2s verde" onclick="closeOv();_nciRascContinuar()">Continuar</button>
+          <button class="b2c cinza" onclick="closeOv();_nciRascDescartar();novoCheckin()">Descartar e iniciar novo</button>
+          <button class="b2t" onclick="closeOv()">Cancelar</button>
         </div>`;
       document.getElementById('ov').classList.add('on');
       return;
@@ -12299,9 +12337,15 @@ function _gsPodaRecusaRecente(reg, agora){
   return { podar:false, motivo:'o Android recusou apagar este arquivo em ' + _dLocal(na.ts) + ' — fica; nova tentativa em ' + Math.ceil(GS_PODA_RECUSA_DIAS - dias) + 'd' };
 }
 // Apaga uma lista; devolve {apagados, ausentes, recusados, erro}. Nunca para no primeiro tropeço.
+// v2.4.7.0 — 3 recusas seguidas NÃO bastam para concluir "algo geral". A lista vem do mais antigo para o mais novo, e
+// os mais antigos são justamente os que o Android costuma recusar (arquivos de uma instalação anterior do app — 28/10,
+// celular A: "deleteFile failed" no 1º backup). Antes de parar, tenta o candidato MAIS NOVO: se ele sai, a recusa é
+// por arquivo — a rodada segue até o fim (cada recusado fica marcado e só volta em 7 dias). Se ele também é recusado,
+// aí sim é geral (ex.: permissão de Documentos) e a rodada para.
 async function _gsPodaApagarLista(lista, apagarFn){
-  const out = { apagados:[], ausentes:[], recusados:[], erro:null };
-  let seguidas = 0;
+  const out = { apagados:[], ausentes:[], recusados:[], erro:null, sondou:false };
+  lista = (lista || []).slice();
+  let seguidas = 0, porArquivo = false;
   for(let i = 0; i < lista.length; i++){
     const it = lista[i];
     try{ await apagarFn(it.nome); out.apagados.push(it); seguidas = 0; }
@@ -12309,7 +12353,17 @@ async function _gsPodaApagarLista(lista, apagarFn){
       const msg = (e && e.message) || String(e);
       if(_gsPodaErroAusente(e)){ out.ausentes.push(it); seguidas = 0; continue; }
       out.recusados.push(Object.assign({}, it, { erro:msg }));
-      if(++seguidas >= GS_PODA_RECUSAS_SEGUIDAS){ out.erro = GS_PODA_RECUSAS_SEGUIDAS + ' recusas seguidas do Android (' + msg + ')'; break; }
+      if(porArquivo || ++seguidas < GS_PODA_RECUSAS_SEGUIDAS) continue;
+      if(!out.sondou && i < lista.length - 1){
+        out.sondou = true;
+        const ult = lista.pop();
+        try{ await apagarFn(ult.nome); out.apagados.push(ult); porArquivo = true; seguidas = 0; continue; }
+        catch(e2){
+          if(_gsPodaErroAusente(e2)){ out.ausentes.push(ult); porArquivo = true; seguidas = 0; continue; }
+          out.recusados.push(Object.assign({}, ult, { erro:(e2 && e2.message) || String(e2) }));
+        }
+      }
+      out.erro = GS_PODA_RECUSAS_SEGUIDAS + ' recusas seguidas do Android (' + msg + ')'; break;
     }
   }
   return out;
@@ -12676,6 +12730,17 @@ function _gsPodaMarcarCobertos(){
   return n + nd;
 }
 
+// v2.4.7.0: quando roda a próxima limpeza LOCAL (ms; 0 = no próximo ciclo de 10 min)
+function _gsPodaLocalProxima(){
+  let ult = 0, retL = 0, regra = 0;
+  try{ ult = parseInt(localStorage.getItem(GS_PODA_ULT_LS) || '0', 10) || 0; }catch(e){}
+  try{ retL = parseInt(localStorage.getItem(GS_PODA_LOCAL_RETOMAR_LS) || '0', 10) || 0; }catch(e){}
+  try{ regra = parseInt(localStorage.getItem(GS_PODA_LOCAL_REGRA_LS) || '0', 10) || 0; }catch(e){}
+  if(!ult || regra !== GS_PODA_LOCAL_REGRA) return 0;
+  const dia = ult + 24*60*60*1000;
+  const t = (retL && retL < dia) ? retL : dia;
+  return t <= Date.now() ? 0 : t;
+}
 // C3 — QUANTO O APP OCUPA NESTE DISPOSITIVO (Uso do Drive → "Neste dispositivo"). Só lê.
 async function gsUsoDispositivo(){
   const r = { fotos:0, vistorias:0, backups:null, backups_qtd:0, pdfs:null, pdfs_qtd:0, navegador:null, liberado:{} };
@@ -12699,6 +12764,9 @@ async function gsUsoDispositivo(){
       ((d && d.files) || []).forEach(function(f){ if(f && typeof f === 'object' && /\.pdf$/i.test(f.name || '')){ r.pdfs += Number(f.size || 0); r.pdfs_qtd++; } }); }catch(e){}
   }
   if(r.backups === null){ try{ r.backups_qtd = (JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]') || []).length; }catch(e){} }
+  // v2.4.7.0: o que a PRÓXIMA limpeza local tira (simulação, só leitura) e quando ela roda; e quantos o Android recusou
+  try{ if(_gsPodaLigada()){ const sim = _gsPodaSimularLocal(); r.poda_prox = { qtd:sim.remover.length + (sim.excedente || 0), bytes:_gsSomaTam(sim.remover), quando:_gsPodaLocalProxima() }; } }catch(e){}
+  try{ r.backups_recusados = (JSON.parse(localStorage.getItem('garagespot_backups_local') || '[]') || []).filter(function(b){ return b && b.nao_apagavel; }).length; }catch(e){}
   try{ if(navigator.storage && navigator.storage.estimate){ const e = await navigator.storage.estimate(); r.navegador = Number(e.usage || 0); } }catch(e){}
   try{ r.liberado = JSON.parse(localStorage.getItem(GS_LIMP_DISP_LS) || 'null') || {}; }catch(e){}
   return r;
@@ -12895,6 +12963,11 @@ function _gsNomeUltimoBom(){
   catch(e){ return ''; }
 }
 const GS_PODA_LOCAL_RETOMAR_LS = 'garagespot_poda_local_retomar';
+// v2.4.7.0 — A REGRA NOVA NÃO ESPERA O DIA. Medido no celular A (30/10 23:50): a v2.4.6.2 abriu, mas a última rodada
+// diária tinha sido às 13:34 (ainda na 6.1) e a trava de 24 h segurou a limpeza local até 31/10 13:34 — "0 backups"
+// na tela nas primeiras ~14 h. Quando a REGRA da limpeza local muda de versão, a parte local roda uma vez já, sem
+// mexer na trava diária (nuvem e lixeira seguem no relógio de sempre).
+const GS_PODA_LOCAL_REGRA_LS = 'garagespot_poda_local_regra', GS_PODA_LOCAL_REGRA = 2;   // 2 = v2.4.6.2 (todos os tipos)
 // Uma rodada da limpeza LOCAL: acompanha os arquivos fora do registro, marca coberturas, apaga (teto de 40) e,
 // se o teto cortou, agenda a continuação em ~10 min (o tique de 10 min a alcança).
 async function _gsPodaLocalRodada(){
@@ -12903,7 +12976,8 @@ async function _gsPodaLocalRodada(){
   const rl = await _gsPodaExecutarLocal();
   if(rl && rl.apagados){ console.log('[PODA] local:', rl.apagados, 'arquivo(s)'); _gsLimpDispSomar('backups', rl.apagados, rl.bytes || 0); }
   try{
-    if(rl && rl.ok && rl.plano && rl.plano.truncado){
+    // v2.4.7.0: também quando a rodada parou por recusas DEPOIS de apagar alguma coisa (recusa por arquivo, não geral)
+    if(rl && rl.plano && rl.plano.truncado && (rl.ok || rl.apagados > 0)){
       localStorage.setItem(GS_PODA_LOCAL_RETOMAR_LS, String(Date.now() + 9 * 60 * 1000));
       addLogSistema('Limpeza do dispositivo: ' + rl.plano.excedente + ' backup(s) ainda a apagar — continua em ~10 min', { aud:true, acao:'poda_local_retomara', alvo:String(rl.plano.excedente) });
     }
@@ -12917,6 +12991,15 @@ async function _gsPodaRodarSeLigada(){
     let ult = 0, ret = 0;
     try{ ult = parseInt(localStorage.getItem(GS_PODA_ULT_LS) || '0', 10) || 0; }catch(e){}
     try{ ret = parseInt(localStorage.getItem(GS_PODA_RETOMAR_LS) || '0', 10) || 0; }catch(e){}
+    let regra = 0;
+    try{ regra = parseInt(localStorage.getItem(GS_PODA_LOCAL_REGRA_LS) || '0', 10) || 0; }catch(e){}
+    if(regra !== GS_PODA_LOCAL_REGRA){
+      try{ localStorage.setItem(GS_PODA_LOCAL_REGRA_LS, String(GS_PODA_LOCAL_REGRA)); }catch(e){}
+      if(ult && (Date.now() - ult) < 24*60*60*1000){   // só se a diária não for rodar agora mesmo
+        try{ addLogSistema('Limpeza do dispositivo: regra nova (todos os tipos de backup) — rodando já, sem esperar a rodada diária', { aud:true, acao:'poda_local_regra_nova', alvo:String(GS_PODA_LOCAL_REGRA) }); }catch(e){}
+        await _gsPodaLocalRodada();
+      }
+    }
     // v2.4.6.2: a limpeza LOCAL que parou no teto (40 por rodada) também é retomada em ~10 min
     if(ult && (Date.now() - ult) < 24*60*60*1000){
       let retL = 0;
@@ -13262,6 +13345,11 @@ async function _gsUsoDispRender(){
         g.qtd + ' ' + ROT[t] + per + '</span><span style="white-space:nowrap">' + _gdUsoTam(g.bytes) + '</span></div>';
     });
   }
+  if(u.poda_prox){   // v2.4.7.0
+    h += '<div id="uso-disp-poda" style="padding:2px 0 2px 12px;font-size:11px;color:#555">Próxima limpeza: ' + (u.poda_prox.qtd ? u.poda_prox.qtd + ' backup(s) saem' + (u.poda_prox.bytes ? ' (' + _gdUsoTam(u.poda_prox.bytes) + ')' : '') : 'nenhum backup sai ainda') +
+      ' · ' + (u.poda_prox.quando ? _vtEsc(fmtDt(u.poda_prox.quando)) : 'nos próximos 10 min') + '</div>';
+  }
+  if(u.backups_recusados) h += '<div id="uso-disp-recusados" style="padding:2px 0 2px 12px;font-size:11px;color:#A32D2D">' + u.backups_recusados + ' backup(s) que o Android não deixou o app apagar — dá para apagar à mão em Documentos/GarageSpot/Dados</div>';
   h += lin('PDFs no dispositivo (' + u.pdfs_qtd + ')', tam(u.pdfs));
   h += lin('Total do app aqui', _gdUsoTam(tot), true);
   if(u.navegador != null) h += lin('Banco do navegador (IndexedDB etc.)', _gdUsoTam(u.navegador));
@@ -14428,7 +14516,7 @@ function _gsConfirmarImportacao(obj, nomeArq){
   const qtdVst  = _gsContar(n.vistorias || {});
   const qtdAnx  = _gsContar(n.anexos || {});
   const avisoIDB = n.temIndexedDB ? '' :
-    `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos/anexos</strong> (backup de formato antigo). Os demais dados serão importados normalmente.</div>`;
+    `<div class="b2-aviso">Este arquivo <strong>não contém as fotos/anexos</strong> (backup de formato antigo). Os demais dados serão importados normalmente.</div>`;
   const dataArq = n.ts ? (typeof fmtDt==='function'?fmtDt(n.ts):_dtLocalSeg(new Date(n.ts))) : '—';
   showM(`<div class="mt">📥 Importar dados</div>
     <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nomeArq||'backup.json'))}</div>
@@ -14445,9 +14533,9 @@ function _gsConfirmarImportacao(obj, nomeArq){
     <div style="background:#EEF9F2;border:1px solid #0F6E56;border-radius:8px;padding:9px 12px;font-size:12px;color:#0F6E56;margin-top:8px">
       ✅ A importação <strong>SOMA</strong> o que falta. Nada do que está no dispositivo é apagado ou sobrescrito.
     </div>
-    <div class="b2">
-      <button class="bcx" onclick="closeOv()">Cancelar</button>
-      <button class="bsv" id="imp-ok">Importar</button>
+    <div class="b2-lado">
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
+      <button class="b2s verde" id="imp-ok">Importar</button>
     </div>`);
   setTimeout(function(){
     const b = document.getElementById('imp-ok');
@@ -14476,7 +14564,7 @@ function _gsConfirmarImportacao(obj, nomeArq){
             ${res.pinGestor ? `<div>+ PIN do gestor restaurado</div>` : ''}
             <div style="color:#888;margin-top:6px">${res.ignorados} registro(s) já existiam e foram preservados.</div>
           </div>
-          <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
+          <button class="b2t" onclick="closeOv()">Fechar</button>`);
       };
       if(!pinSalvo){ aplicar(); return; }
       showEntrarPIN(function(){ aplicar(); });
@@ -16240,7 +16328,7 @@ async function _hrelGerarDoc(progresso){
     }),
     theme:'plain',
     headStyles:{ fillColor:PDF_COR.marinho, textColor:255, fontSize:7.5, fontStyle:'bold' },
-    styles:{ fontSize:8, cellPadding:{ top:2.4, bottom:2.4, left:2, right:2 }, textColor:PDF_COR.texto, lineColor:PDF_COR.linha, lineWidth:{ bottom:0.1 } },
+    styles:{ fontSize:8, valign:'middle', cellPadding:{ top:2.4, bottom:2.4, left:2, right:2 }, textColor:PDF_COR.texto, lineColor:PDF_COR.linha, lineWidth:{ bottom:0.1 } },   // v2.4.7.0: valign middle (vaga/apto centrados quando o hóspede quebra)
     alternateRowStyles:{ fillColor:[250, 251, 253] },
     // 14+14+18+44+30+24+46 = 190 = PDF_W
     columnStyles:{ 0:{ cellWidth:14, halign:'center', fontStyle:'bold' }, 1:{ cellWidth:14, halign:'center' },
@@ -17233,7 +17321,7 @@ function _gdEscolherModoRestauracao(obj, nome){
   const qtdVst  = _gsContar(n.vistorias || {});
   const qtdAnx  = _gsContarItens(n.anexos || {});
   const avisoIDB = n.temIndexedDB ? '' :
-    `<div class="warn-box" style="font-size:12px;margin-top:8px">⚠️ Este arquivo <strong>não contém as fotos</strong> (backup leve / formato antigo). Em <strong>Substituir</strong>, o dispositivo ficaria sem elas.</div>`;
+    `<div class="b2-aviso">Este arquivo <strong>não contém as fotos</strong> (backup leve / formato antigo). Em <strong>Substituir</strong>, o dispositivo ficaria sem elas.</div>`;
   showM(`<div class="mt">☁️ Restaurar da nuvem</div>
     <div class="ms" style="margin-bottom:8px">${_vtEsc(String(nome))}</div>
     <div style="background:#f8f7f3;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.7">
@@ -17242,12 +17330,12 @@ function _gdEscolherModoRestauracao(obj, nome){
       <div>• ${qtdHosp} hospedagens · ${qtdVst} vistorias · ${qtdAnx} anexos</div>
     </div>
     ${avisoIDB}
-    <div class="ag" style="margin-top:10px">
-      <button class="bsv" id="rst-somar">➕ Somar (mesclar)</button>
+    <div class="b2-acoes">
+      <button class="b2s verde" id="rst-somar">➕ Somar (mesclar)</button>
       <div style="font-size:11px;color:#888;margin:2px 0 8px">Acrescenta só o que falta. Nada do que está no dispositivo é apagado. <strong>Padrão.</strong></div>
-      <button class="ab ao" id="rst-subst" style="margin-top:0">♻️ Substituir (recuperação)</button>
+      <button class="b2c amar" id="rst-subst" style="margin-top:0">♻️ Substituir (recuperação)</button>
       <div style="font-size:11px;color:#888;margin:2px 0 0">Deixa o dispositivo <strong>idêntico a este backup</strong>. Os dados atuais do dispositivo são descartados.</div>
-      <button class="bcx" onclick="closeOv()" style="margin-top:10px">Cancelar</button>
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
     </div>`);
   // Handlers ligados NA HORA, sem `setTimeout`. `showM` é síncrono (`innerHTML` +
   // classe), então o botão já existe aqui — e o atraso de 50ms do padrão legado
@@ -17281,9 +17369,9 @@ function _gdConfirmarSubstituir(obj, nome, n, dataArq, qtdHosp, qtdVst, qtdAnx){
       ✅ Nada é apagado <strong>na nuvem</strong> — ela é só leitura aqui.<br>
       ✅ Os <strong>PDFs de fechamento</strong> já salvos no dispositivo <strong>não</strong> são apagados.
     </div>
-    <div class="ag" style="margin-top:10px">
-      <button class="bcx" onclick="closeOv()">Cancelar</button>
-      <button class="ab ac" id="rst-subst-ok" style="margin-top:6px">♻️ Sim, substituir tudo</button>
+    <div class="b2-acoes">
+      <button class="b2s verm" id="rst-subst-ok">♻️ Sim, substituir tudo</button>
+      <button class="b2t" onclick="closeOv()">Cancelar</button>
     </div>`);
   const b = document.getElementById('rst-subst-ok');   // idem: sem janela morta
   if(b) b.onclick = function(){ _gdAplicarRestauracao(obj, nome, 'substituir'); };
@@ -17523,11 +17611,11 @@ function _rcAvisoTravado(achado, acaoTxt, retomar){
       '<strong>Vaga ' + _vtEsc(vagaId) + ' · Apt ' + _vtEsc(String(r.apt||'—')) + '</strong>' +
       (r.hospedagem ? ' · ' + _vtEsc(String(r.hospedagem)) : '') +
       (veic ? '<br>' + _vtEsc(veic) : '') + '</div>' +
-    '<div class="warn-box" style="font-size:12px">Este carro está em recarga desde <strong>' +
+    '<div class="b2-aviso">Este carro está em recarga desde <strong>' +
       _vtEsc(quando) + '</strong>. Encerre a recarga antes de ' + _vtEsc(acaoTxt) + '.</div>' +
-    '<div class="ag">' +
-      '<button class="bsv" id="rct-encerrar" style="background:#1F9A5F">⚡ Encerrar recarga agora</button>' +
-      '<button class="bcx" id="rct-cancelar" style="margin-top:4px">Cancelar</button>' +
+    '<div class="b2-acoes">' +
+      '<button class="b2s verde" id="rct-encerrar" >⚡ Encerrar recarga agora</button>' +
+      '<button class="b2t" id="rct-cancelar">Cancelar</button>' +
     '</div>');
   setTimeout(function(){
     const b = document.getElementById('rct-encerrar');
@@ -18605,8 +18693,8 @@ function _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now){
       _renderOpcao('outro','Outro horário') +
     '</div>' +
     '<div class="b2" style="margin-top:12px">' +
-      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
-      '<button class="bsv" id="rc-enc-confirmar" style="background:#1F9A5F">✓ Confirmar e encerrar</button>' +
+      '<button class="b2t" onclick="closeOv()">Cancelar</button>' +
+      '<button class="b2s verde" id="rc-enc-confirmar" >✓ Confirmar e encerrar</button>' +
     '</div>');
 
   setTimeout(function(){
@@ -18916,10 +19004,10 @@ function showRecargaFila(vagaId){
   const vaga=S[vagaId]; const apt=vaga?.apt||'';
   showM(`<div class="mt">⚡ Ponto compartilhado ocupado</div>
     <div class="ms">${parInfo}</div>
-    <div class="warn-box">O ponto de recarga esta em uso. Deseja entrar na fila?</div>
-    <div class="ag">
-      <button class="bsv" id="rc-fila-ok">Entrar na fila</button>
-      <button class="bcx" onclick="closeOv()">Fechar</button>
+    <div class="b2-aviso">O ponto de recarga esta em uso. Deseja entrar na fila?</div>
+    <div class="b2-acoes">
+      <button class="b2s verde" id="rc-fila-ok">Entrar na fila</button>
+      <button class="b2t" onclick="closeOv()">Fechar</button>
     </div>`);
   setTimeout(()=>{
     document.getElementById('rc-fila-ok')?.addEventListener('click',()=>{
@@ -19242,9 +19330,9 @@ function _rcEscolherCarro(vagasDoPonto, usuario){
       '<input class="rcp-busca-input" id="rc-busca" placeholder="Buscar por apto, modelo, cor, placa, hóspede...">' +
     '</div>' +
     '<div id="rc-lista-carros" style="max-height:260px;overflow-y:auto;margin-bottom:8px">'+_rcRenderListaCarros(carros, vagasDoPonto, '')+'</div>' +
-    '<div class="b2">' +
-      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
-      '<button class="bsv" id="rc-prox" '+(_rcEstado.escolhidoIdx<0?'disabled style="opacity:.5;cursor:not-allowed"':'')+'>Próximo →</button>' +
+    '<div class="b2-lado">' +
+      '<button class="b2t" onclick="closeOv()">Cancelar</button>' +
+      '<button class="b2s verde" id="rc-prox" '+(_rcEstado.escolhidoIdx<0?'disabled style="opacity:.5;cursor:not-allowed"':'')+'>Próximo →</button>' +
     '</div>';
   document.getElementById('ov').classList.add('on');
   // Marcar inicialmente o primeiro (se for da vaga)
@@ -19560,9 +19648,9 @@ function _rcConfirmacaoFinal(carro, fimMs){
       '<div style="font-size:12px;color:#5A6478;margin-top:2px">Vaga '+vp+' · '+_fmtDurRecarga(totalMin)+' · Término: '+_fmtDHRc(fimMs)+'</div>' +
       '<div style="font-size:15px;font-weight:800;color:#1F9A5F;margin-top:8px">R$ '+valor.toFixed(2).replace('.',',')+'</div>' +
     '</div>' +
-    '<div class="b2">' +
-      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
-      '<button class="bsv" id="rc-confirma-final" style="background:#2BB673">✓ Confirmar e iniciar</button>' +
+    '<div class="b2-lado">' +
+      '<button class="b2t" onclick="closeOv()">Cancelar</button>' +
+      '<button class="b2s verde" id="rc-confirma-final" >✓ Confirmar e iniciar</button>' +
     '</div>';
   setTimeout(function(){
     document.getElementById('rc-confirma-final')?.addEventListener('click', function(){
@@ -19604,9 +19692,9 @@ window._abrirAddFilaModal = function(){
       '<input class="rcp-busca-input" id="rc-fila-busca" placeholder="Buscar por apto, modelo, cor, placa, hóspede...">' +
     '</div>' +
     '<div id="rc-fila-lista" style="max-height:260px;overflow-y:auto;margin-bottom:8px">'+_rcAddFilaRender('')+'</div>' +
-    '<div class="b2">' +
-      '<button class="bcx" onclick="closeOv()">Cancelar</button>' +
-      '<button class="bsv" id="rc-fila-add" style="background:#E68A2E" disabled>Adicionar à fila</button>' +
+    '<div class="b2-lado">' +
+      '<button class="b2t" onclick="closeOv()">Cancelar</button>' +
+      '<button class="b2s amar" id="rc-fila-add"  disabled>Adicionar à fila</button>' +
     '</div>';
   document.getElementById('ov').classList.add('on');
   setTimeout(function(){
@@ -21895,6 +21983,9 @@ function _pdfTxt(v){
     for(let i = 0; i < _PDF_TROCAS.length; i++) s = s.replace(_PDF_TROCAS[i][0], _PDF_TROCAS[i][1]);
     // fora do WinAnsi (e fora dos controles que o autoTable entende) → marcador
     s = s.replace(/[^\u0020-\u007E\u00A0-\u00FF\n\r\t]/g, '?');
+    // v2.4.7.0: separador "·" SOLTO — o responsável sem cargo é gravado como "Doug · " (nome + ' · ' + cargo vazio).
+    // Some no começo e no fim, e dois seguidos viram um.
+    if(s.indexOf('\u00B7') >= 0) s = s.replace(/(\s*\u00B7\s*){2,}/g, ' \u00B7 ').replace(/^\s*\u00B7\s*/, '').replace(/\s*\u00B7\s*$/, '');
     return s;
   }catch(e){ return ''; }
 }
@@ -21968,7 +22059,10 @@ function _pdfCabecalhoDoc(doc, y, o){
     refs.forEach(function(par){
       doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
       doc.setTextColor.apply(doc, PDF_COR.rotulo);
-      doc.text(String(par[0]).toUpperCase(), PDF_L+PDF_W, yR, {align:'right', charSpace:0.3});
+      // v2.4.7.0: alinhar à direita COM espaçamento entre letras — o jsPDF mede sem o charSpace e o rótulo passava
+      // da margem direita (~3 mm em "APARTAMENTO"); a posição é calculada aqui, com o espaçamento somado.
+      const _rot=String(par[0]).toUpperCase();
+      doc.text(_rot, PDF_L+PDF_W-(doc.getTextWidth(_rot)+0.3*(_rot.length-1)), yR, {charSpace:0.3});
       doc.setFont('helvetica','bold'); doc.setFontSize(9);
       doc.setTextColor.apply(doc, PDF_COR.texto);
       doc.text(_pdfTxt(par[1]||'—'), PDF_L+PDF_W, yR+4.6, {align:'right'});   // v1.9.9.0
@@ -22195,12 +22289,14 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
         ? String(ev.extra).replace(/\s*→\s*/g,' para ')
         : (ev.extra||'');
       const det=bruto?(' · '+_pdfTxt(bruto)):'';
-      return [_pdfTxt(_movGS(ev)),fmtDt(ev.ts),'   '+_pdfTxt(_movLabel(ev.tipo))+det,
+      return [_pdfTxt(_movGS(ev)),fmtDt(ev.ts),_pdfTxt(_movLabel(ev.tipo))+det,   // v2.4.7.0: o recuo da bolinha é o cellPadding (abaixo)
               _pdfTxt(ev.vaga||'—'),_pdfTxt(resp+via)];
     }),
     theme:'plain',
     headStyles:{fillColor:PDF_COR.marinho,textColor:255,fontSize:7.5,fontStyle:'bold',cellPadding:{top:2.6,bottom:2.6,left:2.5,right:2.5}},
-    styles:{fontSize:8,cellPadding:{top:2.4,bottom:2.4,left:2.5,right:2.5},textColor:PDF_COR.texto,lineColor:PDF_COR.linha,lineWidth:{bottom:0.1}},
+    // v2.4.7.0: valign MIDDLE — numa linha alta (responsável em 2 linhas) o GS e a vaga ficavam no topo e a etiqueta
+    // ocupava a altura toda; agora o conteúdo fica centrado na célula e as marcas seguem o texto (ver didDrawCell).
+    styles:{fontSize:8,valign:'middle',cellPadding:{top:2.4,bottom:2.4,left:2.5,right:2.5},textColor:PDF_COR.texto,lineColor:PDF_COR.linha,lineWidth:{bottom:0.1}},
     alternateRowStyles:{fillColor:[250,251,253]},
     // 18+32+58+14+68 = 190 = PDF_W. Mexer aqui exige refazer a soma.
     // ⚠️ A LARGURA DE 'Movimentação' (58) NÃO PODE ENCOLHER. Ela decide ONDE o
@@ -22211,7 +22307,9 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
     columnStyles:{
       0:{cellWidth:18,halign:'center',fontStyle:'bold',fontSize:7},
       1:{cellWidth:32,font:'courier',fontSize:7.5},   // horário alinhado (tabular)
-      2:{cellWidth:58},                               // ⚠️ NÃO ESTREITAR: ver a caixa acima
+      2:{cellWidth:58,cellPadding:{top:2.4,bottom:2.4,left:5.8,right:2.5}},   // ⚠️ NÃO ESTREITAR: ver a caixa acima. v2.4.7.0: recuo
+                                                      // da bolinha no padding (era "   " no texto: a bolinha encostava na 1ª letra
+                                                      // e a 2ª linha voltava para a borda)
       3:{cellWidth:14,halign:'center',fontStyle:'bold'},
       4:{cellWidth:68,fontSize:7.5},
     },
@@ -22219,25 +22317,40 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
     didDrawCell:function(data){
       try{
         if(data.section!=='body') return;
+        // v2.4.7.0: as marcas desenhadas aqui seguem a 1ª LINHA DO TEXTO, não o meio da célula (a bolinha da
+        // movimentação descia para o meio quando outra coluna quebrava em 2 linhas). Mesma conta do autoTable:
+        // linha de base = topo do texto + fs·(2−1,15); centro visual das maiúsculas ≈ base − 0,36·fs.
+        const _c1=function(cell){
+          const k=doc.internal.scaleFactor, fs=(cell.styles.fontSize||8)/k;
+          const lh=fs*((doc.getLineHeightFactor&&doc.getLineHeightFactor())||1.15);
+          const n=Array.isArray(cell.text)?Math.max(1,cell.text.length):1;
+          let base=cell.getTextPos().y+fs*(2-1.15);
+          if(cell.styles.valign==='middle') base-=n/2*lh; else if(cell.styles.valign==='bottom') base-=n*lh;
+          return { y:base-fs*0.36, fs:fs, lh:lh };
+        };
+        const _etiqueta=function(cell, dx, raio){   // etiqueta centrada no texto, altura de uma linha + folga
+          const c=_c1(cell), h=Math.min(cell.height-2.8, c.lh+2.3);
+          doc.roundedRect(cell.x+dx, c.y-h/2, cell.width-2*dx, h, raio, raio, 'S');
+        };
         // chip discreto do GS
         if(data.column.index===0 && data.cell.raw && data.cell.raw!=='—'){
           // SÓ A BORDA: `didDrawCell` roda DEPOIS de o autoTable desenhar o texto,
           // então um preenchimento aqui cobriria o próprio GS. Mesma solução da
           // etiqueta de vaga (v1.9.4.16).
           doc.setDrawColor(150,175,205); doc.setLineWidth(0.25);
-          doc.roundedRect(data.cell.x+1.4, data.cell.y+1.4, data.cell.width-2.8, data.cell.height-2.8, 1.4, 1.4, 'S');
+          _etiqueta(data.cell, 1.4, 1.4);
         }
         // marcador colorido do tipo
         if(data.column.index===2){
           const ev=movs[data.row.index];
           const rgb=_movCor(ev&&ev.tipo);
           doc.setFillColor(rgb[0],rgb[1],rgb[2]);
-          doc.circle(data.cell.x+4, data.cell.y+data.cell.height/2, 1.15, 'F');
+          doc.circle(data.cell.x+3.3, _c1(data.cell).y, 1.15, 'F');
         }
         // "etiqueta" da vaga
         if(data.column.index===3 && data.cell.raw && data.cell.raw!=='—'){
           doc.setDrawColor.apply(doc, PDF_COR.linha); doc.setLineWidth(0.2);
-          doc.roundedRect(data.cell.x+1.6, data.cell.y+1.4, data.cell.width-3.2, data.cell.height-2.8, 1, 1, 'S');
+          _etiqueta(data.cell, 1.6, 1);
         }
       }catch(e){}
     },
@@ -22357,11 +22470,13 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
             doc.setTextColor.apply(doc, PDF_COR.texto);
             doc.text(_pdfCortar(doc,String(par[1]),(PDF_W-8)/4-4), cx, yV+10.5);
           });
-          yV+=19;
-          _pdfSelo(doc, PDF_L+PDF_W, yV-4.5,
+          // v2.4.7.0: o selo era desenhado 0,5 mm DENTRO do quadro de identificação (yV+14,5, com o quadro até yV+15) e a
+          // imagem começava sob o selo. Agora: quadro → 2 mm → selo → 2,6 mm → imagem; a imagem termina onde terminava.
+          yV+=17;
+          _pdfSelo(doc, PDF_L+PDF_W, yV,
             nAv>0?('Com avaria · '+nAv):'Sem avaria',
             nAv>0?PDF_COR.vermelho:PDF_COR.verde);
-          _pdfAddImagemAjustada(doc, vist, vist.documento_final_b64, 'png', imgCache, PDF_L, yV+4, PDF_W, 232);
+          _pdfAddImagemAjustada(doc, vist, vist.documento_final_b64, 'png', imgCache, PDF_L, yV+9, PDF_W, 229);
         }
       }catch(e){ console.error('[BUG C] erro vistoria',vist&&vist.numero,e); }
       // 2) fotos vinculadas a esta vistoria (na ordem em que foram tiradas)
@@ -23092,9 +23207,9 @@ window.delAtt = function(id, fp, idx, containerId){
   // 1) Confirmação
   showM(`<div class="mt">🗑 Excluir anexo</div>
     <div class="ms" style="margin-bottom:12px">Tem certeza que deseja excluir este anexo?<br><strong>${_vtEsc(String(nomeAnexo))}</strong></div>
-    <div class="b2">
-      <button class="bcx" id="da-nao">Não</button>
-      <button class="bsv" id="da-sim" style="background:#A32D2D">Sim, excluir</button>
+    <div class="b2-lado">
+      <button class="b2t" id="da-nao">Não</button>
+      <button class="b2s verm" id="da-sim" >Sim, excluir</button>
     </div>`);
   setTimeout(function(){
     const bN=document.getElementById('da-nao'); if(bN) bN.onclick=_reabrir;
@@ -23104,7 +23219,7 @@ window.delAtt = function(id, fp, idx, containerId){
       if(!pinSalvo){
         showM(`<div class="mt">🔒 Exclusão protegida</div>
           <div class="ms" style="margin-bottom:12px">Para excluir anexos é preciso configurar um PIN de Gestão.<br>Vá em <strong>Gestão → Alterar PIN</strong>. A exclusão de anexos é sempre protegida.</div>
-          <button class="bcx" id="da-pinmiss" style="width:100%">Entendi</button>`);
+          <button class="b2t" id="da-pinmiss">Entendi</button>`);
         setTimeout(function(){ const e=document.getElementById('da-pinmiss'); if(e) e.onclick=_reabrir; },50);
         return;
       }
@@ -24545,15 +24660,15 @@ function _gsSrvTelaEmUso(r){
   const u = r.emUso || {};
   showM('<div class="mt">🛰 Conta em uso</div><div class="ms" id="srv-em-uso" style="margin-bottom:8px">Esta conta já está em uso no dispositivo <strong>' + _vtEsc(u.letra || '?') + '</strong>' +
     ' (último sinal ' + _vtEsc(u.ultimo_sinal ? _dtLocal(Date.parse(u.ultimo_sinal)) : '—') + ').</div>' +
-    (u.fila_leve ? '<div class="warn-box" style="font-size:12px">No último sinal, o dispositivo ' + _vtEsc(u.letra || '?') + ' tinha <strong>' + u.fila_leve + ' ação(ões) sem enviar</strong>. Se possível, deixe-o enviar antes de transferir.</div>' : '') +
+    (u.fila_leve ? '<div class="b2-aviso">No último sinal, o dispositivo ' + _vtEsc(u.letra || '?') + ' tinha <strong>' + u.fila_leve + ' ação(ões) sem enviar</strong>. Se possível, deixe-o enviar antes de transferir.</div>' : '') +
     '<div class="ms" style="font-size:12px;margin-bottom:8px">Transferir faz este dispositivo ficar com a letra ' + _vtEsc(u.letra || '?') + '. O dispositivo antigo para de sincronizar no próximo sinal — os dados dele ficam intactos.</div>' +
-    '<div class="b2"><button class="bcx" id="srv-cancelar-uso">Cancelar</button><button class="bsv" id="srv-transferir">Transferir para este dispositivo</button></div>');
+    '<div class="b2-lado"><button class="b2t" id="srv-cancelar-uso">Cancelar</button><button class="b2s verde" id="srv-transferir">Transferir para este dispositivo</button></div>');
   document.getElementById('srv-cancelar-uso').onclick = async function(){ await gsSrvCancelarEntrada(); showServidor(); };
   document.getElementById('srv-transferir').onclick = function(){
     showEntrarPIN(async function(){
       showM('<div class="mt">🛰 Transferindo…</div>');
       const t = await gsSrvTransferir(r.email);
-      if(!t.ok){ showM('<div class="mt">⚠️ Não transferiu</div><div class="ms">' + _vtEsc(t.erro || '') + '</div><button class="bcx" onclick="showServidor()" style="width:100%">Voltar</button>'); return; }
+      if(!t.ok){ showM('<div class="mt">⚠️ Não transferiu</div><div class="ms">' + _vtEsc(t.erro || '') + '</div><button class="b2t" onclick="showServidor()">Voltar</button>'); return; }
       showToast('✅ Conta transferida para este dispositivo — letra ' + t.letra, 4000);
       showServidor();
     });
@@ -26986,7 +27101,7 @@ function _gsRespPainelHTML(){
     _gsListaDispositivosHTML() +
     '<div style="display:flex;gap:6px;margin-top:8px"><button class="bcx" id="srv-conta-oficial" style="flex:1;font-size:12px">' + (oficial ? 'Trocar a conta oficial' : 'Registrar a conta oficial') + '</button>' +
       '<button class="bcx" id="srv-envios" style="flex:1;font-size:12px">📤 Envios ao Drive</button></div>' +
-    (sou ? '' : '<button class="bsv" id="srv-assumir" style="width:100%;margin-top:8px">Assumir o envio ao Drive neste dispositivo</button>') +
+    (sou ? '' : '<button class="b2s azul" id="srv-assumir" style="margin-top:8px">☁️ Assumir o envio ao Drive neste dispositivo</button>') +
     '</div>' +
     '<button class="bcx" id="srv-corte" style="width:100%;margin-bottom:6px">🗂 Encerrar hospedagens anteriores ao corte</button>';
 }
@@ -27174,14 +27289,14 @@ function _gsRespLigarPainel(){
     if(_gsDriveOkParaSinal() && rr.conta_oficial && minha && minha !== String(rr.conta_oficial).toLowerCase()){
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-conta-errada" style="font-weight:700;color:#A32D2D">⚠️ Este dispositivo está com o Drive na conta ' + _vtEsc(minha) + '.</div>' +
         '<div class="ms">A conta oficial da empresa é <strong>' + _vtEsc(rr.conta_oficial) + '</strong>. Conecte o Drive nela em <strong>Gestão → Backup e Conexões</strong> e tente de novo.</div>' +
-        '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+        '<button class="b2t" onclick="showServidor()">Voltar</button>');
       return;
     }
     // v2.4.1.0 (Bloco B): sem Google Drive conectado este aparelho não pode assumir — e é dito o porquê
     if(!_gsDriveOkParaSinal()){
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-sem-drive" style="font-weight:700;color:#A32D2D">⚠️ Este dispositivo não tem o Google Drive conectado.</div>' +
         '<div class="ms">Só quem tem o Drive conectado pode enviar ao Drive. Conecte em <strong>Gestão → Backup e Conexões → Conectar Google Drive</strong> e tente de novo.</div>' +
-        '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+        '<button class="b2t" onclick="showServidor()">Voltar</button>');
       return;
     }
     showEntrarPIN(async function(){
@@ -27189,7 +27304,7 @@ function _gsRespLigarPainel(){
       const r = await gsAssumirResponsavel();
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-res" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
         (r.ok ? '✅ Este dispositivo passou a fazer o envio ao Drive.' : '⚠️ Não foi possível: ' + _vtEsc(r.erro || 'sem resposta do servidor')) + '</div>' +
-        '<button class="bcx" onclick="showServidor()" style="width:100%;margin-top:10px">Voltar</button>');
+        '<button class="b2t" onclick="showServidor()">Voltar</button>');
     });
   };
   const c = document.getElementById('srv-corte');
@@ -27921,7 +28036,7 @@ function gsConflitoAbrir(pid){
   showM('<div class="mt">⚠️ Vaga ' + _vtEsc(vaga) + ' com 2 carros</div>' +
     '<div class="ms" style="margin-bottom:8px">Os dois dispositivos marcaram esta vaga quase ao mesmo tempo. Confira qual carro está nela.</div>' +
     _gsCardCarro('atual', lados[0], 0) + _gsCardCarro('novo', lados[1], 1) +
-    '<button class="bcx" id="gs-conf-depois" style="width:100%;margin-top:4px">Conferir depois</button>');
+    '<button class="b2t" id="gs-conf-depois">Conferir depois</button>');
   document.getElementById('gs-conf-depois').onclick = function(){ _gsPendJanela = null; closeOv(); };
   document.querySelectorAll('.gs-este-na-vaga').forEach(function(b){
     b.onclick = function(){ const i = Number(b.getAttribute('data-idx')); _gsConflitoPasso2(pid, lados[i], lados[1 - i], vaga); };
@@ -27930,11 +28045,11 @@ function gsConflitoAbrir(pid){
 function _gsConflitoPasso2(pid, fica, outro, vaga){
   showM('<div class="mt">E o outro carro (' + _vtEsc(outro.gs) + ')?</div>' +
     '<div class="ms" style="margin-bottom:8px">' + _vtEsc(fica.gs) + ' fica na vaga ' + _vtEsc(vaga) + '.</div>' +
-    '<div class="ag">' +
-    '<button class="bsv" id="gs-c-vaga">📍 Escolher vaga</button>' +
-    '<button class="bsv" id="gs-c-passeio">🛣️ Está a passeio</button>' +
-    '<button class="bsv" id="gs-c-saiu">🚪 Já saiu</button>' +
-    '<button class="bcx" id="gs-c-depois">Conferir depois</button></div>');
+    '<div class="b2-acoes">' +
+    '<button class="b2c azul" id="gs-c-vaga">📍 Escolher vaga</button>' +
+    '<button class="b2c azul" id="gs-c-passeio">🛣️ Está a passeio</button>' +
+    '<button class="b2c azul" id="gs-c-saiu">🚪 Já saiu</button>' +
+    '<button class="b2t" id="gs-c-depois">Conferir depois</button></div>');
   const exec = function(destino, vagaOutro){
     confirmarUsuario('resolvendo o conflito da vaga ' + vaga, function(usuario){
       const quem = usuario ? usuario.nome + ' · ' + usuario.cargo : '';
@@ -27985,11 +28100,11 @@ function gsOrfaAbrir(gs){
   const desde = _dLocal(_gsOrfaDesde(gs));
   showM('<div class="mt">🚗 Hospedagem sem vaga — ' + _vtEsc(gs) + '</div>' +
     '<div class="ms" style="margin-bottom:8px">Apt ' + _vtEsc(String(h.apt || '?')) + ' · ' + _vtEsc([h.plate, h.model, h.color].filter(Boolean).join(' · ') || '—') +
-    '<br>Ativa, sem vaga e sem passeio desde <strong>' + _vtEsc(desde) + '</strong>.</div><div class="ag">' +
-    '<button class="bsv" id="gs-o-vaga">📍 Colocar numa vaga</button>' +
-    '<button class="bsv" id="gs-o-passeio">🛣️ Está a passeio</button>' +
-    '<button class="bcx" id="gs-o-encerrar" style="color:#A32D2D;border-color:#E8A8A8">Encerrar hospedagem antiga</button>' +
-    '<button class="bcx" onclick="closeOv()">Fechar</button></div>');
+    '<br>Ativa, sem vaga e sem passeio desde <strong>' + _vtEsc(desde) + '</strong>.</div><div class="b2-acoes">' +
+    '<button class="b2c azul" id="gs-o-vaga">📍 Colocar numa vaga</button>' +
+    '<button class="b2c azul" id="gs-o-passeio">🛣️ Está a passeio</button>' +
+    '<button class="b2c verm" id="gs-o-encerrar">Encerrar hospedagem antiga</button>' +
+    '<button class="b2t" onclick="closeOv()">Fechar</button></div>');
   const registrar = function(tipo, txt, vaga, usuario){
     addHistorico(String(h.apt || '?'), tipo, vaga || '', txt, usuario ? usuario.nome + ' · ' + usuario.cargo : '', gs);
   };
@@ -28047,15 +28162,15 @@ function gsPendAbrir(pid){
   if(p.tipo === 'conflito_vaga') return gsConflitoAbrir(pid);
   const d = p.dados || {};
   const cab = '<div class="mt">⚠️ ' + _vtEsc(_gsPendRotulo(p)) + '</div>';
-  const fechar = '<button class="bcx" id="gs-p-depois" style="width:100%;margin-top:6px">Conferir depois</button>';
+  const fechar = '<button class="b2t" id="gs-p-depois">Conferir depois</button>';
   const ligarFechar = function(){ const b = document.getElementById('gs-p-depois'); if(b) b.onclick = function(){ _gsPendJanela = null; closeOv(); }; };
   const comOperador = function(acao, fn){ confirmarUsuario(acao, function(u){ fn(u, u ? u.nome + ' · ' + u.cargo : ''); }); };
   if(p.tipo === 'gs_dois_lugares'){
     const gs = d.gs || p.gs, ac = d.aceito || {}, rc = d.recusado || {};
     const txt = function(o){ return o.tipo === 'vaga' ? 'Vaga ' + o.vaga : 'A passeio'; };
-    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(gs) + ' foi marcado em dois lugares. Onde ele está de verdade?</div><div class="ag">' +
-      '<button class="bsv" id="gs-dl-aceito">' + _vtEsc(txt(ac)) + ' (servidor)</button>' +
-      '<button class="bsv" id="gs-dl-recusado">' + _vtEsc(txt(rc)) + ' (dispositivo ' + _vtEsc(rc.aparelho || '?') + ' · ' + _vtEsc(rc.quem || '—') + ')</button></div>' + fechar);
+    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(gs) + ' foi marcado em dois lugares. Onde ele está de verdade?</div><div class="b2-acoes">' +
+      '<button class="b2c azul" id="gs-dl-aceito">' + _vtEsc(txt(ac)) + ' (servidor)</button>' +
+      '<button class="b2c azul" id="gs-dl-recusado">' + _vtEsc(txt(rc)) + ' (dispositivo ' + _vtEsc(rc.aparelho || '?') + ' · ' + _vtEsc(rc.quem || '—') + ')</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-dl-aceito').onclick = function(){ comOperador('confirmando o lugar de ' + gs, function(u, q){
       _gsResolver(pid, { lugar:'aceito' }, 'gs_dois_lugares_resolvido', function(){ addHistorico(String((HOSPEDAGENS[gs] || {}).apt || '?'), 'edicao', ac.vaga || '', 'Lugar confirmado: ' + txt(ac), q, gs); });
@@ -28078,7 +28193,7 @@ function gsPendAbrir(pid){
     showM(cab + '<div class="ms" id="pend-removido" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || p.gs || '')) +
       ' foi alterado neste dispositivo' + (d.aparelho ? ' (dispositivo ' + _vtEsc(d.aparelho) + ')' : '') + ', mas <strong>o registro não existe mais no servidor</strong> (foi removido lá). ' +
       'A alteração não foi aplicada no servidor. Os dados DESTE dispositivo continuam como estão — nada foi apagado aqui.</div>' +
-      '<div class="ag"><button class="bsv" id="gs-rem-ok">Entendi — manter este dispositivo como está</button></div>' + fechar);
+      '<div class="b2-acoes"><button class="b2c azul" id="gs-rem-ok">Entendi — manter este dispositivo como está</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-rem-ok').onclick = function(){ comOperador('confirmando registro removido no servidor', function(){ _gsResolver(pid, { removido_no_servidor:true }, 'registro_removido_ciente'); _gsPendJanela = null; closeOv(); }); };
     return;
@@ -28092,7 +28207,7 @@ function gsPendAbrir(pid){
         '<div style="font-size:12px">Dispositivo ' + _vtEsc(d.aparelho || '?') + ': <strong>' + _vtEsc(JSON.stringify(v.aparelho)) + '</strong> <span style="color:#888">(' + _vtEsc(d.quem || '—') + (d.em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.em))) : '') + ')</span></div></div>';
     }).join('');
     showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || '')) + ' — os dois valores ficaram guardados. Qual vale?</div>' + linhas +
-      '<div class="ag"><button class="bsv" id="gs-alt-srv">Manter o do servidor</button><button class="bsv" id="gs-alt-ap">Usar o do dispositivo ' + _vtEsc(d.aparelho || '?') + '</button></div>' + fechar);
+      '<div class="b2-acoes"><button class="b2c azul" id="gs-alt-srv">Manter o do servidor</button><button class="b2c azul" id="gs-alt-ap">Usar o do dispositivo ' + _vtEsc(d.aparelho || '?') + '</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-alt-srv').onclick = function(){ comOperador('mantendo o valor do servidor', function(){ _gsResolver(pid, { vale:'servidor' }, 'alteracao_resolvida'); _gsPendJanela = null; closeOv(); }); };
     document.getElementById('gs-alt-ap').onclick = function(){ comOperador('usando o valor do dispositivo', function(){
@@ -28104,8 +28219,8 @@ function gsPendAbrir(pid){
     const vaga = d.vaga || p.vaga, r = RECARGAS[vaga];
     const ativa = !!(r && r.hospedagem === (d.gs || p.gs) && r.ativo);   // encerrar NÃO apaga o registro (fica ativo=false)
     showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(d.gs || p.gs) + ' teve o check-out feito no dispositivo ' + _vtEsc(d.aparelho || '?') + ' com a recarga da vaga ' + _vtEsc(vaga) + ' ainda ativa.' +
-      (ativa ? ' Encerre a recarga (a cobrança usa o horário que você informar).' : ' A recarga já foi encerrada.') + '</div><div class="ag">' +
-      (ativa ? '<button class="bsv" id="gs-cr-encerrar">⚡ Encerrar a recarga da vaga ' + _vtEsc(vaga) + '</button>' : '<button class="bsv" id="gs-cr-ok">Concluir</button>') + '</div>' + fechar);
+      (ativa ? ' Encerre a recarga (a cobrança usa o horário que você informar).' : ' A recarga já foi encerrada.') + '</div><div class="b2-acoes">' +
+      (ativa ? '<button class="b2c azul" id="gs-cr-encerrar">⚡ Encerrar a recarga da vaga ' + _vtEsc(vaga) + '</button>' : '<button class="b2c azul" id="gs-cr-ok">Concluir</button>') + '</div>' + fechar);
     ligarFechar();
     const be = document.getElementById('gs-cr-encerrar'); if(be) be.onclick = function(){ _gsPendJanela = null; closeOv(); _gsAbrirEncerrarRecarga(vaga); };
     const bo = document.getElementById('gs-cr-ok'); if(bo) bo.onclick = function(){ comOperador('concluindo a pendência', function(){ _gsResolver(pid, { recarga:'encerrada' }, 'checkout_recarga_resolvido'); _gsPendJanela = null; closeOv(); }); };
@@ -28116,7 +28231,7 @@ function gsPendAbrir(pid){
     const info = function(g){ const h = HOSPEDAGENS[g] || {}; return '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px"><strong>' + _vtEsc(g) + '</strong> · Apt ' + _vtEsc(String(h.apt || '?')) +
       '<br><span style="font-size:12px">' + _vtEsc([h.plate, h.model, h.color].filter(Boolean).join(' · ')) + ' · ' + _vtEsc(_gsOndeTexto(_gsOndeEsta(g))) + '</span></div>'; };
     showM(cab + '<div class="ms" style="margin-bottom:8px">A mesma placa (' + _vtEsc(d.placa || '') + ') está em duas hospedagens ativas.</div>' + info(a) + info(b) +
-      '<div class="ag"><button class="bsv" id="gs-dup-mesmo">São o mesmo carro</button><button class="bsv" id="gs-dup-dif">São carros diferentes</button></div>' + fechar);
+      '<div class="b2-acoes"><button class="b2c azul" id="gs-dup-mesmo">São o mesmo carro</button><button class="b2c azul" id="gs-dup-dif">São carros diferentes</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-dup-dif').onclick = function(){ comOperador('confirmando carros diferentes', function(){ _gsResolver(pid, { mesmo_carro:false }, 'duplicidade_resolvida'); _gsPendJanela = null; closeOv(); }); };
     document.getElementById('gs-dup-mesmo').onclick = function(){ comOperador('unindo hospedagens duplicadas', function(u, q){
@@ -28129,7 +28244,7 @@ function gsPendAbrir(pid){
     showM(cab + '<div class="ms" style="margin-bottom:8px">O ponto de recarga ' + _vtEsc((d.ponto || []).join('/')) + ' só carrega um carro. Qual fica?</div>' +
       '<div style="font-size:12px;margin-bottom:6px">Ativa: vaga ' + _vtEsc(at.vaga || '?') + ' · ' + _vtEsc((at.dados || {}).hospedagem || '') + ' (dispositivo ' + _vtEsc(at.aparelho || '?') + ')<br>' +
       'Pedida: vaga ' + _vtEsc(nv.vaga || '?') + ' · ' + _vtEsc((nv.dados || {}).hospedagem || '') + ' (dispositivo ' + _vtEsc(nv.aparelho || '?') + ' · ' + _vtEsc(nv.quem || '—') + ')</div>' +
-      '<div class="ag"><button class="bsv" id="gs-rp-ativa">Manter a recarga ativa</button><button class="bsv" id="gs-rp-nova">Ficar com a pedida (encerrar a ativa)</button></div>' + fechar);
+      '<div class="b2-acoes"><button class="b2c azul" id="gs-rp-ativa">Manter a recarga ativa</button><button class="b2c azul" id="gs-rp-nova">Ficar com a pedida (encerrar a ativa)</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-rp-ativa').onclick = function(){ comOperador('mantendo a recarga ativa', function(){ _gsResolver(pid, { fica:'ativa' }, 'recarga_ponto_resolvido'); _gsPendJanela = null; closeOv(); }); };
     document.getElementById('gs-rp-nova').onclick = function(){ comOperador('trocando a recarga do ponto', function(){
@@ -28138,7 +28253,7 @@ function gsPendAbrir(pid){
     return;
   }
   // informativas (ex.: check-out definitivo mantido)
-  showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(JSON.stringify(d.campos || d)) + '</div><div class="ag"><button class="bsv" id="gs-inf-ok">Ciente</button></div>' + fechar);
+  showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(JSON.stringify(d.campos || d)) + '</div><div class="b2-acoes"><button class="b2c azul" id="gs-inf-ok">Ciente</button></div>' + fechar);
   ligarFechar();
   document.getElementById('gs-inf-ok').onclick = function(){ comOperador('ciente da pendência', function(){ _gsResolver(pid, { ciente:true }, 'pendencia_ciente'); _gsPendJanela = null; closeOv(); }); };
 }
@@ -29368,7 +29483,7 @@ function _gsRecuperarUltimoBom(){
         : '⚠️ ' + _vtEsc(r.erro || 'A recuperação não completou.') + (r.faltas && r.faltas.length ? '<br><small>Ainda falta: ' + r.faltas.slice(0, 6).map(_vtEsc).join(' · ') + '</small>' : '') +
           '<br><small>O modo protegido continua — nada foi perdido do que entrou depois.</small>';
       showM('<div class="mt">♻ Recuperar do último backup bom</div><div class="ms">' + txt + '</div>' +
-        '<button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>');
+        '<button class="b2t" onclick="closeOv()">Fechar</button>');
     });
   });
 }
