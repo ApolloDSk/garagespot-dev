@@ -287,6 +287,10 @@ html.font-large{zoom:1.13}
 .b2c::after,.b2-seta::after{content:'\203A';margin-left:auto;padding-left:8px;font-size:22px;line-height:1;font-weight:400;opacity:.8}
 .b2-lado .b2s,.b2-lado .b2c{justify-content:center;text-align:center}
 .b2-lado .b2c::after,.b2-lado .b2-seta::after{content:none}
+/* v2.4.7.1: botões LADO A LADO com ícone — ícone em cima, centralizado, texto completo embaixo (nunca o ícone preso na 1ª linha de um texto quebrado) */
+.b2-pilha{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:4px;padding:9px 6px;line-height:1.25}
+.b2-pilha>.b2-ic{display:block;font-size:20px;line-height:1}
+.b2-pilha>.b2-tx{display:block}
 .b2t{background:none;border:none;color:#52525B;font-size:14px;font-weight:600;min-height:44px;padding:10px;cursor:pointer;font-family:inherit;width:100%;text-align:center;margin-top:2px}
 .b2t:active{color:#111;text-decoration:underline}
 .dr{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0efea;font-size:12px}
@@ -1394,7 +1398,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.7.0';
+const GS_VERSION = 'v2.4.7.1';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -3905,7 +3909,7 @@ function showMenu(id){
   const _hM=d.hospedagem?HOSPEDAGENS[d.hospedagem]:null;
   // v2.4.7.0 (B2): caixa vermelha clara com as duas ações SÓLIDAS (check-out vermelho, alterar data amarelo)
   const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" class="b2-alerta">⏰ <strong>Check-out atrasado</strong> · saída prevista ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}
-      <div class="b2-lado"><button type="button" class="b2s verm" id="m-atr-chk">🚪 Fazer check-out</button><button type="button" class="b2s amar" id="m-atr-data">📅 Alterar data</button></div></div>`:'';
+      <div class="b2-lado"><button type="button" class="b2s verm b2-pilha" id="m-atr-chk"><span class="b2-ic">🚪</span> <span class="b2-tx">Fazer check-out</span></button><button type="button" class="b2s amar b2-pilha" id="m-atr-data"><span class="b2-ic">📅</span> <span class="b2-tx">Alterar data</span></button></div></div>`:'';
   // v2.4.3.0: vaga com o GS do carro vizinho → aviso e resolução no próprio menu (check-out e passeio ficam travados)
   const _mViz=(typeof gsVizinhaDaVaga==='function')?gsVizinhaDaVaga(id):null;
   const vizHTML=_mViz?`<div id="m-vizinha" style="background:#FFF3E0;border:1px solid #E65100;border-radius:6px;padding:6px 10px;font-size:12px;color:#8A3B00;margin-bottom:8px">⚠️ <strong>Vaga com o GS do carro vizinho</strong>: este carro (${_vtEsc(_gsCarroTexto(d))}) está com o ${_vtEsc(_mViz.de)}, que é do carro da ${_vtEsc(_mViz.dona||'vaga vizinha')}. <strong>Não faça check-out nem passeio por aqui.</strong><div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${_gsVizinhaBotoesHTML(_mViz,'padding:6px 8px;font-size:12px;width:100%')}</div></div>`:'';
@@ -6758,8 +6762,8 @@ function renderExpansaoPendencias(){
         '<div class="cav-titulo">⏰ Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
         '<div class="cav-subtitulo">'+_vtEsc(h._gs||'')+' · '+(vagaId?'Vaga '+_vtEsc(vagaId):(PASSEIO[h._gs]?'A passeio':'Sem vaga'))+' · saída prevista '+_vtEsc(_fmtDataExibicao(h.saida_prevista))+' · toque para abrir</div>'+
         // v2.4.2.0 (Bloco D): as duas ações direto na pendência
-        '<div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="bcx co-atr-chk" style="flex:1;padding:5px 8px;font-size:12px" onclick="event.stopPropagation();gsAtrasadoCheckout(\''+_vtEsc(h._gs||'')+'\')">🚪 Fazer check-out</button>'+
-        '<button type="button" class="bcx co-atr-data" style="flex:1;padding:5px 8px;font-size:12px" onclick="event.stopPropagation();fecharExpansao();gsAlterarDataPrevista(\''+_vtEsc(h._gs||'')+'\')">📅 Alterar data prevista</button></div>'+
+        '<div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="bcx co-atr-chk b2-pilha" style="flex:1;font-size:12px" onclick="event.stopPropagation();gsAtrasadoCheckout(\''+_vtEsc(h._gs||'')+'\')"><span class="b2-ic">🚪</span> <span class="b2-tx">Fazer check-out</span></button>'+
+        '<button type="button" class="bcx co-atr-data b2-pilha" style="flex:1;font-size:12px" onclick="event.stopPropagation();fecharExpansao();gsAlterarDataPrevista(\''+_vtEsc(h._gs||'')+'\')"><span class="b2-ic">📅</span> <span class="b2-tx">Alterar data prevista</span></button></div>'+
         '</div>';
     }
   }
@@ -12775,6 +12779,23 @@ async function gsUsoDispositivo(){
 const GD_RET_RE_COMPLETO = /^backup_completo_.+\.json$/;
 const GD_LIX_RE_APAGAVEL = /^(backup_completo_.+\.json|HOSPEDADOS_.+\.pdf|_EM-ANDAMENTO_.+\.pdf)$/;
 const GD_LIX_DIAS = 7;
+// v2.4.7.1 — QUANDO O ARQUIVO FOI PARA A LIXEIRA. Achado no hotel (31/10): lixeira com 76 backups · 2,66 GB e a tela
+// dizendo que a limpeza apagaria 0. A API do Drive só preenche `trashedTime` para arquivos de DRIVES COMPARTILHADOS;
+// no "Meu Drive" (o do hotel) ele vem VAZIO, e todo item caía em "sem data de lixeira — na dúvida, fica". O duplo do
+// Drive dos testes sempre mandava a data — por isso a suíte não via. Agora: sem `trashedTime`, vale a PRIMEIRA VEZ que
+// ESTE dispositivo viu o arquivo na lixeira (`garagespot_lixeira_vista`, estado do aparelho, não é reposto pelo
+// backup); os 7 dias contam daí — nunca menos que 7 dias de verdade na lixeira. E o gestor pode apagar JÁ, com PIN
+// (`gsLixApagarAgora`), dentro da MESMA trava de nome (só backups e relatórios provisórios; PDF de fechamento volta).
+const GD_LIX_VISTA_LS = 'garagespot_lixeira_vista';
+function _gdLixVistaLer(){ try{ return JSON.parse(localStorage.getItem(GD_LIX_VISTA_LS) || 'null') || {}; }catch(e){ return {}; } }
+// A 1ª vez que cada arquivo da lixeira foi visto (os novos = agora); o que saiu da lixeira é esquecido.
+// `gravar` só na limpeza de verdade — a simulação e o Uso do Drive calculam em memória (são só leitura).
+function _gdLixVistos(itens, agora, gravar){
+  const ant = _gdLixVistaLer(), novo = {};
+  (itens || []).forEach(function(f){ if(f && f.id && f.mimeType !== GD_MIME_PASTA) novo[f.id] = ant[f.id] || agora; });
+  if(gravar){ try{ localStorage.setItem(GD_LIX_VISTA_LS, JSON.stringify(novo)); }catch(e){} }
+  return novo;
+}
 const GS_RET_LS = 'garagespot_retencao_config';        // configuração (gestor) — vai no backup
 const GS_RET_ULT_LS = 'garagespot_retencao_resultado'; // o que a última rodada fez e o total liberado
 function _gsRetConfig(){
@@ -12816,23 +12837,28 @@ async function _gdApagarDeVez(token, f, naLixeira){
   }
 }
 // Plano da lixeira (só lê): o que sai de vez, o que volta (PDF de fechamento) e o que fica.
-function _gdLixPlanejar(itens, agora){
-  const out = { apagar:[], devolver:[], ficar:[], teto:GS_PODA_TETO, truncado:false };
+function _gdLixPlanejar(itens, agora, vistos, opts){
+  const out = { apagar:[], devolver:[], ficar:[], teto:GS_PODA_TETO, truncado:false, semDataDrive:0 };
+  const jaAgora = !!(opts && opts.agora);   // v2.4.7.1: o gestor mandou apagar já (PIN) — o prazo não vale, a trava de nome vale
   (itens || []).forEach(function(f){
     if(!f || f.mimeType === GD_MIME_PASTA) return;
     const nome = String(f.name || ''), bytes = Number(f.size || 0) || 0;
     if(_gdLixEhFechamento(nome)){ out.devolver.push({ id:f.id, nome:nome, bytes:bytes }); return; }
     if(!GD_LIX_RE_APAGAVEL.test(nome)){ out.ficar.push({ nome:nome, bytes:bytes, motivo:'não é backup nem relatório provisório' }); return; }
-    const t = Date.parse(f.trashedTime || '') || 0;
+    if(jaAgora){ out.apagar.push({ id:f.id, name:nome, nome:nome, bytes:bytes, trashed:true, motivo:'apagado agora pelo gestor (PIN)' }); return; }
+    const tDrive = Date.parse(f.trashedTime || '') || 0;
+    if(!tDrive) out.semDataDrive++;
+    const t = tDrive || ((vistos && vistos[f.id]) || 0);
     if(!t){ out.ficar.push({ nome:nome, bytes:bytes, motivo:'sem data de lixeira — na dúvida, fica' }); return; }
-    const dias = (agora - t) / 86400000;
-    if(dias < GD_LIX_DIAS){ out.ficar.push({ nome:nome, bytes:bytes, motivo:'na lixeira há ' + Math.floor(dias) + 'd (sai com ' + GD_LIX_DIAS + 'd)' }); return; }
-    out.apagar.push({ id:f.id, name:nome, nome:nome, bytes:bytes, trashed:true, motivo:'na lixeira há ' + Math.floor(dias) + 'd' });
+    const dias = (agora - t) / 86400000, onde = tDrive ? 'na lixeira há ' : 'visto na lixeira há ';
+    if(dias < GD_LIX_DIAS){ out.ficar.push({ nome:nome, bytes:bytes, motivo:onde + Math.floor(dias) + 'd (sai com ' + GD_LIX_DIAS + 'd)', saiEm:t + GD_LIX_DIAS * 86400000 }); return; }
+    out.apagar.push({ id:f.id, name:nome, nome:nome, bytes:bytes, trashed:true, motivo:onde + Math.floor(dias) + 'd' });
   });
   out.apagar.sort(function(a, b){ return b.bytes - a.bytes; });
   out.apagarQtd = out.apagar.length;   // antes do teto: é o que a limpeza libera ao todo (em dias seguidos)
   out.apagarBytes = out.apagar.reduce(function(s2, a){ return s2 + a.bytes; }, 0);
-  if(out.apagar.length > GS_PODA_TETO){ out.truncado = true; out.excedente = out.apagar.length - GS_PODA_TETO; out.apagar = out.apagar.slice(0, GS_PODA_TETO); }
+  out.proxSaida = out.ficar.reduce(function(m, f){ return f.saiEm && (!m || f.saiEm < m) ? f.saiEm : m; }, 0);
+  if(!jaAgora && out.apagar.length > GS_PODA_TETO){ out.truncado = true; out.excedente = out.apagar.length - GS_PODA_TETO; out.apagar = out.apagar.slice(0, GS_PODA_TETO); }
   return out;
 }
 async function _gdLixListar(token){
@@ -12841,7 +12867,8 @@ async function _gdLixListar(token){
 async function _gdLixSimular(){
   if(!_gdDisponivel() || !_gdConectado()) return { indisponivel:true, apagar:[], devolver:[], ficar:[] };
   const itens = await _gdComToken(function(token){ return _gdLixListar(token); }, false);
-  return _gdLixPlanejar(itens, Date.now());
+  const agora = Date.now();
+  return _gdLixPlanejar(itens, agora, _gdLixVistos(itens, agora, false));   // só leitura: não grava a 1ª vista
 }
 // v2.4.6.1 — A LIMPEZA NÃO PODE MORRER POR UMA CHAMADA LENTA. Medido no celular (29/10 20:18): "ABORTADA após
 // 31 arquivo(s): tempo esgotado na chamada ao Drive (120s)". O teto de 120 s de `_gdComToken` envolvia a RODADA
@@ -12876,16 +12903,18 @@ function _gdLimpRetomar(onde, feitos, motivo, restam){
     '; retomará em ~' + Math.round(GD_LIMP_RETOMAR_MS / 60000) + ' min, de onde parou', { aud:true, acao:'poda_retomara', alvo:String(restam) }); }catch(e){}
 }
 
-async function _gdLixLimpar(){
+async function _gdLixLimpar(opts){
+  const jaAgora = !!(opts && opts.agora);
   if(_gsSuspenso('limpeza da lixeira do Drive')) return { ok:false, erro:'modo protegido' };
   if(_gsDriveSoA('limpeza da lixeira do Drive')) return { ok:false, erro:_gsDriveMsg() };
-  if(!_gsRetConfig().lixeira) return { ok:false, erro:'limpeza da lixeira desligada' };
+  if(!jaAgora && !_gsRetConfig().lixeira) return { ok:false, erro:'limpeza da lixeira desligada' };
   if(!_gdDisponivel() || !_gdConectado()) return { ok:false, erro:'nuvem não conectada' };
   const feitos = [], devolvidos = [];
   let erro = null, plano = null;
   try{
     await _gdComToken(async function(token){
-      plano = _gdLixPlanejar(await _gdLixListar(token), Date.now());
+      const lista = await _gdLixListar(token), agora = Date.now();
+      plano = _gdLixPlanejar(lista, agora, _gdLixVistos(lista, agora, true), { agora:jaAgora });
       for(const d of plano.devolver){
         try{
           await _gdFetch(GD_API + '/files/' + encodeURIComponent(d.id) + '?fields=id,trashed', {
@@ -12899,9 +12928,15 @@ async function _gdLixLimpar(){
   }catch(e){ erro = (e && e.message) || String(e); }
   let parou = '', restam = 0;
   if(!erro && plano && plano.apagar.length){
-    const lr = await _gdApagarEmLotes(plano.apagar, function(token, a){ return _gdApagarDeVez(token, a, true); });
-    lr.feitos.forEach(function(a){ feitos.push(a); });
-    erro = lr.erro; parou = lr.parou; restam = lr.restam + ((plano && plano.excedente) || 0);
+    // v2.4.7.1: "apagar agora" (gestor) vai até o fim — rodadas seguidas, cada uma com o seu orçamento de tempo
+    let fila = plano.apagar, voltas = 0;
+    for(;;){
+      const lr = await _gdApagarEmLotes(fila, function(token, a){ return _gdApagarDeVez(token, a, true); });
+      lr.feitos.forEach(function(a){ feitos.push(a); });
+      erro = lr.erro; parou = lr.parou; restam = lr.restam + ((plano && plano.excedente) || 0);
+      if(!jaAgora || erro || !parou || !lr.restam || ++voltas >= 6) break;
+      fila = fila.slice(lr.feitos.length);
+    }
   } else if(plano) restam = plano.excedente || 0;
   devolvidos.forEach(function(d){
     try{ addLogSistema('Lixeira do Drive: PDF de fechamento ' + d.nome + ' estava na lixeira — DEVOLVIDO à pasta', { aud:true, acao:'lixeira_pdf_devolvido', alvo:d.nome }); }catch(e){}
@@ -12911,6 +12946,8 @@ async function _gdLixLimpar(){
     try{ addLogSistema('Lixeira do Drive: ' + a.nome + ' apagado de vez (' + a.motivo + ', ' + _gsMB(a.bytes) + ')', { aud:true, acao:'lixeira_apagado', alvo:a.nome }); }catch(e){}
   });
   if(feitos.length || devolvidos.length) _gsRetSomar({ lixeira_qtd:feitos.length, lixeira_bytes:bytes, devolvidos:devolvidos.length, qtd:feitos.length, bytes:bytes });
+  if(jaAgora){ try{ addLogSistema('Lixeira do Drive: o gestor mandou apagar agora — ' + feitos.length + ' arquivo(s) apagado(s) de vez (' + _gsMB(bytes) + '), ' +
+    devolvidos.length + ' PDF(s) de fechamento devolvido(s)' + (erro ? ' — parou: ' + erro : ''), { aud:true, acao:'lixeira_apagada_agora', alvo:String(feitos.length) }); }catch(e){} }
   if((erro || parou) && restam > 0){
     _gdLimpRetomar('Limpeza da lixeira do Drive', feitos.length, erro || parou, restam);
     return { ok:!erro, erro:erro, retomara:true, restam:restam, apagados:feitos.length, devolvidos:devolvidos.length, bytes:bytes, plano:plano };
@@ -12921,6 +12958,23 @@ async function _gdLixLimpar(){
   }
   if(restam > 0) _gdLimpRetomar('Limpeza da lixeira do Drive', feitos.length, 'teto de ' + GS_PODA_TETO + ' por rodada', restam);
   return { ok:true, apagados:feitos.length, devolvidos:devolvidos.length, bytes:bytes, plano:plano, restam:restam };
+}
+
+// v2.4.7.1: o gestor apaga JÁ da lixeira (PIN) o que a trava de nome deixa — sem esperar os 7 dias.
+function gsLixApagarAgora(){
+  showEntrarPIN(async function(){
+    const mc = document.getElementById('mc');
+    mc.innerHTML = '<div class="mt">🗑️ Lixeira do Drive</div><div class="ms" id="lix-agora-st">Apagando… pode levar alguns minutos.</div>';
+    document.getElementById('ov').classList.add('on');
+    let r;
+    try{ r = await _gdLixLimpar({ agora:true }); }catch(e){ r = { ok:false, erro:(e && e.message) || String(e) }; }
+    const st = document.getElementById('lix-agora-st'); if(!st) return;
+    st.innerHTML = (r.ok === false && !r.apagados ? '⚠️ Não apagou: ' + _vtEsc(r.erro || 'falhou') :
+      '✅ ' + (r.apagados || 0) + ' arquivo(s) apagado(s) de vez · ' + _gdUsoTam(r.bytes || 0) + (r.devolvidos ? ' · ' + r.devolvidos + ' PDF(s) de fechamento devolvido(s)' : '') +
+      (r.erro ? '<br>⚠️ Parou: ' + _vtEsc(r.erro) + (r.retomara ? ' — o resto sai na limpeza automática' : '') : '')) +
+      '<br><button class="b2t" id="lix-agora-ok">Voltar ao Uso do Drive</button>';
+    const b = document.getElementById('lix-agora-ok'); if(b) b.onclick = function(){ showUsoDrive(); };
+  });
 }
 
 async function _gdPodaExecutarNuvem(){
@@ -13290,7 +13344,8 @@ async function _gdUsoLevantar(progresso){
       const lix = await _gdUsoListar(token, 'trashed=true', 'id,name,size,mimeType,trashedTime');
       lix.forEach(function(f){ if(f && f.mimeType !== GD_MIME_PASTA){ out.lixeira.qtd++; out.lixeira.bytes += Number(f.size || 0) || 0; } });
       // v2.4.6.0: o que é a lixeira, por tipo, e quanto a limpeza liberaria agora
-      const pl = _gdLixPlanejar(lix, Date.now());
+      const agoraU = Date.now(), pl = _gdLixPlanejar(lix, agoraU, _gdLixVistos(lix, agoraU, false));
+      const plJa = _gdLixPlanejar(lix, agoraU, null, { agora:true });
       const tipos = {};
       lix.forEach(function(f){
         if(!f || f.mimeType === GD_MIME_PASTA) return;
@@ -13302,6 +13357,8 @@ async function _gdUsoLevantar(progresso){
       out.lixeira.tipos = tipos;
       out.lixeira.liberaria = pl.apagarBytes;
       out.lixeira.liberariaQtd = pl.apagarQtd;
+      out.lixeira.semDataDrive = pl.semDataDrive; out.lixeira.proxSaida = pl.proxSaida;
+      out.lixeira.agoraQtd = plJa.apagarQtd; out.lixeira.agoraBytes = plJa.apagarBytes; out.lixeira.agoraDevolver = plJa.devolver.length;
     }catch(e){ if(e && (e.gdAuth || e.gdCheio)) throw e; out.lixeira.erro = (e && e.message) || 'falhou'; }
     // VERSÕES guardadas dos arquivos REESCRITOS no mesmo id (PATCH): o Drive guarda as anteriores por um tempo.
     const alvo = reescritos.slice(0, GD_USO_MAX_REVISOES);
@@ -13412,7 +13469,12 @@ async function showUsoDrive(){
       h += '<div class="uso-lix-tipo" style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 14px;color:#777;font-size:11px"><span>' + _vtEsc(t) + '</span><span style="white-space:nowrap">' + T.qtd + ' · ' + _gdUsoTam(T.bytes) + '</span></div>';
     });
     h += '<div id="uso-lix-liberaria" style="color:#633806;font-size:11px;padding:2px 0 2px 14px">A limpeza da lixeira apagaria agora ' + (u.lixeira.liberariaQtd || 0) + ' arquivo(s) · ' + _gdUsoTam(u.lixeira.liberaria || 0) +
-      (u.lixeira.liberariaQtd > GS_PODA_TETO ? ' (até ' + GS_PODA_TETO + ' por dia)' : '') + '</div>';
+      (u.lixeira.liberariaQtd > GS_PODA_TETO ? ' (até ' + GS_PODA_TETO + ' por rodada)' : '') + '</div>';
+    // v2.4.7.1: o Drive não diz quando foi para a lixeira ("Meu Drive") → conta da 1ª vez que o app viu
+    if(u.lixeira.semDataDrive) h += '<div id="uso-lix-semdata" style="color:#777;font-size:11px;padding:2px 0 2px 14px;line-height:1.45">O Drive não informa quando cada arquivo foi para a lixeira; os ' + GD_LIX_DIAS +
+      ' dias contam de quando a limpeza o viu lá pela primeira vez' + (u.lixeira.proxSaida ? ' — próximos saem a partir de ' + _vtEsc(fmtDt(u.lixeira.proxSaida)) : '') + '.</div>';
+    if(u.lixeira.agoraQtd) h += '<button class="b2s verm" id="uso-lix-agora" style="margin-top:8px">🗑️ Apagar agora da lixeira: ' + u.lixeira.agoraQtd + ' backup(s)/relatório(s) provisório(s) · ' + _gdUsoTam(u.lixeira.agoraBytes) + '</button>' +
+      '<div class="b2-aviso" style="margin-top:6px">Pede o PIN do gestor. Saem de vez só backups e relatórios provisórios' + (u.lixeira.agoraDevolver ? '; ' + u.lixeira.agoraDevolver + ' PDF(s) de fechamento voltam para a pasta' : '; PDFs de fechamento voltam para a pasta') + '.</div>';
   }
   h += '<div class="gestao-menu-sep" style="margin-top:12px">Retenção</div>' + _gsRetPoliticaHTML();
   try{
@@ -13450,6 +13512,7 @@ async function showUsoDrive(){
   }
   h += '<div style="color:#999;font-size:11px;padding-top:8px">Consultado em ' + _vtEsc(fmtDt(u.ts)) + '.</div>';
   c.innerHTML = h;
+  const bLix = document.getElementById('uso-lix-agora'); if(bLix) bLix.onclick = function(){ gsLixApagarAgora(); };
   try{ addLogSistema('Uso do Drive consultado: ' + u.qtd + ' arquivo(s), ' + _gdUsoTam(u.total) + ' do app; conta ' + _gdUsoTam(k.uso) + (k.limite ? ' de ' + _gdUsoTam(k.limite) : ''), {aud:true, acao:'drive_uso_consultado'}); }catch(e){}
 }
 
