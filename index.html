@@ -1398,7 +1398,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.7.1';
+const GS_VERSION = 'v2.4.7.2';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -1588,6 +1588,37 @@ function _reavaliarRotulosDoDia(){
 // vazio). Tudo fail-safe: se algo falhar, o app segue normalmente.
 let _GS_PRONTO = false;
 function gsPronto(){ return _GS_PRONTO === true; }
+// ════════════════════════════════════════════════════════════════════════
+// v2.4.7.2 (Bloco A) — NENHUMA AÇÃO ANTES DE O APP TERMINAR DE CARREGAR.
+// ════════════════════════════════════════════════════════════════════════
+// Hotel, tablet A, 14/11 10:34: o app levou 17 s lendo os arquivos e, nesse meio
+// tempo, o redimensionamento da tela (`rebuildTable` no `resize`) já tinha montado
+// o mapa COM os carros — o check-out da GS416 foi feito com o histórico, o status
+// do Drive e a sentinela ainda não carregados. Resultado: a guarda bloqueou o
+// histórico (1907 → 1), o Drive foi gravado como "desconectado" e o modo protegido
+// disparou (GS416 5→0). Agora: uma cortina cobre a tela até o "app PRONTO" e os
+// pontos de entrada das ações recusam com "Carregando… aguarde um instante".
+function gsBloqueadoAteCarregar(oque){
+  if(gsPronto()) return false;
+  try{ console.warn('[CARGA] ação recusada antes do app PRONTO:', oque || ''); }catch(e){}
+  try{ if(typeof gsDiag === 'function') gsDiag('carga', 'ação recusada antes do app pronto: ' + String(oque || '')); }catch(e){}
+  try{ if(typeof showToast === 'function') showToast('⏳ Carregando… aguarde um instante', 2500); }catch(e){}
+  return true;
+}
+function _gsCarregandoMostrar(){
+  try{
+    if(gsPronto() || document.getElementById('gs-carregando')) return;
+    const c = document.createElement('div');
+    c.id = 'gs-carregando';
+    c.setAttribute('role', 'status');
+    c.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(245,244,240,.6);display:flex;align-items:center;justify-content:center;touch-action:none';
+    c.innerHTML = '<div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px 18px;font-size:14px;font-weight:700;color:#185FA5;box-shadow:0 2px 10px rgba(0,0,0,.12)">⏳ Carregando… aguarde um instante</div>';
+    const parar = function(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){} };
+    ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend'].forEach(function(t){ c.addEventListener(t, parar, true); });
+    (document.body || document.documentElement).appendChild(c);
+  }catch(e){}
+}
+function _gsCarregandoTirar(){ try{ const c = document.getElementById('gs-carregando'); if(c) c.remove(); }catch(e){} }
 function _gsContar(v){
   try {
     if(!v) return 0;
@@ -2892,6 +2923,7 @@ let ghost     = null;   // elemento visual que segue o dedo/cursor
 
 function startDrag(id, startX, startY){
   if(!S[id] || S[id].status==='free') return;
+  if(gsBloqueadoAteCarregar('arrastar vaga ' + id)) return;   // v2.4.7.2 (Bloco A)
   const d = S[id];
   dragState = {id, apt:d.apt, model:d.model, color:d.color,
                plate:d.plate, guest:d.guest, obs:d.obs||'', size:d.size||'small'};
@@ -3260,6 +3292,7 @@ function perguntarHMerge(id, apt, model, color, plate, guest, obs, usuario){
 function clkV(id){
   if(!S[id]) return;
   if(dragState) return;
+  if(gsBloqueadoAteCarregar('toque na vaga ' + id)) return;   // v2.4.7.2 (Bloco A)
   // Bug T v1.9.4.3.1: ignora se for clique fantasma logo após fechar o NCI
   if(_nciFechandoGuard){ console.log('[BUG T] clkV bloqueado pelo escudo'); return; }
   // v1.9.4.3.2: se estamos em modo "escolher destino do remanejamento de recarga", consome o toque
@@ -5281,6 +5314,9 @@ function estaNoExpediente(u){
 
 // ── CONFIRMAR USUÁRIO ─────────────────────────────────────────────────────
 function confirmarUsuario(acao, callback){
+  // v2.4.7.2 (Bloco A): toda ação (check-in, check-out, passeio, mover, recarga, vistoria) passa
+  // por aqui — antes do "app PRONTO" ela NÃO executa (histórico, Drive e sentinela ainda não carregaram)
+  if(gsBloqueadoAteCarregar(acao)) return;
   const _usrLanc=_gsUsrAtivos();   // v2.2.0.0: inativo some dos NOVOS lançamentos (sem servidor, ninguém é inativo)
   if(!_usrLanc.length){ callback(null); return; }
   // Parte 1 v1.9.4.8: o DESTAQUE ("em serviço") agora vem do PLANTÃO ATUAL EFETIVO —
@@ -5304,7 +5340,7 @@ function confirmarUsuario(acao, callback){
   const todosForaOuSemExp=noExp.length===0;
 
   function renderItemUsr(u){
-    const fora=foraExp.includes(u);
+    const fora=foraExp.some(function(x){ return x===u || (x && u && x.id!=null && String(x.id)===String(u.id)); });   // v2.4.7.2: por id (o registro pode ter sido trocado ao receber o PIN)
     return `<div class="usr-item" id="cu-usr-${u.id}">
       <div>
         <div><span class="usr-nome">${u.nome}</span>${fora?'<span class="usr-badge-out">Fora do expediente</span>':''}</div>
@@ -5340,7 +5376,7 @@ function confirmarUsuario(acao, callback){
   }
 
   function mostrarConfirmacao(u, erroPin){
-    const fora=foraExp.includes(u);
+    const fora=foraExp.some(function(x){ return x===u || (x && u && x.id!=null && String(x.id)===String(u.id)); });   // v2.4.7.2: por id (o registro pode ter sido trocado ao receber o PIN)
     const mc=document.getElementById('mc');
     const avisoFora=fora?`<div style="background:#FFF3E0;border:1px solid #E65100;border-radius:7px;padding:8px 12px;font-size:12px;color:#BF360C;margin-bottom:10px">⚠️ Fora do horário de expediente</div>`:'';
     const cabeca=`<div style="background:#f5f4f0;border-radius:8px;padding:10px 12px;margin-bottom:12px">
@@ -5378,6 +5414,31 @@ function confirmarUsuario(acao, callback){
         return true;
       });
       return;
+    }
+
+    // v2.4.7.2 (Bloco I): NUNCA "Confirmar sem PIN" para quem tem PIN no servidor. Se o servidor diz que
+    // tem (ou não dá para saber), o PIN é buscado lá; sem resposta, a ação espera — não passa sem senha.
+    if(typeof gsSrvAtivo==='function' && gsSrvAtivo() && !u._pinConferido){
+      const noSrv=_gsUsrPinNoServidor(u);
+      if(noSrv!==false){
+        mc.innerHTML=`<div class="mt">🔑 Conferindo o PIN…</div>${cabeca}
+          <div class="ms" id="cu-pin-srv">Buscando o PIN de ${_vtEsc(String(u.nome||'').split(' ')[0])} no servidor…</div>`;
+        document.getElementById('ov').classList.add('on');
+        gsUsrRestaurarPinsDoServidor('confirmação de ação').then(function(r){
+          const atual=(USUARIOS||[]).find(function(x){ return x && String(x.id)===String(u.id); })||u;
+          if(_usrTemPin(atual)){ mostrarConfirmacao(atual); return; }
+          const dSrv=r && r.ok ? r.srv[String(u.id)] : undefined;
+          if(r && r.ok && (!dSrv || (!dSrv.pin_hash && !dSrv.tem_pin))){ mostrarConfirmacao(Object.assign({}, atual, {_pinConferido:true})); return; }
+          if(noSrv===null && !(r && r.ok)){ mostrarConfirmacao(Object.assign({}, atual, {_pinConferido:true})); return; }
+          try{ addLogSistema('Ação recusada: o PIN de '+(u.nome||'?')+' está no servidor e não chegou a este dispositivo ('+((r&&r.erro)||'sem resposta')+')',
+            {aud:true, quem:u.nome, acao:'pin_funcionario_indisponivel', alvo:String(acao||'')}); }catch(e){}
+          mc.innerHTML=`<div class="mt">🔑 PIN indisponível</div>${cabeca}
+            <div class="ms" id="cu-pin-indisp" style="color:#A32D2D;font-weight:700">O PIN de ${_vtEsc(String(u.nome||'').split(' ')[0])} está cadastrado no servidor, mas ainda não chegou a este dispositivo e o servidor não respondeu agora. Tente de novo em instantes — a ação não é feita sem a senha.</div>
+            <button class="bcx" id="cu-voltar" style="width:100%;margin-top:8px">← Voltar</button>`;
+          document.getElementById('cu-voltar').onclick=()=>mostrarLista(false);
+        });
+        return;
+      }
     }
 
     mc.innerHTML=`<div class="mt">Confirma</div>
@@ -7167,6 +7228,7 @@ function _vstBuscar(){
 }
 
 function showEntrarPIN(callback){
+  if(gsBloqueadoAteCarregar('Gestão')) return;   // v2.4.7.2 (Bloco A)
   const mc=document.getElementById('mc');
   function render(){
     mc.innerHTML=`<div class="mt">🔑 PIN de Gestão</div>
@@ -11122,8 +11184,16 @@ let DRIVE_STATUS = {
   nuvem_cheio:false,
 };
 const DRIVE_STATUS_LS = 'garagespot_drive_status';
-function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} }
-function saveDriveStatus(){ try{localStorage.setItem(DRIVE_STATUS_LS,JSON.stringify(DRIVE_STATUS));}catch(e){} }
+// v2.4.7.2 (Bloco D): gravar o status ANTES de lê-lo punha o padrão de fábrica por cima do real —
+// foi assim que o tablet A "perdeu" o Drive em 14/11 (check-out antes do app pronto → PDF pendente →
+// `saveDriveStatus` com nuvem_conectada:false, sem e-mail e sem pasta). Agora a gravação só acontece
+// depois de o status ter sido lido nesta abertura.
+let _gsDriveStatusLido = false;
+function loadDriveStatus(){ try{const d=localStorage.getItem(DRIVE_STATUS_LS);if(d) DRIVE_STATUS=Object.assign(DRIVE_STATUS,JSON.parse(d)||{});}catch(e){} _gsDriveStatusLido = true; }
+function saveDriveStatus(){
+  if(!_gsDriveStatusLido){ try{ console.warn('[DRIVE] status NÃO gravado: ainda não foi lido nesta abertura'); }catch(e){} return; }
+  try{localStorage.setItem(DRIVE_STATUS_LS,JSON.stringify(DRIVE_STATUS));}catch(e){}
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // v1.9.4.11 — BACKUP COMPLETO, DURÁVEL E VALIDADO
@@ -15232,13 +15302,37 @@ async function _gdAdotarOuCriarPrincipal(token, nome, raizId){
 //   4. só então cria. O id escolhido é registrado para a empresa e nenhum outro dispositivo cria outra.
 const GS_DRIVE_RAIZ_LS = 'garagespot_drive_raiz_emp';
 function _gdRaizEmpresa(){ try{ return JSON.parse(localStorage.getItem(GS_DRIVE_RAIZ_LS) || 'null'); }catch(e){ return null; } }
+// v2.4.7.2 (Bloco E) — "A PASTA RAIZ NÃO ESTÁ MAIS NO DRIVE" (16:13 de 14/11, 5×), com a pasta intacta e única.
+// A conferência devolvia `false` para QUALQUER erro que não fosse de autorização ou de Drive cheio: rede
+// caindo, tempo esgotado, Google instável (5xx) ou limite de requisições (429) viravam "pasta apagada", com
+// aviso na trilha e busca pelo nome — e, se a busca também respondesse vazio por instabilidade, uma pasta
+// NOVA seria criada. Agora só a resposta DEFINITIVA do Google conta: a pasta veio na lixeira / não é pasta
+// (200) ou não existe (404). Erro passageiro é relançado: a operação tenta de novo depois, sem aviso e sem
+// procurar nem criar nada.
 async function _gdRaizValida(token, id){
   if(!id) return false;
   try{
     const r = await _gdFetch(GD_API + '/files/' + encodeURIComponent(id) + '?fields=id,mimeType,trashed', {method:'GET'}, token, 'conferir a pasta raiz');
     const j = await r.json();
     return !!(j && j.id && !j.trashed && j.mimeType === GD_MIME_PASTA);
-  }catch(e){ if(e && (e.gdAuth || e.gdCheio)) throw e; return false; }
+  }catch(e){
+    if(e && (e.gdAuth || e.gdCheio)) throw e;
+    const st = e && e.gdDet && e.gdDet.status;
+    if(st === 404) return false;                       // definitiva: o Google diz que não existe
+    if(e && !e.gdTransitorio && !e.gdTimeout && !_gdErroDeRede(e) && st && st >= 400 && st < 500) return false;
+    const eT = new Error('não foi possível conferir a pasta raiz agora (' + ((e && e.message) || 'rede') + ') — o app tenta de novo sozinho');
+    eT.gdTransitorio = true; eT.gdDet = e && e.gdDet;
+    throw eT;
+  }
+}
+// o aviso "não está mais no Drive" vai à trilha UMA vez por pasta por dia (antes: 5× no mesmo minuto)
+function _gdRaizAvisoInvalida(id){
+  try{
+    const k = 'garagespot_drive_raiz_aviso', a = JSON.parse(localStorage.getItem(k) || '{}') || {};
+    if(a.id === id && Date.now() - (a.ts || 0) < 24 * 3600 * 1000) return;
+    localStorage.setItem(k, JSON.stringify({ id:id, ts:Date.now() }));
+    addLogSistema('A pasta raiz registrada para a empresa não está mais no Drive (lixeira ou apagada) — procurando a pasta pelo nome', { aud:true, acao:'drive_raiz_invalida', alvo:id });
+  }catch(e){}
 }
 function _gdRaizRegistrar(id, como){
   try{
@@ -15258,7 +15352,7 @@ async function _gdGarantirPastaRaiz(token, nome){
     const emp = _gdRaizEmpresa();
     if(emp && emp.id && (!emp.conta || !conta || emp.conta === conta)){
       if(await _gdRaizValida(token, emp.id)){ if(DRIVE_STATUS.nuvem_raiz_id !== emp.id){ DRIVE_STATUS.nuvem_raiz_id = emp.id; saveDriveStatus(); } return emp.id; }
-      try{ addLogSistema('A pasta raiz registrada para a empresa não está mais no Drive (lixeira ou apagada) — procurando a pasta pelo nome', { aud:true, acao:'drive_raiz_invalida', alvo:emp.id }); }catch(e){}
+      _gdRaizAvisoInvalida(emp.id);   // v2.4.7.2 (Bloco E): uma vez por dia, e só com resposta definitiva
     }
     const loc = DRIVE_STATUS && DRIVE_STATUS.nuvem_raiz_id;
     if(loc && (!emp || loc !== emp.id) && await _gdRaizValida(token, loc)){ _gdRaizRegistrar(loc, 'id deste dispositivo'); return loc; }
@@ -15976,6 +16070,8 @@ function _gdEspelharPDFFechamento(nomeArquivo, b64, apt, checkinTs){
 // que continuam existindo. Nenhum item é perdido: o que não coube fica na fila.
 const GD_PDF_LOTE_USUARIO = 3;
 async function _gdTentarPDFsPendentes(opts){
+  // v2.4.7.2 (Bloco C): com o servidor ligado os pendentes seguem pela fila de arquivos (o responsável leva ao Drive)
+  try{ if(!_GS_PROT && typeof gsSrvAtivo === 'function' && gsSrvAtivo() && _gsPesada.ativo && _gdPdfsPendentes().length){ await _gsPesadaPdfsPendentes(); return; } }catch(e){}
   if(_gsSuspenso('reenvio de PDFs') || _gsDriveSoA('reenvio de PDFs')) return;   // v1.9.9.4
   opts = opts || {};
   try{
@@ -20181,6 +20277,9 @@ function _gdRodapeEstado(){
     // v1.9.9.4: blindagem acima de tudo — o backup pausado tem de estar à vista.
     if(_GS_PROT || _gsBackupPausadoMotivo) return { classe:'ruim', txt:'Backup pausado: possível perda de dados' };
     if(!_gdDisponivel()) return null;
+    // v2.4.7.2 (Bloco G): quem não é o responsável não envia ao Drive — o estado que importa é o do responsável
+    // (no B aparecia "atrasada (há 97h)" enquanto o A estava em dia)
+    if(typeof gsSrvAtivo === 'function' && gsSrvAtivo() && !gsSouResponsavel()) return _gsNuvemPeloResponsavel();
     if(!_gdConectado())  return { classe:'alerta', txt:'Nuvem: não conectada' };
     // v1.9.5.4: vínculo existe, permissão não — estado próprio, não "desconectada".
     if(DRIVE_STATUS.nuvem_reconectar) return { classe:'ruim', txt:'Nuvem: reconectar' };
@@ -20244,6 +20343,8 @@ function _gdDicaTocarTexto(){
   try{
     const st = _gdRodapeEstado();
     if(!st || st.classe === 'ok') return '';
+    // v2.4.7.2 (Bloco G): fora do responsável, o toque não envia — explica quem envia
+    if(typeof gsSrvAtivo === 'function' && gsSrvAtivo() && !gsSouResponsavel() && !_GS_PROT) return 'quem envia ao Drive é o dispositivo ' + _gsRespLetra() + ' ↑';
     if(DRIVE_STATUS.nuvem_reconectar) return 'toque para reconectar ↑';
     const p = (typeof _gdContarPendentes === 'function') ? _gdContarPendentes() : null;
     if(p && (p.pdfs + p.hospedagens) > 0){
@@ -20402,7 +20503,11 @@ async function _gdReenviarPendentes(motivo, opts_progresso){
 // v1.9.9.0 — e RECONECTA, quando é disso que a nuvem precisa, e esvazia as filas.
 function _gdForcarPeloRodape(){
   try{
-    if(_gsDriveSoA('rodapé da nuvem')){ showToast('☁️ O envio ao Drive é feito pelo dispositivo ' + _gsRespLetra() + '. O backup local continua normal.', 5000); return Promise.resolve(); }   // v2.1.0.0
+    if(_gsDriveSoA('rodapé da nuvem')){   // v2.1.0.0 · v2.4.7.2 (Bloco G): explica quem envia e em que pé está
+      const _n = _gsNuvemPeloResponsavel();
+      showToast('☁️ Quem envia ao Drive é o dispositivo ' + _gsRespLetra() + ' (responsável). Este dispositivo manda tudo ao servidor e o ' + _gsRespLetra() + ' leva ao Drive. ' + _n.txt.replace(/^Nuvem: /, 'Situação: ') + '.', 7000);
+      return Promise.resolve();
+    }
     if(!_gdDisponivel()){
       showToast('☁️ A nuvem só funciona no aplicativo instalado (APK). O backup local continua normal.', 5000);
       return Promise.resolve();
@@ -24391,7 +24496,7 @@ async function _gsSrvSinalExec(){
     _gsSrvMudarEstado('conectado');
     const s = _gsSrvLer();
     if(r.data && r.data.letra && r.data.letra !== s.letra){ s.letra = r.data.letra; _gsSrvGravar(s); }
-    if(r.data && r.data.responsavel) _gsRespGravar(r.data.responsavel);   // v2.3.0.0
+    if(r.data && r.data.responsavel){ _gsRespGravar(r.data.responsavel); _gsRespPreferidoAvaliar(r.data.responsavel); }   // v2.3.0.0 · v2.4.7.2 (F)
   } else if(_gsSrvErroDeSessao(r.error)){ _gsSrvMudarEstado('reconectar'); _gsSrvTratarFalha(r.error); }   // v2.4.4.0: tenta renovar/recuperar
   else { _gsSrvMudarEstado('sem_conexao'); _gsSrvTratarFalha(r.error); }   // v2.4.4.0: sem internet × servidor fora
 }
@@ -25025,7 +25130,9 @@ document.addEventListener('visibilitychange', function(){ try{ if(gsSrvAtivo()) 
 window.addEventListener('online', function(){ try{ if(gsSrvAtivo()) gsDiag('rede', 'online'); }catch(e){} });
 window.addEventListener('offline', function(){ try{ if(gsSrvAtivo()) gsDiag('rede', 'OFFLINE'); }catch(e){} });
 // Drive conectado para o servidor (008): no aparelho com o Drive ligado e sem "reconectar"
-function _gsDriveOkParaSinal(){ try{ return !!(_gdDisponivel() && _gdConectado() && !DRIVE_STATUS.nuvem_reconectar); }catch(e){ return false; } }
+// v2.4.7.2 (Bloco F): em modo protegido o dispositivo NÃO envia ao Drive (está pausado) — então também não
+// pode ser o responsável: o servidor passa o papel a outro apto e ninguém fica parado esperando por ele.
+function _gsDriveOkParaSinal(){ try{ return !!(_gdDisponivel() && _gdConectado() && !DRIVE_STATUS.nuvem_reconectar && !_GS_PROT); }catch(e){ return false; } }
 // v2.4.2.0 (009): a CONTA conectada no Drive deste dispositivo ('' = nenhuma) — o servidor confere com a oficial
 let _gsSrv009 = null;
 function _gsDriveContaParaSinal(){ try{ return _gdConectado() ? String(DRIVE_STATUS.nuvem_email || '').trim().toLowerCase() : ''; }catch(e){ return ''; } }
@@ -26214,6 +26321,10 @@ function _gsSyncAtivar(){
   _gsSyncAtualizarRodape();
   _gsPesadaIniciar();   // v2.3.0.0: fotos, documentos e PDFs (fila PESADA, separada da leve)
   _gsConfIniciar();     // v2.3.1.0 (Bloco C): conferência com o servidor
+  // v2.4.7.2: faixa do modo protegido com "Conferir com o servidor"; alarme falso confere sozinho
+  try{ if(_GS_PROT){ _gsRenderFaixaProtegido(); _gsProtegidoAutoConferir(); } }catch(e){}
+  // v2.4.7.2 (Bloco I): PINs que o servidor tem e este dispositivo perdeu voltam sozinhos
+  try{ setTimeout(function(){ gsUsrRestaurarPinsDoServidor('abertura'); }, 5000); }catch(e){}
 }
 function _gsSyncAplicarGuardados(){
   if(!_gsSync.guardados.length) return;
@@ -26448,7 +26559,7 @@ function _gsRespGravar(r){
                  drive_ok:r.drive_ok, algum_com_drive:r.algum_com_drive, meu_drive_ok:r.meu_drive_ok,   // v2.4.1.0 (008)
                  apto:r.apto, meu_apto:r.meu_apto, algum_apto:r.algum_apto, conta_oficial:r.conta_oficial || null,   // v2.4.2.0 (009)
                  minha_conta:r.minha_conta || null, pend_drive:r.pend_drive == null ? null : Number(r.pend_drive) || 0,
-                 pend_drive_desde:r.pend_drive_desde || null };
+                 pend_drive_desde:r.pend_drive_desde || null, ultimo_sinal:r.ultimo_sinal || null };   // v2.4.7.2 (G): sinal do responsável
   try{ localStorage.setItem(GS_RESP_LS, JSON.stringify(novo)); }catch(e){}
   if(ant.sou !== novo.sou || ant.letra !== novo.letra){
     try{ addLogSistema('Envio ao Drive: responsável agora é o dispositivo ' + (novo.letra || '?') + (novo.sou ? ' (ESTE dispositivo)' : ''),
@@ -26468,6 +26579,64 @@ function gsSouResponsavel(){
   return String(_gsSrvLer().letra || '') === 'A';
 }
 function _gsRespLetra(){ const r = _gsRespLer(); return r.letra || (gsSrvAtivo() && String(_gsSrvLer().letra || '') === 'A' ? 'A' : null) || 'responsável'; }
+
+// ── v2.4.7.2 (Bloco F) — DISPOSITIVO PREFERIDO PARA O ENVIO AO DRIVE ───────
+// Decisão do Douglas: o ideal é o tablet A ser SEMPRE o responsável. A troca automática para outro
+// dispositivo em caso de problema continua como está (é o servidor quem faz); o que muda é a VOLTA:
+// quando o preferido estiver apto — Drive conectado na conta oficial, fora do modo protegido, com sinal
+// contínuo há 10 min ou mais — ele reassume sozinho, com registro na trilha. Configuração da empresa
+// (`drive_preferido`, sincronizada); sem configuração, vale 'A'. 'nenhum' desliga a volta automática.
+const GS_DRIVE_PREF_LS = 'garagespot_drive_preferido';
+const GS_DRIVE_PREF_APTO_LS = 'gs-srv-pref-apto';   // `gs-srv-*` nunca entra em backup
+const GS_DRIVE_PREF_MS = 10 * 60 * 1000;
+function gsDrivePreferido(){
+  try{ const o = JSON.parse(localStorage.getItem(GS_DRIVE_PREF_LS) || 'null'); if(o && o.letra) return String(o.letra); }catch(e){}
+  return 'A';
+}
+function gsDefinirDrivePreferido(letra, quem){
+  const v = (letra === 'nenhum') ? 'nenhum' : String(letra || 'A').toUpperCase().slice(0, 1);
+  try{ localStorage.setItem(GS_DRIVE_PREF_LS, JSON.stringify({ letra:v, em:Date.now() })); }catch(e){}
+  try{ _gsSyncMarcarSuja('config'); }catch(e){}
+  try{ addLogSistema('Dispositivo preferido para o envio ao Drive: ' + (v === 'nenhum' ? 'nenhum (sem volta automática)' : v), { aud:true, acao:'drive_preferido_definido', alvo:v, quem:quem || '', origem:'usuario' }); }catch(e){}
+  try{ localStorage.removeItem(GS_DRIVE_PREF_APTO_LS); }catch(e){}
+}
+let _gsPrefTentativa = 0;
+async function _gsRespPreferidoAvaliar(r){
+  try{
+    if(!gsSrvAtivo() || !r) return;
+    const pref = gsDrivePreferido(), minha = String(_gsSrvLer().letra || '');
+    const limpar = function(){ try{ localStorage.removeItem(GS_DRIVE_PREF_APTO_LS); }catch(e){} };
+    if(pref === 'nenhum' || !minha || minha !== pref || r.sou){ limpar(); return; }
+    const contaOk = !(r.conta_oficial && r.minha_conta && String(r.minha_conta).toLowerCase() !== String(r.conta_oficial).toLowerCase());
+    const apto = _gsDriveOkParaSinal() && !_GS_PROT && r.meu_apto !== false && contaOk;
+    if(!apto){ limpar(); return; }
+    const agora = Date.now();
+    let st = null; try{ st = JSON.parse(localStorage.getItem(GS_DRIVE_PREF_APTO_LS) || 'null'); }catch(e){}
+    // sinal contínuo: um buraco de mais de 3 min entre sinais recomeça a contagem
+    if(!st || !st.desde || agora - (st.ult || 0) > 3 * 60 * 1000) st = { desde:agora };
+    st.ult = agora;
+    try{ localStorage.setItem(GS_DRIVE_PREF_APTO_LS, JSON.stringify(st)); }catch(e){}
+    if(agora - st.desde < GS_DRIVE_PREF_MS || agora - _gsPrefTentativa < 5 * 60 * 1000) return;
+    _gsPrefTentativa = agora;
+    const x = await _gsSrvRpc('assumir_responsavel', {}, 10000);
+    if(x.error){ try{ gsDiag('responsavel', 'preferido não reassumiu: ' + String(x.error.message || x.error).slice(0, 80)); }catch(e){} return; }
+    _gsRespGravar(x.data);
+    try{ addLogSistema('Envio ao Drive VOLTOU ao dispositivo preferido (' + minha + ') — apto há ' + Math.round((agora - st.desde) / 60000) + ' min (Drive na conta oficial, fora do modo protegido, com sinal)',
+      { aud:true, acao:'responsavel_preferido_retomado', alvo:minha, origem:'automatico' }); }catch(e){}
+    limpar();
+  }catch(e){ console.warn('[RESP] preferido:', e && e.message); }
+}
+// ── v2.4.7.2 (Bloco G) — a linha "Nuvem" de quem NÃO é o responsável mostra o Drive PELO responsável ──
+function _gsNuvemPeloResponsavel(){
+  const r = _gsRespLer(), L = r.letra;
+  if(!L) return { classe:'alerta', txt:'Nuvem: nenhum dispositivo enviando ao Drive' };
+  if(r.ts && Date.now() - r.ts > 30 * 60 * 1000) return { classe:'alerta', txt:'Nuvem: sem notícia do servidor há ' + Math.floor((Date.now() - r.ts) / 60000) + ' min' };
+  if(r.apto === false) return { classe:'alerta', txt:'Nuvem: o dispositivo ' + L + ' (responsável) está sem Drive' };
+  const pend = Number(r.pend_drive) || 0, desde = Date.parse(r.pend_drive_desde || '') || 0;
+  if(pend && desde && Date.now() - desde > GD_ATRASO_MS) return { classe:'alerta', txt:'Nuvem: atrasada · ' + pend + ' aguardando o dispositivo ' + L };
+  const ts = Date.parse(r.ultimo_sinal || '') || r.ts || 0;
+  return { classe:'ok', txt:'Nuvem: em dia · pelo dispositivo ' + L + (ts ? ' · ' + fmtHrCurta(ts) : ''), peloResp:true };
+}
 function _gsDriveMsg(){ return 'o envio ao Drive é feito pelo dispositivo ' + _gsRespLetra(); }
 async function gsAssumirResponsavel(){
   const r = await _gsSrvRpc('assumir_responsavel', {}, 10000);
@@ -26636,7 +26805,10 @@ function gsPesadaPdf(nome, b64, tipo, extra){
 }
 // Os PDFs que ficaram pendentes neste aparelho (sessões B/C, quando ele não escrevia no Drive)
 async function _gsPesadaPdfsPendentes(){
-  if(!_gsPesada.ativo || gsSouResponsavel()) return 0;
+  // v2.4.7.2 (Bloco C): também no RESPONSÁVEL (com servidor, TODO PDF vai pelo servidor — v2.4.1.0).
+  // Os PDFs presos no tablet A durante o modo protegido (GS441, GS422) só saíam pelo envio direto ao
+  // Drive, que o modo protegido pausa; agora saem pelo servidor assim que o modo protegido termina.
+  if(!_gsPesada.ativo || _GS_PROT) return 0;
   const F = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
   let n = 0;
   const lista = (typeof _gdPdfsPendentes === 'function') ? _gdPdfsPendentes() : [];
@@ -27162,6 +27334,10 @@ function _gsRespPainelHTML(){
       '<br><span style="color:' + (errada ? '#A32D2D' : '#555') + '">Este dispositivo: ' + (minha ? _vtEsc(minha) + (errada ? ' — ⚠️ CONTA ERRADA (os envios dele não são aceitos)' : '') : 'sem Drive conectado') + '</span>' +
       (sug ? '<br><span id="srv-conta-sugestao" style="color:#185FA5">Sugestão: registrar <strong>' + _vtEsc(sug) + '</strong> (conta do responsável)</span>' : '') + '</div>' +
     _gsListaDispositivosHTML() +
+    // v2.4.7.2 (Bloco F): dispositivo preferido (volta sozinho a ser o responsável quando estiver apto)
+    '<div id="srv-drive-pref" style="margin-top:6px;padding-top:6px;border-top:1px dashed #ddd">Dispositivo preferido para o envio ao Drive: <strong>' +
+      _vtEsc(gsDrivePreferido() === 'nenhum' ? 'nenhum' : gsDrivePreferido()) + '</strong> <button class="bcx" id="srv-pref-trocar" style="font-size:11px;padding:3px 8px;margin-left:4px">Trocar</button>' +
+      '<br><span style="color:#888;font-size:11px">Quando ele estiver apto (Drive na conta oficial, fora do modo protegido, com sinal há 10 min), volta a ser o responsável sozinho.</span></div>' +
     '<div style="display:flex;gap:6px;margin-top:8px"><button class="bcx" id="srv-conta-oficial" style="flex:1;font-size:12px">' + (oficial ? 'Trocar a conta oficial' : 'Registrar a conta oficial') + '</button>' +
       '<button class="bcx" id="srv-envios" style="flex:1;font-size:12px">📤 Envios ao Drive</button></div>' +
     (sou ? '' : '<button class="b2s azul" id="srv-assumir" style="margin-top:8px">☁️ Assumir o envio ao Drive neste dispositivo</button>') +
@@ -27345,6 +27521,19 @@ async function gsDriveConferenciaDiaria(){
 function _gsRespLigarPainel(){
   const co = document.getElementById('srv-conta-oficial'); if(co) co.onclick = function(){ gsTelaContaOficial(); };
   const ev = document.getElementById('srv-envios'); if(ev) ev.onclick = function(){ gsTelaEnviosDrive(); };
+  const pt = document.getElementById('srv-pref-trocar');   // v2.4.7.2 (Bloco F)
+  if(pt) pt.onclick = function(){
+    showEntrarPIN(function(){
+      const letras = ((_gsAparelhos && _gsAparelhos.lista) || []).map(function(x){ return x && x.letra; }).filter(Boolean).sort();
+      if(letras.indexOf('A') < 0) letras.unshift('A');
+      showM('<div class="mt">☁️ Dispositivo preferido</div><div class="ms" style="margin-bottom:8px">Qual dispositivo deve ser, sempre que estiver apto, o responsável pelo envio ao Drive?</div>' +
+        '<div class="b2-acoes">' + letras.map(function(l){ return '<button class="b2c azul" data-pref="' + _vtEsc(l) + '">Dispositivo ' + _vtEsc(l) + '</button>'; }).join('') +
+        '<button class="b2c" data-pref="nenhum">Nenhum (sem volta automática)</button></div><button class="b2t" onclick="showServidor()">Voltar</button>');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-pref]'), function(b){
+        b.onclick = function(){ gsDefinirDrivePreferido(b.getAttribute('data-pref'), 'gestor'); showToast('☁️ Dispositivo preferido: ' + b.getAttribute('data-pref'), 3000); showServidor(); };
+      });
+    });
+  };
   const a = document.getElementById('srv-assumir');
   if(a) a.onclick = function(){
     // v2.4.2.0 (Bloco B): conectado na conta errada também não assume — e é dito o porquê
@@ -27798,11 +27987,66 @@ function _gsUsrAplicarRecebido(k, d){
   const atual = i >= 0 ? USUARIOS[i] : null;
   const novo = _gsSyncSem(_gsSyncCopia(d || {}), 'tem_pin');
   delete novo.pin;
+  // v2.4.7.2 (Bloco I) — CAUSA DOS PINs "SUMIDOS" NO TABLET A (23/11). O PIN cadastrado antes do corte
+  // mora só na COLUNA `pin_hash` do servidor (a carga inicial não o põe em `dados`). O recebimento normal
+  // (`mudancas_desde`/`baixar_tudo`) junta a coluna — mas a CONFIRMAÇÃO de uma edição feita NESTE
+  // dispositivo (`aplicar_acao`) devolve `dados` cru, sem o hash, e ele era aplicado por cima: o aparelho
+  // que editou o funcionário perdia o PIN (o B, que recebia pelo caminho normal, continuava com ele).
+  // Ausência de `pin_hash` no que chega NUNCA apaga o PIN daqui: o servidor também nunca o apaga (a coluna
+  // é preservada com `coalesce`), e PIN novo sempre chega COM o hash.
+  if(atual && atual.pin_hash && (novo.pin_hash === undefined || novo.pin_hash === null || novo.pin_hash === '')) novo.pin_hash = atual.pin_hash;
   // o texto só fica se o hash é o mesmo; quem APAGA o texto (com registro na trilha) é `_gsPinsApagarTexto`
   if(atual && atual.pin && (!d.pin_hash || d.pin_hash === atual.pin_hash)) novo.pin = atual.pin;
   if(atual && _gsSyncCanon(_gsSyncSem(atual, 'tem_pin')) === _gsSyncCanon(novo)) return false;
   if(i >= 0) USUARIOS[i] = novo; else USUARIOS.push(novo);
   return true;
+}
+// v2.4.7.2 (Bloco I): busca no servidor os PINs (hash) dos funcionários e devolve a quem perdeu aqui.
+// Lê pela `baixar_tudo`, que junta a coluna `pin_hash` — nunca pede recadastro e nunca troca um PIN
+// que o dispositivo já tem.
+let _gsPinsRest = { rodando:null, ultima:0 };
+async function gsUsrRestaurarPinsDoServidor(motivo, opts){
+  opts = opts || {};
+  const out = { ok:false, restaurados:[], srv:{}, erro:'' };
+  if(!gsSrvAtivo()){ out.erro = 'sem servidor'; return out; }
+  if(_gsPinsRest.rodando) return _gsPinsRest.rodando;
+  _gsPinsRest.rodando = (async function(){
+    try{
+      let pag = { tabela:'funcionarios', depois:null };
+      for(let i = 0; pag && pag.tabela === 'funcionarios' && i < 50; i++){
+        const r = await _gsSrvRpc('baixar_tudo', { p_tabela:'funcionarios', p_depois:pag.depois, p_limite:500 }, 15000);
+        if(r.error || !r.data){ out.erro = (r.error && r.error.message) || 'sem resposta'; return out; }
+        (r.data.linhas || []).forEach(function(l){ if(l && l.t === 'funcionarios' && l.d) out.srv[String(l.k)] = l.d; });
+        pag = r.data.proxima;
+      }
+      let mudou = false;
+      (USUARIOS || []).forEach(function(u, i){
+        if(!u || u.id == null || _usrTemPin(u)) return;
+        const d = out.srv[String(u.id)];
+        if(!d || !d.pin_hash) return;
+        USUARIOS[i] = Object.assign({}, u, { pin_hash:d.pin_hash });
+        out.restaurados.push(u.nome || String(u.id)); mudou = true;
+      });
+      if(mudou){
+        saveUsuarios();
+        try{ addLogSistema('PIN de ' + out.restaurados.length + ' funcionário(s) RECEBIDO do servidor (' + out.restaurados.join(', ') + ') — ' + (motivo || '') + '. Sem recadastro.',
+          { aud:true, acao:'pins_restaurados_servidor', alvo:out.restaurados.join(', ').slice(0, 120), origem:'automatico' }); }catch(e){}
+      }
+      _gsPinsRest.ultima = Date.now();
+      out.ok = true;
+      return out;
+    }catch(e){ out.erro = (e && e.message) || String(e); return out; }
+    finally{ setTimeout(function(){ _gsPinsRest.rodando = null; }, 0); }
+  })();
+  return _gsPinsRest.rodando;
+}
+// O servidor diz que este funcionário tem PIN? (base da sincronização: `pin_hash` ou `tem_pin`)
+function _gsUsrPinNoServidor(u){
+  try{
+    const b = _gsSync && _gsSync.base && _gsSync.base.funcionarios && _gsSync.base.funcionarios[String(u.id)];
+    if(!b || !b.d) return null;
+    return !!(b.d.pin_hash || b.d.tem_pin);
+  }catch(e){ return null; }
 }
 function _gsUsrComPin(u, pin){
   if(gsSrvAtivo()){ const c = Object.assign({}, u, { pin_hash:_gsPinHashNovo(pin) }); delete c.pin; return c; }   // com servidor: só hash
@@ -27827,6 +28071,7 @@ function _gsCfgLocal(){
     try{ const de = JSON.parse(localStorage.getItem(GS_DRIVE_ESPACO_LS) || 'null'); if(de) o.drive_espaco = { valor:de }; }catch(x){}   // v2.4.4.0 (Bloco C)
     try{ const dr = JSON.parse(localStorage.getItem(GS_DRIVE_RAIZ_LS) || 'null'); if(dr && dr.id) o.drive_raiz = { valor:dr }; }catch(x){}   // v2.4.4.0 (Bloco D)
     try{ const bn = JSON.parse(localStorage.getItem(GS_BK_NUVEM_EMP_LS) || 'null'); if(bn && bn.ts) o.backup_nuvem = { valor:bn }; }catch(x){}   // v2.4.6.1 (C2)
+    try{ const dp = JSON.parse(localStorage.getItem(GS_DRIVE_PREF_LS) || 'null'); if(dp && dp.letra) o.drive_preferido = { valor:{ letra:dp.letra } }; }catch(x){}   // v2.4.7.2 (F) — só se definido
     const h = _gsPinHashGestor(); if(h) o.gestor_pin_hash = { pin_hash:h };
     Object.keys(o).forEach(function(k){ o[k] = JSON.parse(JSON.stringify(o[k])); });
   }catch(e){ console.warn('[SYNC] configuração local ilegível:', e && e.message); }
@@ -27850,6 +28095,7 @@ function _gsCfgAplicarRecebido(k, d){
   else if(k === 'drive_raiz' && v && v.id){ localStorage.setItem(GS_DRIVE_RAIZ_LS, JSON.stringify(v)); }   // v2.4.4.0
   else if(k === 'backup_nuvem' && v && v.ts){ localStorage.setItem(GS_BK_NUVEM_EMP_LS, JSON.stringify(v)); }   // v2.4.6.1 (C2)
   else if(k === 'gestor_pin_hash' && d && d.pin_hash){ localStorage.setItem(GESTAO_PIN_HASH_LS, d.pin_hash); }
+  else if(k === 'drive_preferido' && v && v.letra){ localStorage.setItem(GS_DRIVE_PREF_LS, JSON.stringify({ letra:String(v.letra), em:Date.now() })); }   // v2.4.7.2 (F)
   else return false;
   return true;
 }
@@ -27902,6 +28148,70 @@ function _gsPendRecebida(d, m){
   if(m){ m.pend = true; if(d.vaga) m.vagas[d.vaga] = 1; if(d.tipo === 'conflito_vaga' && d.dados && d.dados.vaga) m.vagas[d.dados.vaga] = 1; m.algo = true; }
   // resolvida no OUTRO aparelho com a janela aberta aqui: avisa e fecha mostrando o resultado
   if(d.resolvida_em && ant && !ant.resolvida_em && _gsPendJanela === d.id) setTimeout(function(){ _gsPendAvisoJaResolvida(d); }, 0);
+  // v2.4.7.2 (Bloco H): conflito do plantão SEM alteração manual se resolve sozinho (vale o mais novo)
+  if(!d.resolvida_em && !(ant && ant._resolvendo) && _gsPendPlantaoTrivial(d)) setTimeout(function(){ _gsPendAutoResolverPlantao(d.id); }, 0);
+}
+// ── v2.4.7.2 (Bloco H) ──────────────────────────────────────────────────────
+// Em 10/11 apareceu em Pendências "Alteração não aplicada — config plantao_override" com dois valores
+// SEM nenhuma alteração manual (`incluir: []`, `remover: []`, só o `instanteId` diferente): cada
+// dispositivo zera o ajuste do plantão sozinho na virada do turno, e os dois zeramentos se cruzaram no
+// servidor. Não há escolha a fazer — vale o do turno ATUAL (o mais novo), sem virar pendência. Só o
+// dispositivo que gerou a pendência resolve (o outro não precisa disputar a resolução).
+function _gsPlantaoSemManual(v){ return !!(v && typeof v === 'object' && !(v.incluir || []).length && !(v.remover || []).length); }
+function _gsPendPlantaoTrivial(p){
+  try{
+    if(!p || p.resolvida_em || (p.tipo !== 'alteracao_nao_aplicada' && p.tipo !== 'alteracao_concorrente')) return false;
+    if(p.tabela !== 'config' || p.chave !== 'plantao_override') return false;
+    const d = p.dados || {}, campos = d.campos || {};
+    const ks = Object.keys(campos).filter(function(c){ return c.charAt(0) !== '_'; });
+    if(!ks.length || ks.some(function(c){ return c !== 'valor'; })) return false;
+    const c = campos.valor || {};
+    if(!_gsPlantaoSemManual(c.servidor) || !_gsPlantaoSemManual(c.aparelho)) return false;
+    const minha = String((typeof _gsSrvLer === 'function' && _gsSrvLer().letra) || '');
+    return !d.aparelho || d.aparelho === minha;
+  }catch(e){ return false; }
+}
+function _gsPendAutoResolverPlantao(pid){
+  try{
+    const p = _gsPend.mapa[pid];
+    if(!p || p.resolvida_em || p._resolvendo || !_gsPendPlantaoTrivial(p) || _gsSync.estado !== 'ativo') return;
+    const c = p.dados.campos.valor;
+    let atual = ''; try{ atual = _plantaoInstante(new Date()).instanteId; }catch(e){}
+    const doDisp = !!(c.aparelho && c.aparelho.instanteId === atual && !(c.servidor && c.servidor.instanteId === atual));   // o do turno ATUAL é o mais novo
+    const venceu = doDisp ? c.aparelho : c.servidor;
+    _gsResolver(pid, doDisp ? { vale:'aparelho' } : { vale:'servidor' }, 'alteracao_resolvida_auto', function(){
+      _gsSetCampoLocal('config', 'plantao_override', 'valor', venceu);
+    });
+    try{ addLogSistema('Conflito do plantão resolvido sozinho (' + _gsPlantaoTexto(venceu) + ' — sem alterações manuais; vale o mais novo)',
+      { aud:true, acao:'pendencia_plantao_auto', alvo:String(pid), origem:'automatico' }); }catch(e){}
+  }catch(e){ console.warn('[PEND] plantão automático:', e && e.message); }
+}
+// Texto legível de um valor de plantão: "Plantão da manhã · sem alterações manuais"
+function _gsPlantaoTexto(v){
+  if(!v || typeof v !== 'object') return 'Plantão — sem ajuste';
+  const inst = String(v.instanteId || ''), turno = inst.split('|')[1] || '';
+  const rot = (typeof _PADRAO_LABELS === 'object' && _PADRAO_LABELS[turno]) || ({ manha:'manhã', tarde:'tarde', noite:'noite', nenhum:'fora de turno' })[turno] || turno || '—';
+  const r = /^(manh|tard|noit|madr)/i.test(String(rot)) ? 'Plantão da ' + String(rot).toLowerCase() : 'Plantão (' + String(rot) + ')';
+  const nomeDe = function(id){ const u = (USUARIOS || []).find(function(x){ return x && String(x.id) === String(id); }); return u ? u.nome : String(id); };
+  const inc = (v.incluir || []).map(nomeDe), rem = (v.remover || []).map(nomeDe);
+  if(!inc.length && !rem.length) return r + ' · sem alterações manuais';
+  return r + (inc.length ? ' · incluídos: ' + inc.join(', ') : '') + (rem.length ? ' · retirados: ' + rem.join(', ') : '');
+}
+// Nome legível do registro e do valor numa pendência de alteração (nunca o código)
+const GS_CFG_NOMES = { plantao_override:'Ajuste do plantão atual', plantao_manual:'Plantão manual', turnos:'Turnos', escala:'Escala', modulos:'Módulos',
+  recarga_config:'Configuração da recarga', recarga_pontos:'Pontos de recarga', tema:'Tema', poda_config:'Limpeza', horarios:'Horários', drive_preferido:'Dispositivo preferido do Drive' };
+function _gsPendRegistroTexto(p){
+  if(p.tabela === 'config') return 'Configuração: ' + (GS_CFG_NOMES[p.chave] || p.chave);
+  if(p.tabela === 'funcionarios'){ const u = (USUARIOS || []).find(function(x){ return x && String(x.id) === String(p.chave); }); return 'Funcionário ' + (u ? u.nome : p.chave); }
+  return (p.tabela || '') + ' ' + (p.chave || '');
+}
+function _gsPendValorTexto(p, campo, v){
+  if(p.tabela === 'config' && p.chave === 'plantao_override' && campo === 'valor') return _gsPlantaoTexto(v);
+  if(v === null || v === undefined || v === '') return '(vazio)';
+  if(typeof v !== 'object') return String(v);
+  if(Array.isArray(v)) return v.length + ' item(ns)';
+  const s = JSON.stringify(v);
+  return s.length > 80 ? 'configuração alterada' : s;
 }
 function _gsPendDepoisDeMudar(m){ _gsPendGravar(); try{ _gsPendAtualizarPainel(); }catch(e){} }
 function gsPendenciasAbertas(){
@@ -28265,11 +28575,13 @@ function gsPendAbrir(pid){
     const campos = d.campos || {};
     const linhas = Object.keys(campos).filter(function(c){ return c.charAt(0) !== '_'; }).map(function(c){
       const v = campos[c];
-      return '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px"><div style="font-weight:800;font-size:12px">' + _vtEsc(c) + '</div>' +
-        '<div style="font-size:12px">Servidor: <strong>' + _vtEsc(JSON.stringify(v.servidor)) + '</strong> <span style="color:#888">(dispositivo ' + _vtEsc(d.servidor_aparelho || '?') + (d.servidor_em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.servidor_em))) : '') + ')</span></div>' +
-        '<div style="font-size:12px">Dispositivo ' + _vtEsc(d.aparelho || '?') + ': <strong>' + _vtEsc(JSON.stringify(v.aparelho)) + '</strong> <span style="color:#888">(' + _vtEsc(d.quem || '—') + (d.em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.em))) : '') + ')</span></div></div>';
+      // v2.4.7.2 (Bloco H): texto legível ("Plantão da manhã · sem alterações manuais"), nunca o código
+      const rotC = (p.tabela === 'config' && c === 'valor') ? (GS_CFG_NOMES[p.chave] || 'Valor') : c;
+      return '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px"><div style="font-weight:800;font-size:12px">' + _vtEsc(rotC) + '</div>' +
+        '<div style="font-size:12px">Servidor: <strong>' + _vtEsc(_gsPendValorTexto(p, c, v.servidor)) + '</strong> <span style="color:#888">(dispositivo ' + _vtEsc(d.servidor_aparelho || '?') + (d.servidor_em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.servidor_em))) : '') + ')</span></div>' +
+        '<div style="font-size:12px">Dispositivo ' + _vtEsc(d.aparelho || '?') + ': <strong>' + _vtEsc(_gsPendValorTexto(p, c, v.aparelho)) + '</strong> <span style="color:#888">(' + _vtEsc(d.quem || '—') + (d.em ? ' · ' + _vtEsc(_dtLocal(Date.parse(d.em))) : '') + ')</span></div></div>';
     }).join('');
-    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc((p.tabela || '') + ' ' + (p.chave || '')) + ' — os dois valores ficaram guardados. Qual vale?</div>' + linhas +
+    showM(cab + '<div class="ms" style="margin-bottom:8px">' + _vtEsc(_gsPendRegistroTexto(p)) + ' — os dois valores ficaram guardados. Qual vale?</div>' + linhas +
       '<div class="b2-acoes"><button class="b2c azul" id="gs-alt-srv">Manter o do servidor</button><button class="b2c azul" id="gs-alt-ap">Usar o do dispositivo ' + _vtEsc(d.aparelho || '?') + '</button></div>' + fechar);
     ligarFechar();
     document.getElementById('gs-alt-srv').onclick = function(){ comOperador('mantendo o valor do servidor', function(){ _gsResolver(pid, { vale:'servidor' }, 'alteracao_resolvida'); _gsPendJanela = null; closeOv(); }); };
@@ -28371,7 +28683,7 @@ function _gsPendExtrasHTML(){
     ab.forEach(function(p){
       const d = p.dados || {};
       const sub = p.tipo === 'conflito_vaga' ? 'Vaga ' + (d.vaga || p.vaga) + ': ' + ((d.atual || {}).gs || '?') + ' × ' + ((d.novo || {}).gs || '?')
-        : (p.gs ? p.gs : '') + (p.vaga ? ' · vaga ' + p.vaga : '') + (d.aparelho ? ' · dispositivo ' + d.aparelho : '');
+        : (p.gs ? p.gs : ((p.tabela === 'config' || p.tabela === 'funcionarios') ? _gsPendRegistroTexto(p) : '')) + (p.vaga ? ' · vaga ' + p.vaga : '') + (d.aparelho ? ' · dispositivo ' + d.aparelho : '');   // v2.4.7.2 (H): legível
       html += '<div class="gs-pend-card" data-pend="' + _vtEsc(p.id) + '"><div class="cav-titulo">⚠️ ' + _vtEsc(_gsPendRotulo(p)) + '</div>' +
         '<div class="cav-subtitulo">' + _vtEsc(sub) + ' · toque para resolver</div></div>';
     });
@@ -28900,7 +29212,9 @@ async function _gsArqCarregar(){
         if(oa !== undefined) return -1; if(ob !== undefined) return 1;
         return (a.gravado_ts || 0) - (b.gravado_ts || 0);
       });
-      res.reconstruidos.push(nomePasta + ' (' + (idsIdx ? idsIdx.length : 'sem índice') + ' → ' + lista.length + ')');
+      // v2.4.7.2: pasta VAZIA e sem índice (fotos de hospedagem encerrada já limpas) não tem o que reconstruir —
+      // antes ia para a trilha a cada abertura ("h_GS233 … h_GS433 (sem índice → 0)" no tablet A)
+      if(idsIdx || lista.length) res.reconstruidos.push(nomePasta + ' (' + (idsIdx ? idsIdx.length : 'sem índice') + ' → ' + lista.length + ')');
     }
     const semConteudo = (idsIdx || []).filter(function(id){ return !conteudos[id]; }).length;
     res.semConteudo += semConteudo;
@@ -28955,7 +29269,7 @@ async function _gsAvaliarArquivos(){
   } else if(sent && sent.marca_arq && sent.marca_arq !== marca.id){
     motivo = 'marca_arquivos_diferente'; detalhe = marca.id + ' × ' + sent.marca_arq; marcaEstado = 'DIFERENTE';
   } else marcaEstado = 'ok';
-  const faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
+  const faltas = sent ? _gsSentFaltasAbertura(sent) : [];   // v2.4.7.2 (Bloco B): desconta as exclusões registradas
   if(!motivo && faltas.length){ motivo = 'contagem_menor'; detalhe = faltas.slice(0, 8).join(', '); }
   _gsUltimaAvaliacao = { motivo:motivo, detalhe:detalhe, marca:'arquivos ' + marcaEstado,
     banco:{ anexos:_gsSentContarAnexos(ANEXOS).total, vistorias:_gsSentContarVistorias(VISTORIAS).total },
@@ -29146,17 +29460,95 @@ function _gsSentGravar(s){
   try{ s.v = 1; s.atualizado_ts = Date.now(); localStorage.setItem(GS_SENT_LS, JSON.stringify(s)); }
   catch(e){ console.warn('[SENTINELA] não gravou:', e && e.message); }
 }
+// ════════════════════════════════════════════════════════════════════════
+// v2.4.7.2 (Bloco B) — O QUE O PRÓPRIO APP APAGA DE PROPÓSITO NÃO É PERDA.
+// ════════════════════════════════════════════════════════════════════════
+// Cada exclusão INTENCIONAL (anexos do check-out, fotos de encerradas na limpeza,
+// retenção, exclusão de vistoria, remoção vinda do servidor) fica num REGISTRO
+// PERSISTENTE até a sentinela ser regravada. A avaliação desconta o que está nele:
+// só a perda SEM registro liga o modo protegido.
+// Antes a autorização vivia só em memória e era DESCARTADA quando a gravação
+// acontecia antes de a sentinela estar pronta (check-out da GS416 antes do "app
+// PRONTO", 14/11) — e na abertura seguinte a sentinela via 5→0 "sem caminho".
+// Rede de segurança para o que aconteceu ANTES deste registro existir: o check-out
+// grava na trilha "Anexos do check-out apagados" (acao `anexos_checkout`, alvo = GS)
+// — essa linha, posterior à última gravação da sentinela, também explica a falta.
+const GS_SENT_REM_LS = 'garagespot_sentinela_remocoes';
+function _gsSentRemLer(){
+  try{ const r = JSON.parse(localStorage.getItem(GS_SENT_REM_LS) || 'null'); if(r && typeof r === 'object') return { anexos:r.anexos || {}, vistorias:r.vistorias || {}, todos:r.todos || {} }; }catch(e){}
+  return { anexos:{}, vistorias:{}, todos:{} };
+}
+function _gsSentRemGravar(r){ try{ localStorage.setItem(GS_SENT_REM_LS, JSON.stringify(r)); }catch(e){} }
+function _gsSentRemAnotar(tipo, chave, todos, motivo){
+  try{
+    const r = _gsSentRemLer();
+    if(chave === '*'){ r.todos[tipo] = { ts:Date.now(), motivo:String(motivo || '') }; _gsSentRemGravar(r); return; }
+    const o = r[tipo][chave] || { n:0, todos:false };
+    if(todos) o.todos = true; else o.n = (o.n || 0) + 1;
+    o.ts = Date.now(); if(motivo) o.motivo = String(motivo);
+    r[tipo][chave] = o; _gsSentRemGravar(r);
+  }catch(e){}
+}
+// a sentinela foi regravada a partir da memória: o registro daquele tipo já está refletido nela
+function _gsSentRemLimpar(tipo){
+  try{
+    if(!tipo){ localStorage.removeItem(GS_SENT_REM_LS); return; }
+    const r = _gsSentRemLer(); r[tipo] = {}; delete r.todos[tipo]; _gsSentRemGravar(r);
+  }catch(e){}
+}
+// exclusões explicadas: registro + trilha (check-out) posterior à última gravação da sentinela
+function _gsSentExplicadas(s){
+  const out = _gsSentRemLer();
+  try{
+    const desde = Number(s && s.atualizado_ts) || 0;
+    (_lerTrilha() || []).forEach(function(e){
+      if(!e || e.acao !== 'anexos_checkout' || !e.alvo) return;
+      if(desde && Number(e.ts || 0) < desde - 60000) return;   // margem de 1 min (relógio da mesma gravação)
+      const k = String(e.alvo);
+      out.anexos[k] = Object.assign({}, out.anexos[k] || { n:0 }, { todos:true, trilha:true });
+    });
+  }catch(e){}
+  return out;
+}
 // O que a sentinela diz que existe e a memória (ou o objeto dado) não tem.
-function _gsSentFaltas(s, anexosObj, vistObj){
+// `explicadas` (opcional): exclusões intencionais registradas — descontadas.
+function _gsSentFaltas(s, anexosObj, vistObj, explicadas, saida){
   const out = [];
   if(!s) return out;
   try{
     const a = _gsSentContarAnexos(anexosObj), v = _gsSentContarVistorias(vistObj);
     const sa = (s.anexos && s.anexos.por_gs) || {}, sv = (s.vistorias && s.vistorias.por_gs) || {};
-    Object.keys(sa).forEach(function(k){ const t = a.por_gs[k] || 0; if(t < sa[k]) out.push('anexos ' + k + ': ' + sa[k] + '→' + t); });
-    Object.keys(sv).forEach(function(k){ const t = v.por_gs[k] || 0; if(t < sv[k]) out.push('vistorias ' + k + ': ' + sv[k] + '→' + t); });
+    const ex = explicadas || null;
+    const desconta = function(tipo, k, de, para){
+      if(!ex) return false;
+      if(ex.todos && ex.todos[tipo]) return true;
+      const r = ex[tipo] && ex[tipo][k];
+      if(!r) return false;
+      return !!r.todos || (de - para) <= (Number(r.n) || 0);
+    };
+    Object.keys(sa).forEach(function(k){
+      const t = a.por_gs[k] || 0; if(t >= sa[k]) return;
+      if(desconta('anexos', k, sa[k], t)){ if(saida) saida.push('anexos ' + k + ': ' + sa[k] + '→' + t); return; }
+      out.push('anexos ' + k + ': ' + sa[k] + '→' + t);
+    });
+    Object.keys(sv).forEach(function(k){
+      const t = v.por_gs[k] || 0; if(t >= sv[k]) return;
+      if(desconta('vistorias', k, sv[k], t)){ if(saida) saida.push('vistorias ' + k + ': ' + sv[k] + '→' + t); return; }
+      out.push('vistorias ' + k + ': ' + sv[k] + '→' + t);
+    });
   }catch(e){}
   return out;
+}
+// Avaliação da abertura: faltas SEM registro; o que foi descontado vai para a trilha (uma vez).
+function _gsSentFaltasAbertura(sent){
+  const descontadas = [];
+  const faltas = _gsSentFaltas(sent, ANEXOS, VISTORIAS, _gsSentExplicadas(sent), descontadas);
+  if(descontadas.length){
+    try{ addLogSistema('Contagem menor que a sentinela EXPLICADA por exclusões que o próprio app fez (check-out, limpeza, retenção): ' +
+      descontadas.slice(0, 8).join(', ') + (faltas.length ? '' : ' — alarme falso: o modo protegido NÃO é ligado (backups, envio ao Drive e limpezas seguem normais)'),
+      { aud:true, acao:'sentinela_exclusao_explicada', alvo:descontadas.slice(0, 4).join(' | '), origem:'automatico' }); }catch(e){}
+  }
+  return faltas;
 }
 function _gsSentDeMemoria(marcaId){
   const s = _gsSentLer() || {};
@@ -29164,6 +29556,7 @@ function _gsSentDeMemoria(marcaId){
   s.vistorias = _gsSentContarVistorias(VISTORIAS);
   if(marcaId) s.marca = marcaId;
   _gsSentGravar(s);
+  _gsSentRemLimpar();   // v2.4.7.2: a sentinela agora reflete a memória
   return s;
 }
 
@@ -29173,6 +29566,13 @@ function _gsSentDeMemoria(marcaId){
 // tipo: 'balde' (chave do ANEXOS), 'item' ({balde, anexo}), 'vistoria' (id),
 //       'rechave' ('anexos'|'vistorias' — re-vínculo/migração: mexe em várias chaves)
 function _gsRegistrarRemocao(tipo, info){
+  // v2.4.7.2 (Bloco B): o registro PERSISTENTE vale nos dois modos (e antes de a sentinela estar pronta)
+  try{
+    if(tipo === 'balde') _gsSentRemAnotar('anexos', _gsChaveSentAnexo(info), true, 'balde');
+    else if(tipo === 'item' && info) _gsSentRemAnotar('anexos', _gsChaveSentAnexo(info.balde), false, 'item');
+    else if(tipo === 'vistoria'){ const v0 = VISTORIAS && VISTORIAS[info]; _gsSentRemAnotar('vistorias', _gsGsDaVistoria(v0), false, 'vistoria'); }
+    else if(tipo === 'rechave') _gsSentRemAnotar(String(info), '*', true, 'rechave');
+  }catch(e){}
   try{
     if(_GS_PROT){
       const r = _GS_PROT.rem, b = _GS_PROT.base;
@@ -29208,10 +29608,19 @@ function _gsSentConferir(tipo, opts){
       if(a < ant[k] && !todos && !perm.chaves[k]) perdas.push(k + ' ' + ant[k] + '→' + a);
     });
     if(perdas.length){
-      _gsEntrarProtegido('reducao_sem_caminho_legitimo', tipo + ': ' + perdas.slice(0, 8).join(', '));
-      return false;
+      // v2.4.7.2 (Bloco B): o que está no registro persistente de exclusões também é caminho legítimo
+      const ex = _gsSentRemLer();
+      const reais = perdas.filter(function(p){
+        const k = p.split(' ')[0], r = ex[tipo] && ex[tipo][k];
+        return !(ex.todos && ex.todos[tipo]) && !(r && (r.todos || (ant[k] - (atual.por_gs[k] || 0)) <= (Number(r.n) || 0)));
+      });
+      if(reais.length){
+        _gsEntrarProtegido('reducao_sem_caminho_legitimo', tipo + ': ' + reais.slice(0, 8).join(', '));
+        return false;
+      }
     }
     s[tipo] = atual; _gsSentGravar(s);
+    _gsSentRemLimpar(tipo);   // v2.4.7.2: a sentinela deste tipo agora reflete a memória
     return true;
   }catch(e){ console.warn('[SENTINELA] conferência falhou (gravação segue):', e && e.message); return true; }
   finally{ perm.todos = false; perm.chaves = {}; }
@@ -29388,12 +29797,200 @@ function _gsRenderFaixaProtegido(){
     f.id = 'gs-faixa-protegido';
     f.setAttribute('role', 'alert');
     f.style.cssText = 'flex-shrink:0;background:#FCEBEB;border:1px solid #C53030;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:12px;color:#A32D2D;font-weight:600';
-    f.innerHTML = '<span style="flex:1;min-width:0">⚠️ Fotos e vistorias podem ter sido perdidas neste dispositivo. Os backups estão pausados para proteger a última cópia boa.</span>' +
-      '<button id="gs-faixa-recuperar" class="bsv" style="padding:5px 10px;font-size:11px;white-space:nowrap">Recuperar do último backup bom</button>';
     if(pg) pg.insertBefore(f, pg.firstChild); else document.body.insertBefore(f, document.body.firstChild);
   }
+  // v2.4.7.2 (Bloco C): com o servidor ligado, a saída é CONFERIR COM O SERVIDOR (que tem tudo o que
+  // os dispositivos fizeram). Restaurar um arquivo antigo por cima de dados sincronizados não aparece.
+  // Exceção: quando o próprio BANCO/PASTA sumiu (não é alarme de contagem), o servidor pode não ter fotos que
+  // nunca chegaram a subir — aí a recuperação SOMANDO (que nunca apaga) continua oferecida ao lado.
+  const srv = (typeof gsSrvAtivo === 'function') && gsSrvAtivo();
+  const apagado = _gsProtegidoPorApagamento();
+  const btnRec = '<button id="gs-faixa-recuperar" class="bsv" style="padding:5px 10px;font-size:11px;white-space:nowrap">Recuperar do último backup bom</button>';
+  const html = srv
+    ? '<span style="flex:1;min-width:0">⚠️ Fotos e vistorias podem ter sido perdidas neste dispositivo. Os backups estão pausados até conferir com o servidor.</span>' +
+      '<button id="gs-faixa-conferir" class="bsv" style="padding:5px 10px;font-size:11px;white-space:nowrap">Conferir com o servidor</button>' + (apagado ? btnRec : '')
+    : '<span style="flex:1;min-width:0">⚠️ Fotos e vistorias podem ter sido perdidas neste dispositivo. Os backups estão pausados para proteger a última cópia boa.</span>' + btnRec;
+  const chave = String(!!srv) + '|' + String(apagado);
+  if(f.getAttribute('data-srv') !== chave){ f.innerHTML = html; f.setAttribute('data-srv', chave); }
   const b = document.getElementById('gs-faixa-recuperar');
   if(b) b.onclick = function(){ _gsRecuperarUltimoBom(); };
+  const c = document.getElementById('gs-faixa-conferir');
+  if(c) c.onclick = function(){ gsTelaProtegidoConferir(); };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2.4.7.2 (Bloco C) — SAÍDA SEGURA DO MODO PROTEGIDO COM O SERVIDOR LIGADO
+// ════════════════════════════════════════════════════════════════════════════
+// O servidor tem tudo o que os dispositivos fizeram (registros, fotos e documentos
+// das hospedagens ativas). Conferir com ele é a forma certa de sair: compara as
+// hospedagens ativas, as vistorias e os anexos do aparelho com os do servidor; o
+// que faltar aqui é BAIXADO (nunca se apaga nada) e só então o modo termina.
+// "Recuperar do último backup bom" (restaurar arquivo antigo) não aparece com o
+// servidor ligado — misturaria um retrato velho com dados que já sincronizaram.
+let _gsProtConf = { rodando:false };
+// o modo protegido veio de o banco/pasta do app ter SUMIDO (não de uma contagem menor)
+function _gsProtegidoPorApagamento(){
+  try{ return !!_GS_PROT && /^(marca|banco_nao_abriu|arquivos_nao_leram|avaliacao_falhou)/.test(String(_GS_PROT.motivo || '')); }catch(e){ return false; }
+}
+async function gsProtegidoConferirServidor(opts){
+  opts = opts || {};
+  const prog = typeof opts.progresso === 'function' ? opts.progresso : function(){};
+  const res = { ok:false, erro:'', hosp_faltando:0, vist_faltando:0, baixados:0, faltam_arquivos:0, sem_copia:0 };
+  if(!_GS_PROT){ res.ok = true; return res; }
+  if(_gsProtConf.rodando){ res.erro = 'a conferência já está em andamento'; return res; }
+  if(!gsSrvAtivo() || _gsSync.estado !== 'ativo'){ res.erro = 'o servidor não está sincronizando agora — tente de novo em instantes'; return res; }
+  if(navigator.onLine === false){ res.erro = 'sem internet — tente de novo quando houver conexão'; return res; }
+  _gsProtConf.rodando = true;
+  const motivoAntes = _GS_PROT.motivo + (_GS_PROT.detalhe ? ' (' + _GS_PROT.detalhe + ')' : '');
+  try{
+    prog('Conferindo hospedagens e vistorias com o servidor…');
+    const st = await gsConferirServidor({ forcar:true });   // baixa o que o servidor tem de mais novo (só soma)
+    if(!st) throw new Error('o servidor não respondeu à conferência');
+    // hospedagens ATIVAS e vistorias do servidor que não estão aqui (depois da conferência, deve ser zero)
+    const hs = await _gsConfPaginas('hospedagens', 'chave,excluido', 'chave');
+    hs.forEach(function(r){ if(!r.excluido && !HOSPEDAGENS[r.chave]) res.hosp_faltando++; });
+    const locV = {};
+    Object.keys(VISTORIAS || {}).forEach(function(k){ const v = VISTORIAS[k]; if(v) locV[_gsSyncChaveVist(k, v)] = 1; });
+    const vs = await _gsConfPaginas('vistorias', 'chave,excluido', 'chave');
+    vs.forEach(function(r){ if(!r.excluido && !locV[r.chave]) res.vist_faltando++; });
+    if(res.hosp_faltando || res.vist_faltando){
+      res.erro = 'O servidor tem ' + res.hosp_faltando + ' hospedagem(ns) e ' + res.vist_faltando + ' vistoria(s) que ainda não chegaram aqui — a sincronização segue trazendo; confira de novo em 1 minuto.';
+      return res;
+    }
+    // fotos, documentos e assinaturas das hospedagens ATIVAS: o que o servidor guarda e falta aqui é baixado
+    prog('Conferindo fotos e documentos das hospedagens ativas…');
+    await gsPesadaConsultarServidor('conferência do modo protegido');
+    const antes = _gsPesadaPendentesBaixa().length;
+    const t0 = Date.now();
+    // baixa DIRETO (o gestor está com a tela da conferência aberta: a fila normal esperaria a tela ociosa),
+    // um arquivo por vez e com a MESMA trava da fila
+    while(_gsPesadaPendentesBaixa().length && Date.now() - t0 < (opts.tetoMs || 120000)){
+      prog('Baixando do servidor o que falta aqui… (' + _gsPesadaPendentesBaixa().length + ' arquivo(s))');
+      if(_gsPesada.enviando){ await new Promise(function(r){ setTimeout(r, 200); }); continue; }
+      _gsPesada.enviando = true;
+      let veio = false;
+      try{ veio = await _gsPesadaBaixarUm(); }catch(e){ console.warn('[PROTEGIDO] download na conferência:', e && e.message); }
+      finally{ _gsPesada.enviando = false; }
+      if(!veio) await new Promise(function(r){ setTimeout(r, 1000); });
+    }
+    res.faltam_arquivos = _gsPesadaPendentesBaixa().length;
+    res.baixados = Math.max(0, antes - res.faltam_arquivos);
+    if(res.faltam_arquivos){
+      res.erro = 'Ainda faltam ' + res.faltam_arquivos + ' arquivo(s) para baixar do servidor — a conexão está lenta; confira de novo em instantes. Nada foi apagado.';
+      return res;
+    }
+    // arquivo de hospedagem ativa que já saiu do armazenamento do servidor e falta aqui: o reenvio é pedido
+    // ao dispositivo que tem (não é algo que o servidor tenha — não segura a saída, mas fica dito)
+    try{
+      Object.keys(_gsPesada.srv).forEach(function(k){
+        const x = _gsPesada.srv[k];
+        if(x && x.removido_storage_em && /^(anexo|vistoria_documento|vistoria_assinatura)$/.test(String(x.tipo || '')) &&
+           _gsPesadaHospAtiva(x.gs) && !_gsPesadaTemLocal(x) && !_gsPesada.conhecidos[x.id]) res.sem_copia++;
+      });
+      if(res.sem_copia) _gsPesadaPedirReenvios();
+    }catch(e){}
+    // banco/pasta apagados: o servidor não tem o que nunca subiu — só sai se a sentinela não acusar mais nada
+    if(_gsProtegidoPorApagamento()){
+      const sent = _gsSentLer();
+      const resta = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS, _gsSentExplicadas(sent)) : [];
+      if(resta.length){
+        res.erro = 'O servidor não tem tudo o que este dispositivo tinha (' + resta.slice(0, 4).join(', ') + ') — use "Recuperar do último backup bom" (soma, nunca apaga).';
+        return res;
+      }
+    }
+    prog('Nada falta em relação ao servidor — gravando e saindo do modo protegido…');
+    const det = 'conferido com o servidor' + (res.baixados ? ' · ' + res.baixados + ' arquivo(s) baixado(s)' : ' · nada faltava') +
+      (res.sem_copia ? ' · ' + res.sem_copia + ' arquivo(s) pedido(s) ao outro dispositivo' : '') + (opts.auto ? ' · automático (' + opts.auto + ')' : '');
+    const g = await _gsProtegidoGravarESair(det);
+    if(!g.ok){ res.erro = g.erro || 'a gravação não pôde ser confirmada — modo protegido mantido'; return res; }
+    try{ addLogSistema('Modo protegido encerrado após CONFERÊNCIA COM O SERVIDOR — motivo do alarme: ' + motivoAntes + ' · ' + det,
+      { aud:true, acao:'modo_protegido_conferido_servidor', alvo:String(motivoAntes).slice(0, 80), origem:opts.auto ? 'automatico' : 'usuario', quem:opts.quem || '' }); }catch(e){}
+    res.ok = true;
+    return res;
+  }catch(e){
+    res.erro = (e && e.message) || String(e);
+    return res;
+  }finally{
+    _gsProtConf.rodando = false;
+    if(!res.ok){ try{ addLogSistema('Conferência com o servidor NÃO encerrou o modo protegido: ' + res.erro, { aud:true, acao:'modo_protegido_conferencia_incompleta', origem:opts.auto ? 'automatico' : 'usuario' }); }catch(x){} }
+  }
+}
+// Grava a coleção como está (memória conferida), refaz marca e sentinela e sai do modo.
+async function _gsProtegidoGravarESair(motivo){
+  if(!_GS_PROT) return { ok:true };
+  if(_gsArqModoArquivos()){
+    _gsAplicarRemocoesAnotadas(_GS_PROT.rem);
+    const sa = await _gsArqAgendarSync({}), sv = await _gsArqAgendarSyncVist({});
+    const conf = await _gsArqConferirContagens();
+    if(!(sa && sa.ok && sv && sv.ok && conf.ok)) return { ok:false, erro:'A gravação nos arquivos não pôde ser confirmada — modo protegido mantido.' + (conf.motivo ? ' (' + conf.motivo + ')' : '') };
+    let mca = await _gsArqLerJSON(GSARQ_MARCA);
+    if(!mca || !mca.id){ mca = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsArqGravarSeguro(GSARQ_MARCA, JSON.stringify(mca), false); }
+    const sn = _gsSentDeMemoria(''); sn.marca_arq = mca.id; _gsSentGravar(sn);
+  } else {
+    if(!_idbAvailable()) return { ok:false, erro:'O banco do dispositivo não abre — os dados não podem ser gravados agora.' };
+    _gsAplicarRemocoesAnotadas(_GS_PROT.rem);
+    const okA = await saveAnexosIDB(), okV = await saveVistoriasIDB();
+    const confA = await _gsConfirmarNoIDB(STORE_ANEXOS, ANEXOS), confV = await _gsConfirmarNoIDB(STORE_VISTORIAS, VISTORIAS);
+    if(!(okA && okV && confA && confV)){ _gsProtegidoSalvarPendentes(); return { ok:false, erro:'A gravação no banco não pôde ser confirmada — modo protegido mantido.' }; }
+    let marca = await _gsIdbGet(DB_STORE, GS_MARCA_KEY);
+    if(!marca || !marca.id){ marca = { id:_gsIdAleatorio(), criada_ts:Date.now() }; await _gsIdbPut(DB_STORE, GS_MARCA_KEY, marca); }
+    _gsSentDeMemoria(marca.id);
+    await _gsLimparPendentes();
+  }
+  _gsSairProtegido(motivo);
+  try{ _atualizarContadores(); }catch(e){}
+  _gsProtegidoDepoisDeSair(motivo);
+  return { ok:true };
+}
+// Depois de sair: backups, nuvem e limpezas voltam; o que ficou preso sai agora.
+function _gsProtegidoDepoisDeSair(motivo){
+  try{ Object.keys(_gsSuspensoAvisado).forEach(function(k){ delete _gsSuspensoAvisado[k]; }); }catch(e){}
+  try{ if(typeof atualizarRodapeNuvem === 'function') atualizarRodapeNuvem(); }catch(e){}
+  setTimeout(function(){
+    try{ fazerBackupLocal('saída do modo protegido', { comFotos:true, forcar:true }).catch(function(){}); }catch(e){}
+    try{ if(gsSrvAtivo()) _gsSrvSinal(); }catch(e){}                                   // o Drive deste dispositivo volta a contar
+    try{ if(gsSrvAtivo()) gsUsrRestaurarPinsDoServidor('saída do modo protegido'); }catch(e){}   // Bloco I
+    try{ _gdTentarPDFsPendentes({ todos:true }); }catch(e){}                           // os PDFs presos (ex.: GS441, GS422)
+    try{ if(typeof _hrelCiclo === 'function') _hrelCiclo(); }catch(e){}
+    try{ const pw = document.getElementById('painel-wrap'); if(pw && pw.style.display !== 'none') renderPainelDia(); }catch(e){}
+  }, 1500);
+}
+function gsTelaProtegidoConferir(){
+  showEntrarPIN(function(){
+    const tela = function(ms, cor){
+      showM('<div class="mt">🔎 Conferir com o servidor</div><div class="ms" id="gs-prot-conf-ms" style="font-weight:700;color:' + (cor || '#185FA5') + '">' + ms + '</div>' +
+        '<div style="font-size:11px;color:#888;margin-top:6px">Nada do que está neste dispositivo é apagado: o que faltar é baixado do servidor.</div>');
+    };
+    tela('Conferindo…');
+    gsProtegidoConferirServidor({ progresso:function(t){ const el = document.getElementById('gs-prot-conf-ms'); if(el) el.textContent = t; } }).then(function(r){
+      showM('<div class="mt">🔎 Conferir com o servidor</div><div class="ms" id="gs-prot-conf-res" style="font-weight:700;color:' + (r.ok ? '#0F6E56' : '#A32D2D') + '">' +
+        (r.ok ? '✅ Conferido: nada falta em relação ao servidor' + (r.baixados ? ' (' + r.baixados + ' arquivo(s) baixado(s))' : '') + '. Backups, envio ao Drive e limpezas retomados.'
+              : '⚠️ ' + _vtEsc(r.erro || 'não concluído') + '<br><small>O modo protegido continua — nada foi perdido.</small>') + '</div>' +
+        '<button class="b2t" onclick="closeOv()">Fechar</button>');
+    });
+  });
+}
+// Na abertura: alarme de CONTAGEM MENOR em que tudo o que falta é de hospedagem ENCERRADA (o perfil do
+// alarme falso de 14/11) e o servidor ligado → a conferência roda sozinha e, sem falta, o modo termina.
+function _gsProtegidoAutoConferir(){
+  try{
+    if(!_GS_PROT || _GS_PROT.motivo !== 'contagem_menor' || !gsSrvAtivo()) return;
+    const sent = _gsSentLer();
+    const faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS, _gsSentExplicadas(sent)) : [];
+    const soEncerradas = faltas.length > 0 && faltas.every(function(f){
+      const m = /^anexos (\S+):/.exec(f); if(!m) return false;
+      const h = HOSPEDAGENS[m[1]]; return !!(h && h.checkout_ts);
+    });
+    if(!soEncerradas && faltas.length) return;
+    const tentar = function(n){
+      if(!_GS_PROT) return;
+      if(_gsSync.estado !== 'ativo'){ if(n < 20) setTimeout(function(){ tentar(n + 1); }, 15000); return; }
+      gsProtegidoConferirServidor({ auto:'contagem menor só de hospedagem encerrada' }).then(function(r){
+        if(!r.ok && n < 20) setTimeout(function(){ tentar(n + 1); }, 60000);
+      });
+    };
+    setTimeout(function(){ tentar(0); }, 20000);
+  }catch(e){}
 }
 
 // ── Avaliação na abertura (dentro de `_migrarParaIndexedDB`, ANTES de gravar) ──
@@ -29415,7 +30012,7 @@ async function _gsAvaliarBanco(){
       motivo = 'marca_diferente'; detalhe = 'banco recriado (marca ' + marca.id + ' × sentinela ' + sent.marca + ')'; marcaEstado = 'DIFERENTE';
     } else marcaEstado = 'ok';
   }
-  const faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
+  const faltas = sent ? _gsSentFaltasAbertura(sent) : [];   // v2.4.7.2 (Bloco B): desconta as exclusões registradas
   if(!motivo && faltas.length){ motivo = 'contagem_menor'; detalhe = faltas.slice(0, 8).join(', '); }
   const banco = { anexos:_gsSentContarAnexos(ANEXOS).total, vistorias:_gsSentContarVistorias(VISTORIAS).total };
   const pend = await _gsLerPendentes();
@@ -29535,6 +30132,8 @@ async function _gsFontesDeBackup(){
   return fontes;
 }
 function _gsRecuperarUltimoBom(){
+  // v2.4.7.2 (Bloco C): com o servidor ligado, restaurar arquivo antigo não é oferecido — confere com o servidor
+  if(typeof gsSrvAtivo === 'function' && gsSrvAtivo() && !_gsProtegidoPorApagamento()){ gsTelaProtegidoConferir(); return; }
   showEntrarPIN(function(){
     showM('<div class="mt">♻ Recuperar do último backup bom</div>' +
       '<div class="ms" id="gs-rec-ms">Procurando o último backup bom — primeiro no dispositivo, depois na nuvem…</div>' +
@@ -29559,7 +30158,7 @@ async function _gsExecutarRecuperacao(){
   try{
     fontes = await _gsFontesDeBackup();
     for(let i = 0; i < fontes.length; i++){
-      if(sent && !_gsSentFaltas(sent, ANEXOS, VISTORIAS).length) break;   // já cobre tudo
+      if(sent && !_gsSentFaltas(sent, ANEXOS, VISTORIAS, _gsSentExplicadas(sent)).length) break;   // já cobre tudo
       let obj = null;
       try{ obj = await fontes[i].ler(); }catch(e){ console.warn('[RECUPERAR] não leu', fontes[i].nome, e && e.message); continue; }
       if(!obj || !obj.indexeddb) continue;   // só backup COMPLETO serve
@@ -29569,7 +30168,7 @@ async function _gsExecutarRecuperacao(){
   }catch(e){ res.erro = (e && e.message) || String(e); }
   finally{ _gsRecuperando = false; }
   try{ renderPainelDia(); }catch(e){}
-  res.faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS) : [];
+  res.faltas = sent ? _gsSentFaltas(sent, ANEXOS, VISTORIAS, _gsSentExplicadas(sent)) : [];
   if(res.faltas.length){
     res.erro = res.erro || (fontes.length ? 'Os backups encontrados não cobrem tudo o que este dispositivo tinha.' : 'Nenhum backup encontrado.');
     _gsProtegidoSalvarPendentes();   // o que foi somado fica GRAVADO como pendente
@@ -29909,6 +30508,15 @@ async function checkLicense(){
 
 // Inicialização — verifica licença antes de carregar o app
 initState();
+// v2.4.7.2 (Bloco A): cortina até o "app PRONTO" (o mapa pode ser montado antes pelo `resize`).
+// Rede de segurança: se a abertura travar, a cortina sai em 90 s — as ações continuam recusadas
+// por `gsBloqueadoAteCarregar` (nenhuma grava nada antes de os dados estarem em memória).
+_gsCarregandoMostrar();
+try{ setTimeout(function(){ if(!gsPronto()){ _gsCarregandoTirar(); console.warn('[CARGA] abertura passou de 90 s — cortina retirada; ações seguem bloqueadas até o app ficar pronto'); } }, 90000); }catch(e){}
+// v2.4.7.2 (Bloco D): o status do Drive é lido JÁ — antes ele só era lido depois dos arquivos
+// (até 17 s no tablet), e qualquer gravação nesse intervalo punha o padrão de fábrica
+// ("desconectado", sem e-mail, sem pasta) por cima do status real.
+loadDriveStatus();
 // Bug W v1.9.4.1.6: carregar contadores antes de qualquer save/load para detectar perdas
 _carregarContadores();
 console.log('[BUG W] contadores carregados:', _contadorAnterior);
@@ -29977,6 +30585,7 @@ Promise.resolve(true).then(async (ativo)=>{
       // apagava funcionários, anexos, vistorias, histórico e turnos.
       // ══════════════════════════════════════════════════════════════════
       _GS_PRONTO = true;
+      _gsCarregandoTirar();   // v2.4.7.2 (Bloco A)
       try { _normalizarHospedagens(); } catch(e){ console.warn('[BUG B] normalização pós-init:', e); }
       // v1.9.7.0: reancora anexos mal-vinculados ao GS correto ANTES que
       // qualquer check-out apague. Roda uma vez só; não destrutiva; idempotente.
