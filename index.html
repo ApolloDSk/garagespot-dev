@@ -1398,7 +1398,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.4.7.2';
+const GS_VERSION = 'v2.5.0.0';
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -5312,11 +5312,300 @@ function estaNoExpediente(u){
   return nowMin>=ini || nowMin<fim; // turno que passa da meia-noite
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// v2.5.0.0 — FASE 3, RODADA 1: PERFIL DA EMPRESA + PERMISSÕES POR FUNCIONÁRIO
+// ════════════════════════════════════════════════════════════════════════
+// Decisão do Douglas (31/10/2026): não há setor no dispositivo nem login por setor — os apps abrem no
+// Painel como sempre e QUEM decide a permissão é o FUNCIONÁRIO (PIN). Ver: todo mundo, sem PIN. Editar:
+// o PIN de quem faz a ação, conforme as ÁREAS dele (Garagem, Recarga, Reservas, Gestão).
+// Cada FUNÇÃO liga um padrão (GS_FUNCOES — o MESMO do `010_perfil_e_permissoes.sql`); o gestor liga ou
+// desliga qualquer área no cadastro (`areas_ajuste`: {area:{on, em, por}}). Gestão = PIN de 6 dígitos.
+// SÓ VALE COM O SERVIDOR LIGADO e com as funções configuradas (`gsPermAtivas`) — sem login é a v1.9.9.5
+// de sempre. E nunca tranca a empresa: sem nenhum funcionário ativo com Gestão, a Gestão volta ao PIN da
+// empresa (o de antes). Sem bloqueio por tentativas erradas (decisão do Douglas); a senha de emergência vale.
+const GS_AREAS = ['garagem', 'recarga', 'reservas', 'gestao'];
+const GS_AREA_NOME = { garagem:'Garagem', recarga:'Recarga', reservas:'Reservas', gestao:'Gestão' };
+const GS_FUNCOES = {
+  manobrista:    { nome:'Manobrista',    areas:['garagem', 'recarga'] },
+  recepcionista: { nome:'Recepcionista', areas:['reservas'] },
+  gestor:        { nome:'Gestor',        areas:GS_AREAS },
+  dev:           { nome:'DEV',           areas:GS_AREAS },
+};
+// funções do funcionário; sem nenhuma gravada, pelo cargo — e na dúvida, o que todo mundo faz hoje (manobrista)
+function gsUsrFuncoes(u){
+  const f = (u && Array.isArray(u.funcoes)) ? u.funcoes.filter(function(x){ return GS_FUNCOES[x]; }) : [];
+  if(f.length) return f;
+  return /recep/i.test(String((u && u.cargo) || '')) ? ['recepcionista'] : ['manobrista'];
+}
+function gsUsrFuncaoTexto(u){ return gsUsrFuncoes(u).map(function(f){ return GS_FUNCOES[f].nome; }).join(' + '); }
+function gsAreasDasFuncoes(fs){ const s = {}; (fs || []).forEach(function(f){ (GS_FUNCOES[f] ? GS_FUNCOES[f].areas : []).forEach(function(a){ s[a] = true; }); }); return s; }
+// {area:{on, origem:'funcao'|'gestor', em, por}} — ajuste igual ao padrão não conta (volta a ser "pela função")
+function gsUsrAreas(u){
+  const pad = gsAreasDasFuncoes(gsUsrFuncoes(u)), aj = (u && u.areas_ajuste) || {}, out = {};
+  GS_AREAS.forEach(function(a){
+    const x = aj[a];
+    out[a] = (x && typeof x.on === 'boolean' && x.on !== !!pad[a]) ? { on:x.on, origem:'gestor', em:x.em || 0, por:x.por || '' } : { on:!!pad[a], origem:'funcao' };
+  });
+  return out;
+}
+function gsPermAtivas(){
+  try{
+    if(!gsSrvAtivo()) return false;
+    const at = _gsUsrAtivos();
+    return at.some(function(u){ return Array.isArray(u.funcoes) && u.funcoes.length; }) && at.some(function(u){ return gsUsrAreas(u).gestao.on; });
+  }catch(e){ return false; }
+}
+function gsUsrPode(u, area){ if(!gsPermAtivas()) return true; try{ return !!gsUsrAreas(u)[area].on; }catch(e){ return true; } }
+function gsUsrPinExigido(u){ try{ return (gsPermAtivas() || (gsSrvAtivo() && Array.isArray(u && u.funcoes))) && gsUsrAreas(u).gestao.on ? 6 : 4; }catch(e){ return 4; } }
+function gsUsrPinLen(u){ return (u && Number(u.pin_len) === 6) ? 6 : 4; }   // PIN antigo (sem `pin_len`) é de 4
+function gsUsrPrecisaTrocarPin(u){ return _usrTemPin(u) && gsUsrPinLen(u) < gsUsrPinExigido(u); }
+function _gsPinDots(n){ let h = '<div class="pin-display">'; for(let i = 0; i < n; i++) h += '<div class="pin-dot" id="pd-' + i + '"></div>'; return h + '</div>'; }
+function _gsPinTecladoHTML(comFechar){
+  let h = '<div class="pin-keypad">';
+  for(let n = 1; n <= 9; n++) h += '<button class="pin-key" onclick="pinKey(\'' + n + '\')">' + n + '</button>';
+  h += comFechar ? '<button class="pin-key" onclick="closeOv()" style="font-size:11px;color:#888">✕</button>' : '';
+  return h + '<button class="pin-key" onclick="pinKey(\'0\')">0</button><button class="pin-key del" onclick="pinDel()">⌫</button></div>';
+}
+// permissão negada: diz o MOTIVO (área, função) e quem resolve; fica na trilha
+function _gsPermNegadaHTML(u, area, acao){
+  const pn = _vtEsc(String((u && u.nome) || '').split(' ')[0]);
+  return '<div class="mt">🚫 Sem permissão</div>' +
+    '<div class="b2-alerta" id="perm-negada"><strong>' + pn + '</strong> não pode ' + _vtEsc(String(acao || 'fazer esta ação')) + ': a área <strong>' + GS_AREA_NOME[area] +
+    '</strong> não está liberada para ' + pn + ' (função: ' + _vtEsc(gsUsrFuncaoTexto(u)) + ').</div>' +
+    '<div class="b2-aviso">Quem libera é o gestor, em Gestão → Usuários → ' + pn + '. Ver continua liberado para todos.</div>';
+}
+function gsPermRegistrarNegada(u, area, acao){
+  try{ addLogSistema('Permissão negada: ' + ((u && u.nome) || '?') + ' tentou ' + (acao || 'uma ação') + ' sem a área ' + GS_AREA_NOME[area],
+    { aud:true, quem:(u && u.nome) || '', acao:'permissao_negada', alvo:GS_AREA_NOME[area] }); }catch(e){}
+}
+
+// TROCA OBRIGATÓRIA 4 → 6: PIN atual (4) → novo PIN (6) → confirmar novo PIN (6). Erro não bloqueia.
+function _gsPinTrocaObrigatoria(u, onOk, onVoltar){
+  const mc = document.getElementById('mc');
+  let etapa = 1, novo = '';
+  const pn = _vtEsc(String(u.nome || '').split(' ')[0]);
+  function render(err){
+    const n = etapa === 1 ? gsUsrPinLen(u) : 6;
+    const sub = etapa === 1 ? 'Quem tem a área <strong>Gestão</strong> passa a usar PIN de <strong>6 dígitos</strong>. Digite o seu PIN <strong>atual</strong> (' + n + ' dígitos).'
+      : etapa === 2 ? 'Digite o <strong>novo</strong> PIN de 6 dígitos.' : 'Repita o novo PIN de 6 dígitos.';
+    mc.innerHTML = '<div class="mt" id="pin-troca-titulo">🔑 Troca de PIN — ' + pn + '</div>' +
+      '<div class="ms" id="pin-troca-etapa" data-etapa="' + etapa + '">' + sub + '</div>' + _gsPinDots(n) +
+      '<div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px">' + (err || '') + '</div>' +
+      _gsPinTecladoHTML(false) + '<button class="b2t" id="pin-troca-voltar">← Voltar</button>';
+    document.getElementById('ov').classList.add('on');
+    document.getElementById('pin-troca-voltar').onclick = function(){ if(typeof onVoltar === 'function') onVoltar(); else closeOv(); };
+    _gsPinTeclado(function(t){
+      if(etapa === 1){
+        if(!_usrPinValido(u, t)) return false;   // "PIN incorreto — tente novamente"; sem bloqueio
+        etapa = 2; setTimeout(function(){ render(); }, 250); return true;
+      }
+      if(etapa === 2){ novo = t; etapa = 3; setTimeout(function(){ render(); }, 250); return true; }
+      if(t !== novo){ etapa = 2; novo = ''; setTimeout(function(){ render('Os dois não coincidem — digite o novo PIN de novo'); }, 250); return true; }
+      const i = USUARIOS.findIndex(function(x){ return x && x.id === u.id; });
+      if(i < 0){ setTimeout(function(){ render('Não foi possível gravar — tente de novo'); }, 250); return true; }
+      USUARIOS[i] = Object.assign(_gsUsrComPin(USUARIOS[i], novo), { pin_len:6 });
+      saveUsuarios();
+      try{ addLogSistema('PIN de ' + (u.nome || '') + ' trocado para 6 dígitos (área Gestão)', { aud:true, quem:u.nome || '', acao:'pin_trocado_6', alvo:u.nome || '' }); }catch(e){}
+      try{ _gsBackupAuto('troca de PIN'); }catch(e){}
+      showToast('✅ PIN de ' + (u.nome || '') + ' trocado para 6 dígitos', 3500);
+      setTimeout(function(){ onOk(USUARIOS[i]); }, 250);
+      return true;
+    }, etapa === 1 ? 'PIN incorreto — tente novamente' : null, n);
+  }
+  render();
+}
+
+// GESTÃO POR FUNCIONÁRIO: só quem tem a área Gestão aparece; o PIN é o DELE (6 dígitos).
+// callback(quem) recebe {nome, id, cargo, via} — quem fez fica na trilha das ações sensíveis.
+function _gsEntrarGestao(callback){
+  const mc = document.getElementById('mc');
+  const lista = gsUsrOrdenados(_gsUsrAtivos().filter(function(u){ return gsUsrAreas(u).gestao.on; }));
+  const quem = function(u, via){ return { nome:u.nome, id:u.id, cargo:u.cargo || '', via:via }; };
+  function listar(aviso){
+    mc.innerHTML = '<div class="mt">🔑 Gestão</div><div class="ms">Quem está entrando? Só aparece quem tem a área Gestão.</div>' +
+      (aviso ? '<div class="b2-alerta" id="ge-aviso">' + _vtEsc(aviso) + '</div>' : '') +
+      '<div class="usr-list">' + lista.map(function(u){
+        return '<div class="usr-item" id="ge-usr-' + _vtEsc(u.id) + '"><div><div><span class="usr-nome">' + _vtEsc(u.nome || '') + '</span></div>' +
+          '<div class="usr-cargo-lbl">' + _vtEsc(gsUsrFuncaoTexto(u)) + (gsUsrPrecisaTrocarPin(u) ? ' · troca para PIN de 6 dígitos' : (!_usrTemPin(u) ? ' · sem PIN' : '')) + '</div></div></div>';
+      }).join('') + '</div>' +
+      '<div class="b2-aviso" style="margin-top:8px">Não está na lista? A área Gestão é liberada por um gestor, no cadastro do funcionário.</div>' +
+      _gsSenhaEmergenciaHTML() + '<button class="b2t" onclick="closeOv()">Cancelar</button>';
+    document.getElementById('ov').classList.add('on');
+    lista.forEach(function(u){ const el = document.getElementById('ge-usr-' + u.id); if(el) el.onclick = function(){ escolher(u); }; });
+    _gsSenhaEmergenciaLigar(function(){ try{ window.pinKey = function(){}; window.pinDel = function(){}; }catch(e){} callback({ nome:'senha de emergência', id:null, cargo:'', via:'emergencia' }); });
+  }
+  function escolher(u){
+    const pn = _vtEsc(String(u.nome || '').split(' ')[0]);
+    if(!_usrTemPin(u)){
+      // sem PIN ainda: o PIN da EMPRESA (o de antes) libera uma vez, e ele cadastra o dele (6 dígitos) na hora
+      mc.innerHTML = '<div class="mt">🔑 ' + pn + ' ainda não tem PIN</div><div class="ms">Para cadastrar o PIN de 6 dígitos de ' + pn + ', digite o PIN da gestão (o da empresa, usado até agora).</div>' +
+        _gsPinDots(4) + '<div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px"></div>' +
+        _gsPinTecladoHTML(false) + '<button class="b2t" id="ge-voltar">← Voltar</button>';
+      document.getElementById('ge-voltar').onclick = function(){ listar(); };
+      _gsPinTeclado(function(t){
+        if(!_gsPinValido(t)) return false;
+        setTimeout(function(){ _usrDefinirPin(u, function(){ listar(); }, function(u2){ callback(quem(u2, 'pin_novo')); }); }, 250);
+        return true;
+      }, null, 4);
+      return;
+    }
+    if(gsUsrPrecisaTrocarPin(u)){ _gsPinTrocaObrigatoria(u, function(u2){ callback(quem(u2, 'pin')); }, function(){ listar(); }); return; }
+    const n = gsUsrPinLen(u);
+    mc.innerHTML = '<div class="mt">🔑 PIN de ' + pn + '</div><div class="ms">Digite seu PIN de ' + n + ' dígitos</div>' + _gsPinDots(n) +
+      '<div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px"></div>' +
+      _gsPinTecladoHTML(false) + '<button class="b2t" id="ge-voltar">← Voltar</button>';
+    document.getElementById('ge-voltar').onclick = function(){ listar(); };
+    _gsPinTeclado(function(t){
+      if(!_usrPinValido(u, t)) return false;   // sem bloqueio por tentativas (decisão do Douglas)
+      callback(quem(u, 'pin'));
+      return true;
+    }, null, n);
+  }
+  if(!lista.length){ listar('Nenhum funcionário ativo com a área Gestão.'); return; }
+  listar();
+}
+
+// ── cadastro do funcionário: chave "Gestor" no topo, funções, áreas (só com o servidor ligado) ──
+function _gsPermFormTopo(u){
+  if(!gsSrvAtivo()) return '';
+  const fs = u ? gsUsrFuncoes(u) : ['manobrista'];
+  const g = fs.indexOf('gestor') >= 0;
+  return '<div id="uf-gestor-box" style="background:#FFF6E0;border:1.5px solid #E0A526;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+    '<div><div style="font-size:13px;font-weight:700;color:#6B4200">👔 Gestor</div><div style="font-size:11px;color:#6B4200;margin-top:2px;line-height:1.4">Todas as áreas e PIN de <strong>6 dígitos</strong> (os demais usam 4).</div></div>' +
+    _togSwitch('uf-gestor', g, "window._ufPermMudou && window._ufPermMudou()") + '</div>';
+}
+function _gsPermFormAreas(u){
+  if(!gsSrvAtivo()) return '';
+  const fs = u ? gsUsrFuncoes(u) : ['manobrista'];
+  let h = '<label class="fl">Função</label><div id="uf-funcoes" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">';
+  ['manobrista', 'recepcionista'].forEach(function(f){
+    h += '<label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="uf-f-' + f + '" ' + (fs.indexOf(f) >= 0 ? 'checked' : '') + ' onchange="window._ufPermMudou && window._ufPermMudou()">' + GS_FUNCOES[f].nome + '</label>';
+  });
+  if(fs.indexOf('dev') >= 0) h += '<span id="uf-f-dev" style="font-size:12px;color:#6B4200;background:#FFF6E0;border-radius:5px;padding:2px 7px">DEV (desenvolvedor)</span>';
+  h += '</div><label class="fl">Áreas que pode editar</label><div id="uf-areas" style="border:1px solid #eee;border-radius:8px;padding:2px 10px;margin-bottom:6px">';
+  GS_AREAS.forEach(function(a){
+    h += '<div class="uf-area" data-area="' + a + '" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f3f2ee">' +
+      '<div><div style="font-size:13px;font-weight:600">' + GS_AREA_NOME[a] + '</div><div id="uf-area-' + a + '-orig" style="font-size:11px;color:#888;margin-top:1px"></div></div>' +
+      _togSwitch('uf-area-' + a, false, "window._ufAreaMudou && window._ufAreaMudou('" + a + "')") + '</div>';
+  });
+  h += '</div><button type="button" class="b2t" id="uf-areas-padrao" style="margin-bottom:6px">↺ Voltar ao padrão da função</button>';
+  return h;
+}
+// liga o formulário: estado em memória (funções da tela + ajustes), pintado num lugar só
+function _gsPermFormLigar(u){
+  if(!gsSrvAtivo() || !document.getElementById('uf-areas')) return;
+  const st = { aj:JSON.parse(JSON.stringify((u && u.areas_ajuste) || {})), dev:!!(u && gsUsrFuncoes(u).indexOf('dev') >= 0) };
+  window._ufPermEstado = st;
+  const fsTela = function(){
+    const fs = [];
+    ['manobrista', 'recepcionista'].forEach(function(f){ const c = document.getElementById('uf-f-' + f); if(c && c.checked) fs.push(f); });
+    const g = document.getElementById('uf-gestor'); if(g && g.checked) fs.push('gestor');
+    if(st.dev) fs.push('dev');
+    return fs;
+  };
+  st.funcoes = fsTela;
+  const pintarChave = function(id, on){
+    const c = document.getElementById(id); if(!c) return; c.checked = on;
+    const sp = c.nextElementSibling; if(sp){ sp.style.background = on ? '#0F6E56' : '#ccc'; if(sp.children[0]) sp.children[0].style.left = on ? '23px' : '3px'; }
+  };
+  const pintar = function(){
+    const pad = gsAreasDasFuncoes(fsTela());
+    pintarChave('uf-gestor', fsTela().indexOf('gestor') >= 0);
+    GS_AREAS.forEach(function(a){
+      const x = st.aj[a], ajustada = !!(x && typeof x.on === 'boolean' && x.on !== !!pad[a]);
+      const on = ajustada ? x.on : !!pad[a];
+      pintarChave('uf-area-' + a, on);
+      const o = document.getElementById('uf-area-' + a + '-orig');
+      if(o) o.textContent = !ajustada ? 'pela função' : (x.por ? 'alterada pelo gestor · ' + _dLocal(x.em) + ' · ' + x.por : 'alterada pelo gestor (ao salvar)');
+      if(o) o.style.color = ajustada ? '#854F0B' : '#888';
+    });
+  };
+  window._ufPermMudou = pintar;
+  window._ufAreaMudou = function(a){
+    const c = document.getElementById('uf-area-' + a), pad = gsAreasDasFuncoes(fsTela());
+    if(!c) return;
+    if(c.checked === !!pad[a]) delete st.aj[a]; else st.aj[a] = { on:c.checked };   // em/por são gravados ao salvar
+    pintar();
+  };
+  const b = document.getElementById('uf-areas-padrao'); if(b) b.onclick = function(){ st.aj = {}; pintar(); };
+  pintar();
+}
+// lê o que a tela pede; devolve null sem a tela (sem servidor = como antes)
+function _gsPermFormLer(u, isNovo){
+  const st = window._ufPermEstado;
+  if(!gsSrvAtivo() || !st || !document.getElementById('uf-areas')) return null;
+  const fs = st.funcoes();
+  if(!fs.length) return { erro:'Escolha pelo menos uma função (Manobrista, Recepcionista ou Gestor).' };
+  const pad = gsAreasDasFuncoes(fs), aj = {};
+  GS_AREAS.forEach(function(a){ const x = st.aj[a]; if(x && typeof x.on === 'boolean' && x.on !== !!pad[a]) aj[a] = x; });
+  const novoU = Object.assign({}, u || {}, { funcoes:fs, areas_ajuste:aj });
+  const antes = u ? gsUsrAreas(u) : null, depois = gsUsrAreas(novoU);
+  const funcAntes = u ? gsUsrFuncoes(u).slice().sort().join(',') : '', funcDepois = fs.slice().sort().join(',');
+  const mudou = isNovo || funcAntes !== funcDepois || !u || !Array.isArray(u.funcoes) || GS_AREAS.some(function(a){ return antes[a].on !== depois[a].on || antes[a].origem !== depois[a].origem; });
+  // nunca deixar a empresa sem ninguém com Gestão
+  if(u && antes && antes.gestao.on && !depois.gestao.on && u.ativo !== false){
+    const outros = _gsUsrAtivos().filter(function(x){ return x.id !== u.id && gsUsrAreas(x).gestao.on; });
+    if(!outros.length) return { erro:'Precisa ficar pelo menos um funcionário ativo com a área Gestão.' };
+  }
+  return { funcoes:fs, areas_ajuste:aj, mudou:mudou, antes:antes, depois:depois, funcAntes:funcAntes, funcDepois:funcDepois };
+}
+// grava no funcionário (com quem/quando de cada ajuste) e registra cada mudança na trilha
+function _gsPermAplicar(uid, p, quem){
+  const i = USUARIOS.findIndex(function(x){ return x && x.id === uid; }); if(i < 0) return;
+  const por = (quem && quem.nome) || 'gestor', em = Date.now(), u0 = USUARIOS[i];
+  const ajAnt = u0.areas_ajuste || {}, aj = {};
+  Object.keys(p.areas_ajuste).forEach(function(a){
+    const ant = ajAnt[a];
+    aj[a] = (ant && ant.on === p.areas_ajuste[a].on && ant.por) ? ant : { on:p.areas_ajuste[a].on, em:em, por:por };
+  });
+  USUARIOS[i] = Object.assign({}, u0, { funcoes:p.funcoes, areas_ajuste:aj });
+  if(!Array.isArray(u0.funcoes) || p.funcAntes !== p.funcDepois) USUARIOS[i].funcoes_origem = { por:por, em:em };
+  const nome = u0.nome || '';
+  if(p.funcAntes !== p.funcDepois){
+    try{ addLogSistema('Função de ' + nome + ': ' + (p.funcAntes ? p.funcAntes.split(',').map(function(f){ return GS_FUNCOES[f] ? GS_FUNCOES[f].nome : f; }).join(' + ') : '(nova)') +
+      ' → ' + gsUsrFuncaoTexto(USUARIOS[i]) + ' (por ' + por + ')', { aud:true, quem:por, acao:'funcao_alterada', alvo:nome }); }catch(e){}
+  }
+  const dep = gsUsrAreas(USUARIOS[i]);
+  GS_AREAS.forEach(function(a){
+    const ant = p.antes ? p.antes[a] : null;
+    if(ant && ant.on === dep[a].on && ant.origem === dep[a].origem) return;
+    if(!ant && dep[a].origem === 'funcao') return;
+    try{ addLogSistema('Permissão de ' + nome + ': ' + GS_AREA_NOME[a] + ' ' + (dep[a].on ? 'LIGADA' : 'DESLIGADA') + ' ' +
+      (dep[a].origem === 'gestor' ? 'pelo gestor ' + por : '(volta ao padrão da função, por ' + por + ')') + (ant ? ' — antes: ' + (ant.on ? 'ligada' : 'desligada') + ' ' + (ant.origem === 'gestor' ? 'pelo gestor' : 'pela função') : ''),
+      { aud:true, quem:por, acao:'permissao_alterada', alvo:nome + ' · ' + GS_AREA_NOME[a] }); }catch(e){}
+  });
+}
+
+// ── perfil da empresa (servidor; sem login = hotelaria + Garagem/Recarga, como hoje) ──
+const GS_PERFIL_LS = 'garagespot_empresa_perfil';   // estado do APARELHO (vem do servidor) — não é reposto pelo backup
+function gsPerfil(){
+  const p = { segmento:'hotelaria', modulos_liberados:['garagem', 'recarga'] };
+  if(!gsSrvAtivo()) return p;
+  try{
+    const s = JSON.parse(localStorage.getItem(GS_PERFIL_LS) || 'null');
+    if(s && (s.segmento === 'hotelaria' || s.segmento === 'estacionamento')) p.segmento = s.segmento;
+    if(s && Array.isArray(s.modulos_liberados) && s.modulos_liberados.length) p.modulos_liberados = s.modulos_liberados.slice();
+  }catch(e){}
+  if(p.modulos_liberados.indexOf('garagem') < 0) p.modulos_liberados.unshift('garagem');
+  return p;
+}
+function gsModuloLiberado(m){ return gsPerfil().modulos_liberados.indexOf(m) >= 0; }
+async function gsPerfilAtualizar(){
+  if(!gsSrvAtivo()) return null;
+  const r = await _gsSrvRpc('perfil_empresa', {}, 8000);
+  if(r.error || !r.data) return null;   // servidor sem o 010: fica o padrão (nada muda)
+  try{ localStorage.setItem(GS_PERFIL_LS, JSON.stringify({ segmento:r.data.segmento, modulos_liberados:r.data.modulos_liberados, em:Date.now() })); }catch(e){}
+  try{ applyModulos(); }catch(e){}
+  return r.data;
+}
+
 // ── CONFIRMAR USUÁRIO ─────────────────────────────────────────────────────
-function confirmarUsuario(acao, callback){
-  // v2.4.7.2 (Bloco A): toda ação (check-in, check-out, passeio, mover, recarga, vistoria) passa
-  // por aqui — antes do "app PRONTO" ela NÃO executa (histórico, Drive e sentinela ainda não carregaram)
+// v2.5.0.0: `area` (garagem | recarga | reservas) — sem ela, Recarga pelo texto da ação, senão Garagem.
+// Quem não tem a área aparece com o motivo e NÃO chega ao PIN (permissão negada mostra o motivo).
+function confirmarUsuario(acao, callback, area){
+  // v2.4.7.2 (Bloco A): toda ação passa por aqui — antes do "app PRONTO" ela NÃO executa
   if(gsBloqueadoAteCarregar(acao)) return;
+  const _area=area||(/recarga/i.test(String(acao||''))?'recarga':'garagem');
   const _usrLanc=_gsUsrAtivos();   // v2.2.0.0: inativo some dos NOVOS lançamentos (sem servidor, ninguém é inativo)
   if(!_usrLanc.length){ callback(null); return; }
   // Parte 1 v1.9.4.8: o DESTAQUE ("em serviço") agora vem do PLANTÃO ATUAL EFETIVO —
@@ -5343,7 +5632,7 @@ function confirmarUsuario(acao, callback){
     const fora=foraExp.some(function(x){ return x===u || (x && u && x.id!=null && String(x.id)===String(u.id)); });   // v2.4.7.2: por id (o registro pode ter sido trocado ao receber o PIN)
     return `<div class="usr-item" id="cu-usr-${u.id}">
       <div>
-        <div><span class="usr-nome">${u.nome}</span>${fora?'<span class="usr-badge-out">Fora do expediente</span>':''}</div>
+        <div><span class="usr-nome">${u.nome}</span>${fora?'<span class="usr-badge-out">Fora do expediente</span>':''}${gsUsrPode(u,_area)?'':'<span class="usr-badge-out usr-sem-perm" style="background:#FDECEC;color:#8E1F1F">sem permissão de '+GS_AREA_NOME[_area]+'</span>'}</div>
         <div class="usr-cargo-lbl">${u.cargo}${!fora&&u.horaInicio?' · '+u.horaInicio+'–'+u.horaFim:''}</div>
       </div>
     </div>`;
@@ -5352,7 +5641,7 @@ function confirmarUsuario(acao, callback){
   function bindClicks(lista){
     lista.forEach(u=>{
       const el=document.getElementById('cu-usr-'+u.id);
-      if(el) el.onclick=()=>mostrarConfirmacao(u);
+      if(el) el.onclick=()=>(gsUsrPode(u,_area)?mostrarConfirmacao(u):mostrarNegado(u));
     });
   }
 
@@ -5375,6 +5664,14 @@ function confirmarUsuario(acao, callback){
     bindClicks(itens);
   }
 
+  function mostrarNegado(u){
+    gsPermRegistrarNegada(u, _area, acao);
+    const mc=document.getElementById('mc');
+    mc.innerHTML=_gsPermNegadaHTML(u, _area, acao)+'<button class="b2t" id="cu-voltar">← Voltar</button>';
+    document.getElementById('ov').classList.add('on');
+    document.getElementById('cu-voltar').onclick=()=>mostrarLista(false);
+  }
+
   function mostrarConfirmacao(u, erroPin){
     const fora=foraExp.some(function(x){ return x===u || (x && u && x.id!=null && String(x.id)===String(u.id)); });   // v2.4.7.2: por id (o registro pode ter sido trocado ao receber o PIN)
     const mc=document.getElementById('mc');
@@ -5387,12 +5684,16 @@ function confirmarUsuario(acao, callback){
     // v1.9.4.15: COM PIN → teclado (o `_gsPinTeclado` da 4.13, ponto único, sem
     // dessincronismo de bolinhas). SEM PIN → fluxo antigo, para não travar a
     // operação enquanto o gestor não cadastra (modo de transição).
+    if(_usrTemPin(u) && gsUsrPrecisaTrocarPin(u)){   // v2.5.0.0: área Gestão com PIN de 4 → troca obrigatória, depois segue a ação
+      _gsPinTrocaObrigatoria(u, function(u2){ callback({nome:u2.nome,cargo:u2.cargo,foraExpediente:fora,id:u2.id,via:'pin'}); }, function(){ mostrarLista(false); });
+      return;
+    }
     if(_usrTemPin(u)){
       mc.innerHTML=`<div class="mt">🔑 PIN de ${_vtEsc(String(u.nome||'').split(' ')[0])}</div>
-        <div class="ms">Digite seu PIN de 4 dígitos para confirmar</div>
+        <div class="ms">Digite seu PIN de ${gsUsrPinLen(u)} dígitos para confirmar</div>
         ${cabeca}
         ${avisoFora}
-        <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot" id="pd-${i}"></div>`).join('')}</div>
+        ${_gsPinDots(gsUsrPinLen(u))}
         <div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px">${erroPin?'PIN incorreto — tente novamente':''}</div>
         <div class="pin-keypad">
           ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="pin-key" onclick="pinKey('${n}')">${n}</button>`).join('')}
@@ -5412,7 +5713,7 @@ function confirmarUsuario(acao, callback){
         }
         callback({nome:u.nome,cargo:u.cargo,foraExpediente:fora,id:u.id,via:'pin'});
         return true;
-      });
+      }, null, gsUsrPinLen(u));
       return;
     }
 
@@ -5462,20 +5763,21 @@ function confirmarUsuario(acao, callback){
 // dentro da Gestão. Quem digita o valor é O PRÓPRIO FUNCIONÁRIO — o gestor abre
 // a tela e entrega o aparelho; ele nunca vê nem escolhe o PIN do outro.
 // A trilha registra QUEM teve o PIN definido e quando, NUNCA o valor.
-function _usrDefinirPin(u, onFim){
+function _usrDefinirPin(u, onFim, onOk){
   const mc=document.getElementById('mc');
   if(!mc||!u) { if(typeof onFim==='function') onFim(); return; }
   const jaTinha=_usrTemPin(u);
+  const N=gsUsrPinExigido(u);   // v2.5.0.0: área Gestão = 6 dígitos; demais 4
   let etapa=1, primeiro='';
   function render(err){
     const titulo = etapa===1 ? (jaTinha?'Redefinir PIN':'Cadastrar PIN') : 'Confirmar PIN';
     const sub = etapa===1
-      ? 'Entregue o dispositivo para <strong>'+_vtEsc(u.nome||'')+'</strong> digitar um PIN de 4 dígitos'
+      ? 'Entregue o dispositivo para <strong>'+_vtEsc(u.nome||'')+'</strong> digitar um PIN de '+N+' dígitos'
       : 'Repita o PIN para confirmar';
     mc.innerHTML=`<div class="mt">🔑 ${titulo}</div>
       <div class="ms">${sub}</div>
       <div style="background:#f5f4f0;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#555">${_vtEsc(u.nome||'')}${u.cargo?' · '+_vtEsc(u.cargo):''}</div>
-      <div class="pin-display">${[0,1,2,3].map(i=>`<div class="pin-dot" id="pd-${i}"></div>`).join('')}</div>
+      ${_gsPinDots(N)}
       <div id="pin-err" style="min-height:16px;text-align:center;font-size:11px;color:#A32D2D;margin-bottom:4px">${err||''}</div>
       <div class="pin-keypad">
         ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="pin-key" onclick="pinKey('${n}')">${n}</button>`).join('')}
@@ -5501,7 +5803,7 @@ function _usrDefinirPin(u, onFim){
       let ok=false;
       try{
         const idx=USUARIOS.findIndex(function(x){ return x && x.id===u.id; });
-        if(idx>=0){ USUARIOS[idx]=_gsUsrComPin(USUARIOS[idx], primeiro); saveUsuarios(); ok=true; }   // v2.2.0.0: com servidor, só o hash
+        if(idx>=0){ USUARIOS[idx]=Object.assign(_gsUsrComPin(USUARIOS[idx], primeiro), {pin_len:primeiro.length}); saveUsuarios(); ok=true; }   // v2.2.0.0: com servidor, só o hash
       }catch(e){ console.error('[PIN usr] falha gravando:',e&&e.message); }
       if(!ok){
         etapa=1; primeiro='';
@@ -5512,9 +5814,10 @@ function _usrDefinirPin(u, onFim){
         {aud:true, acao:jaTinha?'pin_funcionario_redefinido':'pin_funcionario_cadastrado', alvo:(u.nome||'')}); }catch(e){}
       try{ _gsBackupAuto('PIN de funcionário'); }catch(e){}
       if(typeof showToast==='function') showToast('PIN de '+(u.nome||'')+' salvo');
+      if(typeof onOk==='function'){ const u2=USUARIOS.find(function(x){ return x&&x.id===u.id; })||u; setTimeout(function(){ onOk(u2); },300); return true; }
       if(typeof onFim==='function') onFim();
       return true;
-    });
+    }, null, N);
   }
   render();
 }
@@ -5583,6 +5886,7 @@ function showModalUsuarios(){
     const diaAB=(u&&u.diaAB)||'A';
     const turno12=(u&&u.turno12)||'dia';
     mc.innerHTML=`<div class="mt">${isNovo?'+ Novo usuário':'✏️ Editar usuário'}</div>
+      ${_gsPermFormTopo(u)}
       <label class="fl">Nome completo <span class="req">*</span></label>
       <input class="fi" id="uf-nome" value="${u?_vtEsc(u.nome):''}" placeholder="Nome completo">
       <label class="fl">Cargo</label>
@@ -5610,12 +5914,14 @@ function showModalUsuarios(){
       <input type="time" class="fi" id="uf-inicio" value="${u?(u.horaInicio||''):''}">
       <label class="fl">Fim do expediente</label>
       <input type="time" class="fi" id="uf-fim" value="${u?(u.horaFim||''):''}">
+      ${_gsPermFormAreas(u)}
       ${delBtn}
       <div class="b2">
         <button class="bcx" id="uf-back">← Voltar</button>
         <button class="bsv" id="uf-save">Salvar</button>
       </div>`;
     document.getElementById('ov').classList.add('on');
+    _gsPermFormLigar(u);   // v2.5.0.0
     const escSel=document.getElementById('uf-escala');
     const extra=document.getElementById('uf-12-extra');
     function _prefill12(){
@@ -5639,6 +5945,10 @@ function showModalUsuarios(){
       const t12v=document.getElementById('uf-turno12').value;
       if(!nome){ const el=document.getElementById('uf-nome'); el.classList.add('err'); el.addEventListener('input',()=>el.classList.remove('err'),{once:true}); return; }
       const extra12 = escala==='12x36' ? { diaAB:dAB, turno12:t12v } : { diaAB:null, turno12:null };
+      // v2.5.0.0: funções/áreas — mudou (ou é novo) → reconfirma o PIN do gestor e grava quem/quando
+      const _perm=_gsPermFormLer(u, isNovo);
+      if(_perm && _perm.erro){ showToast('⚠️ '+_perm.erro, 4500); const pe=document.getElementById('uf-areas'); if(pe) pe.style.borderColor='#C53030'; return; }
+      const _ufGravar=function(quem){
       let novoUsr=null;
       if(isNovo){
         novoUsr=Object.assign({id:'u'+Date.now(),nome,cargo,horaInicio,horaFim,escala},extra12);
@@ -5647,13 +5957,19 @@ function showModalUsuarios(){
       // v1.9.4.15: o spread PRESERVA o `pin` já cadastrado — editar dados não
       // derruba o PIN do funcionário.
       else{ const idx=USUARIOS.findIndex(x=>x.id===u.id); if(idx>=0) USUARIOS[idx]={...USUARIOS[idx],nome,cargo,horaInicio,horaFim,escala,...extra12}; }
+      if(_perm && (isNovo || _perm.mudou)) _gsPermAplicar(isNovo?novoUsr.id:u.id, _perm, quem);
       saveUsuarios(); _gsBackupAuto('cadastro de funcionário');
       try{ addLogSistema((isNovo?'Funcionário cadastrado: ':'Funcionário editado: ')+nome,
         {aud:true, acao:isNovo?'funcionario_cadastrado':'funcionario_editado', alvo:nome}); }catch(e){}
       // v1.9.4.15: funcionário novo já emenda no cadastro do PIN (ele mesmo digita).
       // Pode voltar sem definir — cai no modo de transição, nada trava.
-      if(isNovo && novoUsr){ _usrDefinirPin(novoUsr, renderLista); return; }
+      if(isNovo && novoUsr){ _usrDefinirPin(USUARIOS.find(x=>x.id===novoUsr.id)||novoUsr, renderLista); return; }
+      const _uAgora=!isNovo?USUARIOS.find(x=>x&&x.id===u.id):null;
+      if(_uAgora && gsUsrPrecisaTrocarPin(_uAgora)) showToast('🔑 '+(_uAgora.nome||'')+' agora tem a área Gestão: o PIN de 4 dígitos é trocado por um de 6 na próxima vez que for pedido', 5000);
       renderLista();
+      };
+      if(_perm && (isNovo || _perm.mudou)) showEntrarPIN(function(quem){ _ufGravar(quem); });
+      else _ufGravar(null);
     };
     // v1.9.4.10: exclusão INTENCIONAL — pode zerar a lista (permitirVazio)
     // v2.4.7.0 (B2): inativar/excluir pede confirmação NO PRÓPRIO formulário (antes agia no primeiro toque)
@@ -5667,8 +5983,11 @@ function showModalUsuarios(){
       document.getElementById('uf-del-ok').onclick=function(){ window._excluirUsr(uid); };
       document.getElementById('uf-del-cancelar').onclick=function(){ window._editUsr(uid); };
     };
-    window._excluirUsr=(uid)=>{
+    window._excluirUsr=(uid, _pinOk)=>{
       const alvo=USUARIOS.find(x=>x&&x.id===uid);
+      // v2.5.0.0: ação sensível da Gestão — reconfirma o PIN do gestor; e a empresa nunca fica sem ninguém com Gestão
+      if(gsSrvAtivo() && alvo && gsPermAtivas() && gsUsrAreas(alvo).gestao.on && !_gsUsrAtivos().some(x=>x.id!==uid && gsUsrAreas(x).gestao.on)){ showToast('⚠️ '+(alvo.nome||'')+' é o único com a área Gestão — libere a Gestão para outra pessoa antes', 5000); return; }
+      if(gsSrvAtivo() && !_pinOk){ showEntrarPIN(function(){ window._excluirUsr(uid, true); }); return; }
       // v2.2.0.0: com o servidor ligado vira INATIVAR — some dos novos lançamentos, fica nos PDFs e na trilha
       if(gsSrvAtivo()){
         const i=USUARIOS.findIndex(x=>x&&x.id===uid);
@@ -7105,10 +7424,11 @@ function _gsPinValido(digitado){
 // corrige; não se troca por outro.
 // `onOk(digitado)` recebe os 4 dígitos; devolver true = aceito (o teclado para),
 // false = recusado (limpa e mostra a mensagem).
-function _gsPinTeclado(onOk, msgErro){
+function _gsPinTeclado(onOk, msgErro, n){
+  const N=(Number(n)===6)?6:4;   // v2.5.0.0: PIN de 6 dígitos (área Gestão)
   let digitado='', timerLimpar=null, travado=false;
   function pintar(){
-    for(let i=0;i<4;i++){
+    for(let i=0;i<N;i++){
       const dot=document.getElementById('pd-'+i);
       if(dot) dot.classList.toggle('filled',i<digitado.length);
     }
@@ -7130,10 +7450,10 @@ function _gsPinTeclado(onOk, msgErro){
     try{
       if(travado) return;
       if(timerLimpar){ clearTimeout(timerLimpar); timerLimpar=null; }  // regra 2
-      if(digitado.length>=4) return;
+      if(digitado.length>=N) return;
       digitado+=d;
       pintar();
-      if(digitado.length===4){
+      if(digitado.length===N){
         const tentativa=digitado;
         let aceito=false;
         try{ aceito=(onOk(tentativa)===true); }
@@ -7229,6 +7549,7 @@ function _vstBuscar(){
 
 function showEntrarPIN(callback){
   if(gsBloqueadoAteCarregar('Gestão')) return;   // v2.4.7.2 (Bloco A)
+  if(gsPermAtivas()) return _gsEntrarGestao(callback);   // v2.5.0.0: o PIN de quem tem a área Gestão
   const mc=document.getElementById('mc');
   function render(){
     mc.innerHTML=`<div class="mt">🔑 PIN de Gestão</div>
@@ -7247,11 +7568,11 @@ function showEntrarPIN(callback){
   // v1.9.4.13: validação pelo ponto único (PIN do gestor)
   const tec=_gsPinTeclado(function(tentativa){
     if(!_gsPinValido(tentativa)) return false;
-    callback();
+    callback({nome:'PIN da gestão', id:null, cargo:'', via:'pin_empresa'});
     return true;
   });
   // v2.3.0.0: senha de emergência (só o hash no HTML; o uso fica na trilha)
-  _gsSenhaEmergenciaLigar(function(){ try{ window.pinKey=function(){}; window.pinDel=function(){}; }catch(e){} callback(); });
+  _gsSenhaEmergenciaLigar(function(){ try{ window.pinKey=function(){}; window.pinDel=function(){}; }catch(e){} callback({nome:'senha de emergência', id:null, cargo:'', via:'emergencia'}); });
 }
 
 function alterarPIN(){
@@ -7574,8 +7895,9 @@ function loadModulos(){ try{const m=localStorage.getItem(MODULOS_LS);if(m) MODUL
 function saveModulos(){ try{localStorage.setItem(MODULOS_LS,JSON.stringify(MODULOS));}catch(e){} }
 function applyModulos(){
   const btnR=document.getElementById('nav-recarga');
-  if(btnR) btnR.style.display=MODULOS.recarga?'':'none';
-  if(!MODULOS.recarga && document.getElementById('recarga-wrap')?.style?.display!=='none') navTo('painel');
+  const _rcOn=MODULOS.recarga && (typeof gsModuloLiberado!=='function' || gsModuloLiberado('recarga'));   // v2.5.0.0: liberado ⊇ ligado
+  if(btnR) btnR.style.display=_rcOn?'':'none';
+  if(!_rcOn && document.getElementById('recarga-wrap')?.style?.display!=='none') navTo('painel');
   Object.keys(VAGAS_RECARGA).forEach(id=>refRecarga(id));
 }
 
@@ -20188,14 +20510,16 @@ function showConfiguracoesSistema(){
   const mc=document.getElementById('mc');
   mc.innerHTML=`<div class="mt">⚙ Configurações do Sistema</div>
     <div class="gestao-menu-sep">Módulos ativos</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #f0ede8">
+    ${gsSrvAtivo()?'<div id="cfg-perfil" style="font-size:11px;color:#777;padding:6px 4px 2px;line-height:1.5">Segmento: <strong>'+(gsPerfil().segmento==='estacionamento'?'Estacionamento':'Hotelaria')+'</strong> · liberados pelo desenvolvedor: '+gsPerfil().modulos_liberados.map(function(m){ return {garagem:'Garagem',recarga:'Recarga',reservas:'Reservas',cobrancas:'Cobranças'}[m]||m; }).join(', ')+'</div>':''}
+    <div id="cfg-mod-recarga" style="display:${gsModuloLiberado('recarga')?'flex':'none'};align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #f0ede8">
       <div>
         <div style="font-size:13px;font-weight:600">⚡ Recarga de veículos</div>
         <div style="font-size:11px;color:#999;margin-top:2px">Controle de carregamento elétrico</div>
       </div>
       ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();_gsBackupAuto('módulos');applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
     </div>
-    <div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>
+    ${gsModuloLiberado('reservas')?`<div id="cfg-mod-reservas" style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #f0ede8"><div><div style="font-size:13px;font-weight:600">📅 Reservas</div><div style="font-size:11px;color:#999;margin-top:2px">Em construção (Fase 4) — ligar ainda não muda nada</div></div>${_togSwitch('tog-reservas', !!MODULOS.reservas, "MODULOS.reservas=this.checked;saveModulos();_gsBackupAuto('módulos');const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px'")}</div>`:''}
+    ${gsModuloLiberado('recarga')?`<div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>`:''}
     <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
     <div class="gestao-menu-sep" style="margin-top:14px">Horários da empresa</div>
     <div class="gestao-menu-item" id="cfg-horarios" onclick="showHorarios()">🕑 <span>Check-out ${gsHorariosEmpresa().checkout} · Check-in ${gsHorariosEmpresa().checkin}</span></div>
@@ -24519,6 +24843,7 @@ function _gsSrvIniciar(){
       }
       await _gsEsperarRede(8000);   // v2.4.2.0: o primeiro sinal espera a rede (página recém-carregada)
       await _gsSrvSinal();
+      try{ await gsPerfilAtualizar(); }catch(e){}   // v2.5.0.0: segmento e módulos liberados
     }catch(e){ _gsSrvMudarEstado('sem_conexao'); }
   })();
   // v2.3.1.0 (Bloco D): o servidor só troca o responsável quando OUTRO aparelho manda sinal. Com
