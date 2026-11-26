@@ -7,6 +7,10 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>GarageSpot</title>
+<!-- v2.5.1.0 (A): app de PC (Chrome) — abertura no azul primário, com o mesmo ícone -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0D3B6E">
+<link rel="icon" type="image/png" href="icone-192.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--cp:#185FA5;--cp-lt:#EEF6FF;--cp-dk:#0C447C}
@@ -834,6 +838,101 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 .exp-item.clicavel{cursor:pointer}
 .exp-item.clicavel:active{transform:scale(0.98)}
 .ic-tag-atrasado{display:inline-block;background:#FFE5E5;color:#C53030;font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;margin-top:6px}
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   v2.5.1.0 — IDENTIDADE VISUAL (marca/README.md). Cores oficiais em variáveis; o resto do CSS usa os nomes.
+   --gs-primaria = o azul escuro do "Novo Check-in" (tema "Azul escuro" #0D3B6E) — fixa, é da MARCA (abertura,
+   manifest, PDFs). Os destaques DENTRO do app seguem `--cp` (a "Cor do tema", que não foi mexida: no tema
+   azul escuro, --cp é a própria primária). --gs-destaque = o azul-claro do "X" do ícone (marca/web/icone-512.png).
+   As cores de STATUS são as de sempre (verde livre · azul ocupada · amarelo passeio · vermelho overbooking/atraso).
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+:root{
+  --gs-primaria:#0D3B6E;--gs-primaria-lt:#E8EFF7;--gs-destaque:#5FBAFF;--gs-destaque-lt:#E6F4FF;
+  --gs-livre:#0F6E56;--gs-ocupada:#185FA5;--gs-passeio:#854F0B;--gs-ob:#A32D2D;--gs-atraso:#C53030;
+  --gs-azul:#185FA5;--gs-azul-lt:#EEF6FF;--gs-azul-esc:#0C447C;--gs-verde:#0F6E56;--gs-verde-lt:#EEF9F2;
+  --gs-vermelho:#A32D2D;--gs-vermelho-lt:#FCEBEB;--gs-vermelho-vivo:#C53030;--gs-ambar:#854F0B;--gs-ambar-esc:#633806;
+  --gs-laranja:#BA7517;--gs-roxo:#5C35B0;--gs-amarelo:#F2B632;--gs-amarelo-tx:#3D2A00;
+  --gs-texto:#1A1A1A;--gs-texto-2:#5B6573;--gs-texto-3:#7B8794;--gs-borda:#E3E8EF;--gs-fundo:#F0EFEA;
+}
+/* ícone de traço (Tabler Icons, MIT) — `gi('nome')` ou o conversor de emoji (gsIconizar) */
+.gi{width:1.15em;height:1.15em;display:inline-block;vertical-align:-.2em;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.gi-l{margin-right:.38em}
+.gs-logo{width:22px;height:22px;border-radius:6px;vertical-align:-5px;margin-right:6px;box-shadow:0 0 0 1px #E3E8EF;flex-shrink:0}
+/* A — tela de abertura (modelo D): azul primário, ícone real, selo da empresa, barrinha no azul de destaque */
+.gs-abertura{background:var(--gs-primaria) !important;transition:opacity .25s ease}
+.gs-abertura.saindo{opacity:0;pointer-events:none}
+.gs-abertura.pronta{pointer-events:none}
+.gs-ab-logo{width:88px !important;height:88px !important;border-radius:22px !important;background:#fff !important;box-shadow:0 8px 24px rgba(0,0,0,.28) !important;overflow:hidden;font-size:0 !important}
+.gs-ab-logo img{width:100%;height:100%;display:block}
+.gs-ab-nome{color:#fff !important;margin-top:18px !important;font-size:25px !important;font-weight:700 !important}
+.gs-ab-empresa{margin-top:8px;font-size:12px;font-weight:600;color:#fff;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:3px 12px;letter-spacing:.2px}
+.gs-ab-empresa:empty{display:none}
+.gs-ab-barra{margin-top:28px;width:132px;height:3px;border-radius:3px;background:rgba(255,255,255,.16);overflow:hidden;position:relative}
+.gs-ab-barra::before{content:'';position:absolute;top:0;bottom:0;left:-45%;width:45%;border-radius:3px;background:var(--gs-destaque);animation:gsAbBarra 1.25s ease-in-out infinite}
+@keyframes gsAbBarra{0%{left:-45%}100%{left:100%}}
+.gs-ab-msg{margin-top:14px !important;font-size:13px !important;color:rgba(255,255,255,.78) !important;min-height:18px;visibility:hidden}
+.gs-ab-msg.vis{visibility:visible}
+.gs-ab-rodape{position:absolute;left:0;right:0;bottom:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));text-align:center;font-size:11px;line-height:1.55;color:rgba(255,255,255,.6)}
+/* B — cabeçalho: ícone real no lugar do "P"; nome da empresa no lugar do crédito */
+.an{display:flex;align-items:center}
+.as-dev:empty{display:none}
+/* C — Painel: aba ativa no primário com traço do destaque; título de seção em frase, com linha do destaque */
+.nav-btn{display:flex;align-items:center;justify-content:center;gap:5px}
+.nav-btn.nav-active{box-shadow:inset 0 -3px 0 var(--gs-destaque)}
+.nav-btn .gi{width:15px;height:15px}
+.painel-sec-title{text-transform:none !important;letter-spacing:0 !important;font-size:11.5px !important;font-weight:600 !important;border-bottom:2px solid var(--gs-destaque) !important;display:flex;align-items:center;gap:6px}
+.grupo-titulo-texto{text-transform:none !important;letter-spacing:0 !important;font-size:11.5px !important;font-weight:600 !important}
+.grupo-icon .gi{width:15px;height:15px}
+.gestao-menu-sep{text-transform:none !important;letter-spacing:0 !important;font-size:10.5px !important;color:#7B8794 !important}
+.exp-secao-titulo{text-transform:none !important;letter-spacing:0 !important}
+.rcp-label,.rcp-status,.rcp-secao-text,.rcp-tempo-label,.rcp-carro-tag,.vst-area-label,.vst-info-label{text-transform:none !important;letter-spacing:0 !important}
+/* D — menu da vaga: título "Apto · carro", botões sólidos com ícone à esquerda */
+.gs-tit-sub{font-size:12px;color:#5B6573;margin:-2px 0 12px}
+.b2s.amar-v{background:var(--gs-amarelo);color:var(--gs-amarelo-tx)}
+.b2s.prim{background:var(--cp)}
+.b2s .gi,.b2c .gi{width:19px;height:19px}
+.gs-atraso{display:flex;align-items:center;gap:10px}
+.gs-atraso>.gi{width:22px;height:22px;color:var(--gs-atraso)}
+.gs-atraso-tx{flex:1;min-width:0;line-height:1.35}
+.gs-atraso-bt{width:auto !important;min-height:40px !important;padding:8px 12px !important;flex-shrink:0;font-size:13px !important;justify-content:center}
+/* E — Detalhes */
+.gs-det-cab{display:flex;align-items:flex-start;gap:6px}
+.gs-det-cab .gs-det-tit{flex:1;min-width:0;font-size:16px;font-weight:700;color:var(--gs-texto);line-height:1.3}
+.gs-hist-btn{display:flex;align-items:center;gap:8px;width:100%;background:#EEF4FB;border:1px solid #C9DBEF;border-radius:10px;padding:9px 11px;margin:10px 0 4px;color:var(--gs-primaria);font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;text-align:left}
+.gs-hist-btn::after{content:'\203A';margin-left:auto;font-size:18px;line-height:1;font-weight:400;opacity:.7}
+.gs-hist-btn:active{filter:brightness(.95)}
+/* H — cabeçalho padrão das janelas: ‹ à esquerda, caminho no título, ✕ à direita */
+.gs-jan-cab{display:flex;align-items:center;gap:4px;margin:-4px -6px 10px;min-height:36px}
+.gs-jan-volta,.gs-jan-x{background:none;border:none;cursor:pointer;color:#5B6573;width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit;padding:0}
+.gs-jan-volta:active,.gs-jan-x:active{background:#F1F3F6}
+.gs-jan-volta .gi,.gs-jan-x .gi{width:21px;height:21px}
+.gs-jan-tit{flex:1;min-width:0;font-size:15px;font-weight:600;color:var(--gs-texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gs-jan-tit .gs-jan-cam{color:#7B8794;font-weight:500}
+.gs-jan-tit .gs-jan-sep{color:#B9C1CB;margin:0 4px}
+.gs-jan-cab.sem-volta{padding-left:6px}
+.gs-jan-cab .mt{margin:0}
+/* F — histórico: linha do tempo leve */
+.gs-tl{position:relative;margin:2px 0 4px}
+.gs-tl-it{display:flex;gap:10px;position:relative;padding:0 0 12px}
+.gs-tl-it::before{content:'';position:absolute;left:13px;top:28px;bottom:0;width:1.5px;background:#E3E8EF}
+.gs-tl-it:last-child::before{display:none}
+.gs-tl-ic{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gs-tl-ic .gi{width:15px;height:15px}
+.gs-tl-c{flex:1;min-width:0;padding-top:3px}
+.gs-tl-l1{display:flex;align-items:baseline;gap:8px}
+.gs-tl-tit{flex:1;min-width:0;font-size:13px;font-weight:600}
+.gs-tl-dt{font-size:11px;color:#7B8794;white-space:nowrap;flex-shrink:0}
+.gs-tl-l2{font-size:11.5px;color:#5B6573;margin-top:1px}
+.gs-tl-l3{font-size:11.5px;color:#1A1A1A;margin-top:1px}
+/* G — mapa: check-out atrasado = só o apto, grande, e um reloginho vermelho no canto (sem borda vermelha) */
+.co-atr-ic{position:absolute;top:2px;right:2px;color:var(--gs-atraso);line-height:0;pointer-events:none;z-index:5}
+.co-atr-ic .gi{width:clamp(10px,1.25vw,17px);height:clamp(10px,1.25vw,17px);stroke-width:2.3}
+.co-atr-ic.baixo{top:auto;bottom:2px}
+.li .co-atr-ic{position:static;display:inline-flex}
+.li .co-atr-ic .gi{width:11px;height:11px}
+#gtable td.vv.ocup,#gtable td.corr.ocup{padding-top:calc(clamp(6px,.72vw,11px) + 4px)}
+/* Sobre (Gestão) */
+.gs-sobre-topo{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.gs-sobre-topo img{width:52px;height:52px;border-radius:13px;box-shadow:0 0 0 1px #E3E8EF}
 .nci-highlight-btn{background:var(--cp-lt);color:var(--cp);border:1.5px solid var(--cp);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
 </style>
 </head>
@@ -842,18 +941,146 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 <!-- v2.5.0.2: TELA DE ABERTURA LIMPA — no HTML, antes de tudo, para cobrir a tela desde o 1º quadro
      (antes a cortina só entrava no fim do script e, até lá e por baixo dela, aparecia a tela meio montada:
      contadores "– 0 0 0", mapa vazio, aba Painel marcada). Sai no "app PRONTO" (`_gsCarregandoTirar`). -->
-<div id="gs-carregando" class="gs-abertura" role="status" aria-live="polite">
-  <div class="gs-ab-logo">🅿</div>
+<div id="gs-carregando" class="gs-abertura" role="status" aria-live="polite" aria-label="Carregando…">
+  <div class="gs-ab-logo"><img id="gs-ab-ic" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAQAElEQVR4Ady9+Zcsy3HfF1HdPdMzd5sH4AEPeCQEEuAmU7Yg0scEwc2WKImbKJkiQEsmFtnn+K/x8SEBL7/IsmxSFimCIiWREhcdU6RAgbRA4FG0KXHF8hZsb7lz7+wzPfp+oiqrq3N6766evqhTWRmRmZUZkRUZEZlZ1V1cL3gMBoPrh49Orl957ej66urquq3j9Ozy+ouvPL4+v7i8HgwGbTUztt7Lqyvxd3x9dHw2Nn+VxMdHZ9evPjxW322WJ2geDAbXj9T+K2p/MFhv+8HXa8fXl1frrRe6Z4Urtfna4cn14ePTWUVv5Be24OHudu/Oru30uvbw0ampxgVrmK/4Tq+we3f79praUKfOd9MaSl0NBvbawxPb3enYXr+3hhpHq9jf61mv27FX1YZkcDSzRYzndHh0ZheXV/ZA/erua20t+Op1ou82yRdtvfboxIrC7e7+zsI8LTwAaMHdDYa7PMjDExtIaEhfZ3B321WH8rAYaDw4HuI628jrQvgPH52F4O/v7Zj7eoWE9tzd7uhB9Xe7dqjBPRhck9xqoN+OTs71nK7t4F4/hGXdDboP+Xr4+DTaWncbeX30nSxaKBSUsvviz6vIK50Xdy9H3G6vtAQyfPPeulC5Xrew+9JYDII2LQHC36bmz5lGgfQ0wNu2BAh/qfkHrWj+cXztwJcU41WLgxvhX0XzJ7qXHgBU4O5hCTqdwuSDadQPSF5rcHe5W516ELRhCa5kwQ5b1vx5p7h765YA4T86udBzaU/zj+VL1rO/07VHsgT0bV5mVRzhX1XzJxqKBCwbu3vMCXbFMP46nb5sXdPuqy3B4amtxxKUrfGANqn5y1aH17YsAc+h1Pzt+PxDDsZDiS8UI308vtTiqQj/OjR/annlAUBF7m77mjD2qjnBOhmmfoK7l5ZAPizu0DosAXRuWvPDSzO4+9ASSGPygJv5y8AI/1HLPv8sutzFF5Zgt2eHj8+Mvp51z6x8+mZdmj+1VSRg1djdYxaOJUBAIXbVOsfd30tzghUtAQ/kNjV/zltozEqBrNJ3CD9CcnG5GZ8/5yPHUYwsZtDX9HmePy9On6xT86d21zYAqNDda0sAsaswTH3jgruvbAmg67Y1f86bu5eWQK7k4ZKWAOE/ls9/dbU5nz/nI8fd3VhR68tDoM/p+7zMLBzhZ1D3pCCWXe2Z1EYxKWPZdPfttgQ8ALRRW+v8y/Zbum9ZS4DwIyTnF/L55Sa6L74kmGhoI8YS7GhvZdE5AcKPMl12nX8WL2sfADTorlGvEc+IhXiEjvR1Bndf2BJAB1qIDS60kvt2CQn94+6ZJZi9sobwHyXNf3+OdX4a2nBwF1+aE+wtMCdA+BnUyNG6NX9iv0jAumP37bIECP82a/68/0ctweRBgPAjJBdbqvlzvlA+88wJEH6UZ1uaH7rYguRdIOBWgrsbpo8RDDMI4bobcveZloB2D7USQedvq+bP+8XdK0tQrqIMtFeRl0H4S59/YAdbqvlzmt3deAY8C54JzyYvM9AGGoMauWlL89N3h7xCgekEyYlYF+7ut7o6RAfjd6J16PR18bWpempL8PBkZCmRZ4aQnF9c2oMt9Pln9Q/PgmfCs+EZpfIIP8qyTc1PW4daaCiKwoqz80s7Obto7aU2GnPXqL+FOQEdGz6//E60jvv2+fz0z7Tg7qUlEA+PZMXgCeEfav4940FOq2Mb89w9LEFffB1WfCH8j4/OVnq3Zxav9N1Daf5r+T+8PFdgOk9OL23jlgAKZlG7RH6v2idAs7z86rGx8oC2WaKqrbolWQLmMYfSXk+q5s87FRcZS8A7Ua8eHpsv+VZnXu8knL5zaf5kNYtOUdhT9/dsk5ZgR+u5CCjabBKhy6a7u3U7bryfxGjf6XXsy+FwR2P2rJCAHJ9cxrtRT6Lmz5+Fuxt7BO5u7F8w0N3Xb6mRhaT57+3v1G/6FhBEpw4twXnr7lC8DqwNnzZ2jAeaLKJN2JFmYL+24o4x/bMNgQeIz2/mEv5dw09uQ4HYhg/eIkYZYrmRC+B18yVvx9D8KIyk+RObMQBAOkWyBFd2ctr+nAC3pNftrPVB0nH4/GiUO1pz3tEgg2EG2jreHaKfbiMg/EOfv39jTnAbNK2jTYQfn7/b6WhQiy89s0X2CeahgTZY7cHjxud3H7Uu9QCgskLmNSzB2eVG5wRo6YGWvqBh2TCQ5sc/7mm3Eb8y1dNLc4JHp2t9izTV33aM8KP5S59/z9zLBwiPfE+AxoT3tulYd/0I5kNZZzO3e3d2LB0oRuYE8IVCS+nLxiwcuOQaRehe9l2zrpEBQEanSJZAq0MbsAQ8SF5LWIVhBOChVhKS5ncfMurusU+Qviw7v7xq1cWjD9cVEP5S81/bgeZphR5kqtvdDSuHxoT3dQhLqrvtGOFH8zNPu39319xHnxcrdvCFNV+WL/oOy098b3+0jSZ/RRNJMB19oI2V0w1ZAh5kf7draITBgpaADnr18CSEnMGUeMjjXrcIM3soS3BxNXlnNb/vtnAe3FDzT36A69aYbfOL8POczXxE81t2BF+y5ssqxkMpxGmaPzU3dgCQ2SkKO5DWOWefYAOWAIZZsVmEYYQfE9ff6YU2dB9qEssOd49BwueVDIJttgQIf6n5B/EMmLxl7NSou99YT68ztwxA+Cdp/pxU95KvsAQSZp51XmYcTt8NNf+OuU+WCe4vuEwKhUzug01agv0dm9cSDPD5pfl7mkjv7/UmsXAjvVfNCRgE22gJeIBDzd+f+QATg1i/UCDZjnHKv+0Y4S81v03V/DmdKMbdnhZL9KznGQSl5re5d8eLvMEc7xS3YAlmmD6EH7+3v9OLFRH36aPcGoe7j1qCi+2ZEyD882r+BksBuntYQQQGIZhHWOLGDVwQ/lLze7ih7os9r3nmBPTdUPPvzq04inn4L0YswQb2CbQcNskSIPzh8y+o+XM+a0ugXdWLy9ufE/AAl9H8OV8MgN0FNGZ+/7pxhH+o+XeXrj74QjFOsHAMepc0T1rtmdSwbpmUNZreKZIluNrYPgGvMTTnBAg/jC6j+Ue5sdAQuAwxJ9AgOL9FS4DwL6v5LTvcPeYEI75zVmZTKMK/rObPaXSv+Or37PDRWf1iIH23jOZP9c89ALihuCVLwD7BlVZu0Py9FTU/fDRDL80JNAhuwxLwANeh+Zs8AYfGvEVLgPCvQ/PDSzMEXw1LgEJcRvOnOhcaANzUKTZvCXoS+s+//Nj4ES62y93n9yGheVpw9+GcQINgk5YA4V+X5s95dK805u6oxszLtYHD17o0f06fe8lXX3x98ZWjsATT1vnz+3O8yBPmwYsNWgI68+LyMn6uEOEcLLhPMA8/lOlt2BLA16Pjcztv+X3+XGPCa5sBzY/Fpo17d5b3+bl/WuC3oXakGJEH2pxWdlreUgOACjtF+5ZgoKVO/D18fn7Tcmena805AXSsK7j7xiwBwh+aX7vS7LVMW+dflT/3UmMyEOjLNleHEMS2NH/qB/oufH4pwqce7BnLv6vwVaSKl4mLpiWQNoO4ZeoZdw/Cz1udvO/COr+7a5mvN/c+wbg650lr2xLQR234/LN4YwDEKycTVlFm3T8rH+Fvw+fP2w2f383Yn3L38AzgC1kZN7jz+3N8pQFAZZ2isgTSZsdr2jEeaHTDKH5e0+d3Lxl+Ui0Bwh+aXxP6B9plb1Pz82yawd0t1tOzVZRmmWVh+ELzF53F1/nnbZM2Dh+dxu+c3pVr5a5RoJvdS76WtQQrDwDRYAWW4F7fyneHVtsnQPinrfa4e2kJ+t2l3h2C3nnCui0BD/CxrGTy+QvxMQ8d6y6zbksAX+GSXJvdl2Cum95UH6+8mGT+4H7fxvVd4mtRS7CWAQCRnaIwfLJzracvawkQ/kOtxPTl6zc1P/U3g7ssgVYBsAQMlmVMX7O+cbC7x5ygfotUfPGwx5WdlcZ9aP5LWcmDDWv+nDZ3X5slgC/cOXef+9WDnJ5ZOG2g+a/kFTCpdtcoGHOTe8nXopagGFPX0kmMTHbi+LwSbQfx81aG8CPMPc3s8fln3efuYQkY+aw6cP+se5bJ72p1iAk4D2GZfQL6ACE5b3m1Z1He6Dd8Z76huNJiw6L3wxc+Px+a8ErzovfPWz5p/gfS/O7jhb9ZV/C124l/4JmHr7UOAAjpFIUd3NuLv+KZ1xIgvPNofupvBncsQdf4/JHBw2ZZM38dsLsbE/H7cvGg8XwBS4CQhOa/BZ9/Fu/uvrQlgC8GtRferuaXN3AlzY/PX4jeWTyR7y6++js2ryVY+wCAiKIoO2YeS4DwI7zzan7qbwZ3lyXY0WpAV0uk5SSpzF/vtSdLgHVjEMxjCRASrOCZNP+BBk8hOtdL0XpqC43Z2FmdVSt8bUTzH50FKQfS/Mv0XeJr1pygWESjBUVzXjqFLIH83Qv5vZMsAcKPQM3y+Wc1iWztaU6wu9stTZ807qx7Fs13d+vJPYtBoNWIaf2GkKD54Z0P8ze52rMMX/OuDsHXxjT/1bVN8/ln8enuBl+407ivVxPcvAIBnEejzWpwXD4jF4EZZwkQ/lU0f96eu8sS9GxvT5ZAAjqYwHB+36J4t1PEGvSkfgshOT4zND+8u/uiTdxK+dCY8p0nzQngq17tubvbGo0MMCqf1+en7LQwSzEWPCRGyDSNNq2BWXmdQpYgmxMM5NchQPju01Z7ZtWd57u77e3uVHOCU2ttTpAsgXzUZr8hJFi7y8uBHYjnTlHkJG4t7u62L9+ZgXDYeNsSguHrkQa1u7fv80vzL+LzQ9+04F7yFZZAzyuXiWKWRptW+bx5RVF2HJbg8PGZofm7EqI7C3zJNW9b4leWYMd4kK2uDmEJ5NsfqlOxoAhJ+PznlyEk8DwvzdtUjn5jdSj5zvAVmn9g1upqT+Xzo/kLHuKaO6W2BNmXZWprft92FZo6RWGsqeMbq1EJac/c23EPqHZP84G+QjzIlucE/DngSw8vjJ8oP9C8p1MUq3TV6veuUIO7NObejqExv/jwzF587SKeE56C+/qfFwMMJXK1Zs2fd4G7+JKFg69DuchpTlA/qbYtAW4PgnLvzk78LAnaEuZzQteFu4vheJDtzgk6sgS//Urf/pd/17HjYvwu5bp42mQ93unZP/zDHfHVtcvObmtNPzo6j7rb0vxReeOyly2W1APA3ede5WjUNxeI8DPK8fnx79CSrJDgL7c7CMz6Lc4JNJWxj75o9nOfKuxTRx378HNmLz66jgE+V8dsaaGTS7Of+g9uv/Fix37/lcL+10+6vXpi4mt9BPPckYkrWWdkAq9gfbVPrsndjblOWAK5r/UASLes2xIg/LnPXxTDOUH7lsDC3WJjpJwTyJlNzK4QI/y//Olr+z9/3+zsys1V1wtHhf24BsFLj4U8oeephP/v/q7ZP/sjCXzFw+98wex/+rdmr51WCWuImqs9hYRyDVUuVMVeZQluDAD3hiXQ7Gsw9wAAEABJREFUCGmucizUggoj/Izy0Pz7O+aOmChDZ6fQ6pD85c1YApcl6EZ49eHpyqtDCP9HX7i2n5WQIPzGUbH2wmO3H//ktb3wBFoChP8fakD/2mfNcjXxey+bffgTtrIlKDX/mZ7BtW1S8/OImsG9tAQ3BkAqFJagscqR0ueNEX4+Xpm22sPIZ3LFj2+1bwnEcJoTHJ7aYMl9AoT/Vz5zbf/XfzA7leYf6Y80CGQJcIc+dzSSu9UIbs/f/XfS/H8i4b8eT+onsAQfX80SlD7/deyl8PzHt7R86qJ3ThwA7qOW4GyBd2AGkhI0P29rjvtF3iaRnWKTlsBkBXYUutoxXtwSiC37zRev7SNJ8yPwCjqbLAX8WVmCDz3n9pIGAS+MReKWXtD8P/3vzX7tM2YTZL+m/Pe+ZPY/L2EJhpp/cKuav2akAooqnhglS/AId0gbPBMLVhkI/yzNXxWtI3e3A1kb9gnYcKGz6sw1A2rKmAARFpkTIPxJ8ye3pyn4NQygoNM++8jkDpltsyVA+EPz/7HVbg99BP2Tun6ZOcG2af7E28wB4D6/JUD459X8iYAUF5UluNIgY6+g3UHQmBPIHWIlItExLkb4f/Ola/vHEhKEX11SFwtBiYtZFVkcFfK8BgHuEBPjbbMECP9PSfP/qzE+P8xULAQ7+YU5wTyWgOd4qE2uy6urrdL8iZ+ZAyAVxBKgpSdZAoR/Uc2f6k4xPmHMCS4ubWNzgn7P2J8YTJgTIPz/Uj7/T0hQRnz+CdIxklwhn9Eg+JBWhz53nDi9/Rjh/9/l8//CFJ9/1iAISzBjTsAvX1yrE1n65vnePuejFMw9ANyTJdiLv5s5k5AyuqluIAaX1fzc3wzJElzyFulJ2/9Uw5ygV84J2CLXmnSTFrFl/0aa/yMSkrOBIw91tgPFxSJd3VMCZiVu1UEZhRgEn7StmBMg/D+lSXy92iP6dFYELxYxJxi3OoRssNTJc7x3d3fsZ4yLtdRO6bkHQGq+28Ff37NHj8+MJVKEf1XNn+pOsbtbsgR0Ip2Z8ibHy+WoKYuNEW2TN/93C+H/VTS/BOU8rfZkUpKhNwho5tNOPSe4RUuA8OPz/4LcuXyps0lvzYwSob3GxwCxOpTtEyQLfnBvb2uFH1YWHgDuWIJCAroXv9GI8M+z2kNjiwQswQPtE1xJK7c/J0iWQO6QLAEvt6H5f+5PzdD8TbrFvhFSGjABXLJixoVg5dEAjTwGwYduyRIg/D+tAf3rz1us9uS0mQ7SCAJHTngcl54KpTnBKyfX8hDO4ovAu/u7VhTT7kp331688ABIpHZgTLyxkdXrLl1Nqm5sXKjXN20J9mQJfulPL+0n/8CG6/ziU+dYGuvEqgARoU4XkOPJHfr8Bi0Bwv/3fs9sqs8vWlc5mRP8j7+tAXBuFj5/kXO+Su3t3LuU5OL24PPz6uzrDu7EiGcJsw1XpSjKfYJNWAL0Ijz0u2Yd9YyrzwmKDO1dw2amsWkjuOloJEQ+OKGRFenCGQQ/pvV0lkjbXh1C+NH8+Pyxzl/RJDJGeAikkUf+SFBeon8kvUKUbU/vXVtHC6pMfKvkrY70mBejD+HH7Uk7vLE6JFeFH0ZiTrBYbfOVdne5XH3NOS6trTkBgo/fykD+L9/atQ9+vdl+L8Ql5CIo5QkHUF1yvEq+EY0pR9JnH1f7BC1aAoQfzf+LmsiX3FTUQcBNsExRns4h32Xq8ErmEAsIQfqBt1/b//DOwh7sd+KbD5RWZG7xBbrnJg/hPzw6tabPL9k0XKD7muwwMT47b+cfV4oWLQHCz5upuHNM2njF+Z1Pu733HXZjEMBv8/kHXiUQNXE6ljRipAmYAEygLJbgw6vOCaKBmxeE/x/JlftX8vkHjeygoYEDkkYAboZxaeSTTgBGiL7rrdf23m8w2+t5uaiw1wvPYNsHAbTDw8yA8Ifm73Ti7cr8hmQJHmmAPEmWAOE/Ojm3s+xLLoTz3W/28ZZAzKeHLzDOHI/E6pLn5fin2SfQIFjnPgHC//f+PzM0f1P4K5IYf1ZebPwBkQTlVpGgxkmiAgL0fdL8//1/arbXVUJVpHzbcvstAfRXJE+OEH58/qbmz0sjMF1NhtGgpSW4NIQrL7cqvk5LAH1ofgYsdHeK0e6AJyzBf/M1WIKS8njEXBR0lolchegEisC9TQEjr5kGTkHSgLEEH9KcYB3vDiH8Py3Nz2oPwk/90Q4AjVYhUC6EZloFN5eKGkVSbrCH5v8Raf5+Q/gp4O61JXj4+NS21RKMPnEozwLCH5q/O17zZ8UN94Hly22fEyD8R8fnNzR/zo+eo73rmWQJytxaGAToLBO5CqE8IEEo0cRQ5wvQacwJWCJlYjzxphkZCP//Ic3/z7WEO8/kmnbzKuu0GihLNFEE5/u/+tr+u0zzlyWHVyxBn09Ttby8jYMAPobUZhDCn/v8WZEbKALAnOBBPSdo2xJc26L7BAj/yemFnWu3eZzmz5mCp3c+bfYjsgR3ulmupEJnaMOUQ/kRmAJVQoBxKRNqsAKwBMu+O4Tw/0yl+WPCqzp1lg2l640EK2nP0kfQBgLYMbPv/MrK5880v7JGTnevLQFexLYNgokDAOFnZxTffplfb8ASsBa8GUtwZY+OzuZyuRB+ND+/ZP3gXn/ujRo9R/vWZ8w+8GdLdwhBIMTTroHAblzy7MDjcqNoCCNzAr4sW2ROgPAnzY/bc7PmMoVm4aXEsiuZjaQRtEK493vk88/S/I1qAsQSxA+XrdkSROUrXMYOAIQ/NH+vY+zmuVfcL9AQtzAneIAl0MSYSSbCt0AVcxUttNlycL8vH/Pajma8O0T74fOj+bV02ynGsj+xXXh65xvMbswJqjuavURZQpVlATcKAEaaCgArMgNQID12jOecEyD8P/OHZr/xgmkFvqzG0kF9ghXpOjxpI9qrksgnRFoAZQYgAUxdbd/1Fdf2I1oibk54yZsV3JMl2LFtmhPckACEf6j5d2bxNTM/LMG9/dDQTDZn3rBEAXePfQJ+lmSSJUD4j7Tas6jmz8lRU5oTyBJICO70ytwQEC6EMqm+NpOacF4gzwP/jPYJYk4wZZ8A4f/7/78ZPn9T83N/3kaNVwBlCBUaUY5Hoi4IyvfK5/87M3x+FZ167mk+0N/tbcU+wWAwMPiqCR4MriWoWudfQfPXlVUAAoMlwNfGqmzCEuRzAoQ/fH7tUfBbnZ1ihO2K0vkjePoLT1vMCfa75X1JcMgjlKm6KqOJAxNC0yo7TpUBJwqcixCdxpyAQTBudQjh/0il+a91D+WpJ0LCFcepzGg3kMZF6Q0sQJKiLIBS6K3vlOZ/rwb9oppft4+c7q45Qc/4IOk2LQFzkVcPT4cDAOFH86Ox7+zt2LoP6n1qQ5YAS3NYzQkQ/lrzy1UqsONrYE7PMSzBBzUnGLEEVd2V7FTY5IhyhEklyEuDoDknQPj//u+b/YtPlW5Pup/yAddAYPWFZEKdICDHlVSf8LkOzV9XWAF7sgJ9WQN+MQRhrJI3Eg2k+fkakF8KYXDbQJofgdlZo+bPOaEjh5bgLJYfEc683Ko4As6cAJ4ea04QPr80/8ESPv8sWuCJOQGrQ/tNd6i6sSlYlCVUWaWSbhYgQ7jOyCNOAHAaBHxZhvCj+f/1OJ9f9VBekXE/MMHSAaKgM6UY5SLY6IFwsNrznjVo/tGazdyxBDuyBJudEzDYXn14Gt+AMAALBAXN3+24dnjXr/ktO0pLsCdX68zQ1Fn2Aujkou5u9+707aOfd/utz5vdX2C1Z3Kt43PUVFiCD2gzaMQSIGEKOkduzPGUWacDEFIGsXCd4Q79mHaMcYn+xadNq15kVoEChAqtoyqtiupkyxJA4SUVQPi/56u0zv+NNrLDm/LXFe/JCvR3NzMnGCTNv9eNgefuVjBp3GlR81t2qE1r2xLIoNnHv2T2Ky917Rdf6tnvvmw2mGdXKKN1XhSe/oJWh5qWoL7Xzci3dDRwgWUegPKJCALjbMImRKc9r4nxc+INn5+0KKgLeQSBcQITakRAjQvmBCcApwCteInfLp+f1Z58hzeVW1fs7oYrsi+3u805wajm3zE1GywUnQ1p/mitcUmWYN37BAj/r714bf/oTyw+ZuE73v/7j91+86VB64PgXdon+KAsAe4QgkVILDfhlJbiPC9wLgo6jRBlBegMMF1u4HlCVnAkewQpC5L0vdL8f+fPmbUt/GWL5RVLsLfbjiUYav6e7e/1LAm/6SiWXefXvSudEIElYJ+A+cc6VocQ/v/3i9f2i58thd94mgonA7ef/3Rhn1Be25aAOcHYfQLRobPuM/i/gTcSGmB9TwDK0Bms1bgSdAbKhbpTAdIJpDfTAueizCgvGLeH1Z4f/jpr1e1RUzdOd4+ftL8jAV2nJUian024vtwtdzHcaB2eG+jmwWQJcMVWmRMg/L/+UqX5q294m6yeKA1L8LHPbcYS3JgT0LUiSCdQGUaQMql5bWY34STIzbKkNcsEHJeyVAOMhBzH7fmr0vwfbNnnj8anXPqyAnsS1HWsDg0kFLHaI5//jlws95xrGy6DTqGp1SxowhIcsGP8eLnVIfFpaP5fkOY/l7ZHGCKIcldIJ+7Qz36qsPChw4lOOeuN4SmfE0AHAbrITy0CR3qVAE6ZCrWAqwJVZGY6hOgU0DizhEDjUpYJkAtBSVUUTXzHs9f2Xmn+Tbo9IuHG6Y4l2IkFmddWeIu01Pwn1WrP0OfPG7x1C5AI6vAq9YM9e3y82OoQwo/m/8ifyu2Rlqe+9GDjySoh8LhYfOeLJfitL9joKorKrfPUc4zVoTQnmFq3aNNZFwk4LhYsBMhFQafVhxCdUaZOGwdQKE+v0hAAfP4PSPPftvA3SezLCuzLGixjCQas9jw6tT25U/sKPItm3U0Y/pv4rcE8j26nMOYE835PgPB/XH598vmbjFIfIUlHDQs4vjT7WQ2Y332l/UHAnGDc6hC0ipRhfwshLSUITWDETRyYUGfUiBl1RLDyIItgcbGIKtBwe75dmv9vfu3mfX6bcbi77fV7YQkWmROE5tcOL79Ijivlnri1scfWDIBEHXOCAyyBdnKnzQkQ/t/4nHx+CXLzp0vGspsnCmcQ/MQfmP32F9sfBLxFWn5jbCMCaDpESqQJvHmS2UgNNC5lYgOcXEdZ9MaVB/9X/sy13bbPf4OwLAFLsDenJRhIKPD59/rdGDjuntV2E6UfbqbeYgokhyXQzm1YgrOb3xOIT/u3XypXe86vffThu4gnKOIEJDThwHU5GZj9zB9b7BO0uE1gPAe+J7ixOiQaoKsZKJuSiQMHqAoFyIWgtCoyE6DT6kNI3FslCDVwUGB8/vdsgc8PPdOCe8MSyK1Bw48rT/qrD0+M1Z693ck+f37v1g2ARGBtCU40Jzi/SslayzdD8+PCxISXHD1RnUaoUKLRkDJHU+1YVf/kH8kSbGpO8PVm7BPUZEAXoU4QkI/zceoAABAASURBVONKap51dg1UucJ1Vsj4CLfnr77t2t73n9hG1/nHUzN/al9zgr1+z8bNCQa1z9+V5u+ZxszcFW/tAHCxEJaA1SG5Q+wTsIb/cWn+f/682Zk0v6mQTpXUWQOCddIJBIFxkh04gFKqiCoMd4hJ9EbmBOkt0p5F21Yd0JZoImks3ijQAEfqiXu5pKCC1AXKw/62t1zbNvr80DctuPtwTtCwBKH5a5+/Z+5ieFpFWR59kiVtF5oswaOjc/t/XhjYRz5lVmv+nFTxrnMkNccjs0qMiIsCluAn/lCW4BbmBEFTdREpFaRoBBHO2UgLkIuCTiPERYDOALmFUPi14fN/QJp/b8ZnjJTf1tC0BBeXAxv6/IsLPzxu/QDgQXZktwfdnj33itfCTzoMEIAJwDx1lECOR54udbpgzibO3wT9zJ+YPfdy+xNj5gR/i2+MewbJEeIigpr0B6w0q44A41Im1GANlOlRVwUS/bk3mP2QVnv6T7Dww4e7hyXAHfriy4+s1yuMSbJ73gGUnh22fgDwyjTv83euLuxvvcPsLftDpnKWp+HNvIDjUtbVAI1BEHOCDViCb3nG7P35nKAkKa5NuibBUTBdVEjnUPZBqrxXTt1eU6jQJzrC5+fLvjv7u/FG8YBVkSU52uoBgPDzJdeZJsFPaVXomf3C3pcPAj3kGPyK6QMiQkhBAKQqCI5yAjmFWo5bJFoMAizBJuYE9ZdlPUvNRxwX0aPT4hAwQm8DFxjFo1x24R7CC4/NPvScbcX/E2QkLoTyD+98ycU6//27fU16d+xhY06wUGUqvLUDAOE/OrkwRvpBfMnFYzZ7ui+tmQ0C8THx5C5CXWAEUSo4QWB9Cg9LsMk5wTfY6OpQTcwoINKmJ1BAQedoOWHxof0nzZpflin5iTnR9KXP35Pg94yB3Z+yOmRzHFs5ABB+NP/5+aUdSPN3iiGZMP30ng0tQfWkI4pLyXUDLBOqK+mECjVgAjgxAZiMWB3a1JxAPjr7BPFRjYjQGWRABzzneJlpZBv5pgI6rT6E6KxR8glpELz0BPx75ZB4s1Lznxiaf09C715y5+4xJ7izt7OUJRhKVrO1W4QRfjT/iTbAHjQ0f05SbQk0GFJedAkXghIj4qKgUynVKUT9ViFVpLQKQk5KUGkMgk3NCfie4P2yBOnHt9R8SccCV+4hpFuACQknTp9XPimWYMA6v5Y69/pdaf4dc3fYGAnLWoKtGgAIP5r/TJofn79TTCaPPsASvF8rKWMnxvSRgs6yowRwjyIjkAhOTCAtcAAlVJGgak7AjvEG3h0a9xZpECGCdAbIBVoJwATymjhpNaOBDC+UjUHwie2fE5Sa/7TS/D27wWPFlrsvZQkmS1hV8aYihB/Nn/v8s9p/w67Z+zUnePbOsCQPeIiZ5bg1j3GZVVpEXBRO2DHWnOA23iJV8yXFAnSW8KRrVYCIkIrVMICCTlvHb5Gm+tuIB1rdKX3+rjR/z9x9ZjOLWoKtGAAI/8nZhY3z+WdxTJ9gCX707XZjibTZXTUMQKgqBqSOCrXAQQAUExHIwB3iFYyN7BM05wRBgIjhFAy9isAs4IQoBZAgME7yjQQFnZEWlwrBEnyY1aHH7e59RJsLXND8/Chz6fPPJ/xU7+4LWYJbHwAIP5r/5PTSpvn8MDctxJwgc4eifPWggRtgyARpKajfbqSlvDpWBQyCn5Ql2MRbpMwJ+LKMH99S07PpS4RmhUGbWQlOFfJbpCyRbsucAM3/UD5/P3z+nrk3OaipnwrMawkKfG6EcGptLWXSLpp/Hp9/Fgn00cggqPosoriUNdSgAO5RVGZwbSCA5JNMCLwCcId4i3STliC9QAcdkGECdBIlNOJ0Ia/OHEm0kWTKEbAE6/p/AlvhSJqf/6LY211O+Gne3eeyBDEA8Lu5aZMB4Ufzn0rzH0xZ7VmUJuYEbJY9uz+8kwes/rD05MFtxYNB8A/+yGxjc4JxO8ZNRgQHjw2+lGRNngO38qhhAIKS5/ktUhVr7aw1v5Y5+TjevSJshRZnWYLiwb2+HfGjsacXhlCu0Nbct9JO0vwH2Tr/3JVMKEifvVFLo/mcoC5e9WkVGQLCPVYdwIQKNWBCwiPmZgXcoZgTbGB1iHeH+LKMfQI1bSlADzAxAVpHcCWSpijOgCmgoDPSuES6gLAE2izb9D7BiObv98y9SZ0IW/J096mWoOBtS5Yc+QnBTVgCPjw50g4vPv/BGjV/3j/JHXozlqDqyyoyq4AqMo4mPA5v3lOXFcAg4D+FNzEn4MuyG+8OiQZoqyJIHx8oMCanmZzgNAg29T/GaH5We9DWueYfQ/JSSdS9p4GVf08Qk2AGQbIEbc4JEP6Ts/P4XVAGXaeI5pdiaNZNGvjx2sQHmBjLIqTy6SEjNKQ1ce4hLYIymrhQS/eYjsAVc+IObWpOwLtD7Bg35wRBS1ygRkEwtBOExakkS3jApAIoriIzAZQhsGP8Y9on4O+aeG7W0oHmRyhjtUcC6i4iWmjLvbQEd7Md41oCGQQIJQOgDUuA23MkV6ttzZ/3XT0nmHOfgO4npHpyWP1oCIrpaOYxCJgTbMISsDqUvjEWGcNTBOkc4oKCXsX12SgQYFzq3BGAn2H8cblDba0OoflZ7dlbo88/wsAYhE8m+SnGVx+eGB/T1AOAsgyCNiwBws+rDeVqT986xUizNN1aQADGzQl47uSlhsEDroHADGFvlrN0VOUiD1gBd2hTb5GmOUFYArWtE1KNC7A1jiYOHDRX+eDpHmBCZAEo4A59WINg3XMCND/r/Ds7nfDR3dVYNNzuxd2tL0tzZ798d+iGJDII1mkJMJ9H4fNfWOnz32iyXY6r2tOcoPnaRGQ1+r0GayBKxEX9FjEXsgnAhCbMW6Qb/7WJLlQ0gghq0ouAN3JLUGVKoLo28AYYt8Y+gQbBuiwBmn/o849/t6eiqrUozQnGSiODYB2WAOHflM8/q6cQiHGDgIdNXjxpVQKuyEhLMDiBNOIUmjhlE447hCXYyD7B0zbyn2WJNuJET4KhEZgQcFzMiAgBWHYog3qwBOvYJ0iav22fP+PiBuruYXnGDgBKMwhWsQS4PUcr+fxQsf4wbk4wsRU9/DxP/WaEOp0yhJQArIAl2Oic4BssvidQ00ZokpPgkQwlRrm4CNHZAIWNnuTV+wRHo3nzYmh+fH60b1urPfPSkspNHAAUYBAsYwkQ/tvy+aF7WkB4mRO8b8y7QyEgetI66yooD06oExtAnl7jAjY6J3iDjf3PMngSKURBdeInEF0iLy5CdJJPYeJGskWamWEJPrzEu0NJ82/a5xfJU8+pA4A7GQSLWALcnqMt8PmhfVp4A1+WsUQ6YZ8gf/jT6qIsAhJBBQNXDI4l2OivTfzZ0hJUzRMZdFjzqAlsJo6B83LCdVo5J7i2l47m+4XhUc1/Oz7/GO4iaeYAoBSDYB5LgPAPff7NrvZA5yIBDVfPCfaGd/KAAwMgBKKLYO4RFCewkgLmAkwAJjRhBsFHbuPLMhFS0yFAp1LKswmTAg5PNSyANEWj40eJOu2zj91+/BPX9sKj66lvEGyr5ocvwlwDgIIMgmmWALfnCJ9fT/vgXt+KDS51Qt+ygTkB3xO8ZcI+AQ+bkOpvwiEZIwmpVBlHFhcF3KFNfln2ga8347UJKFHzRAa9I3CN2PDI0yq8ispyFfLCUREf2r/4uEzOr9us+ROtcw8AbmAQjLMECH/4/GeX9tSDPaMc5Z+EgNbje4IYBLhDFdHVM64wQ3YsDmVwT8C6CLURXAkjuMqkU7rBWB2a+WsT6YYlY9rP9wnqqqCvRixop7xVh7LN4mLDo8KJCJFRAc/LEnzok9f2YmYJtl3zBw+6LDQAVD6Eu2kJcHuORnz+qmco/ASFiZagwU4DDBlp4pEwgd9mOQbBJr8niP8n0D5BkwZoHcEzupt5wATuyYpZSnteloAd45ceWxxPguYPQnVZeADonhgEyRIcPj6t3u3pRzr5T2JAC4Yl0OrQM3viIJ66xTMmz6qjSrYyo4xMB+kj5ZQQuGLKNmHcoduYE1SkiFqdQnRCmhAz6CNYdQRMgYQrjjRihXSSRnjhSHMCWYLPHg6Md3u2bbUn0ZvHSw0AKikKt91eJ/7RhXXdJ8Xnh/Zp4d6O2YHCjTIIA+FGhlkzuQlbOqrFkjpPAINgk5Ygfm2iVxKk5jOgRLnWeSBTwrhyz8sS/G/PXdu5dY2fKXH3KTVsR1axDBm4Pbwwd34xsDe+/q7xAh2BucAy9W3LPWdXZr/0vNkfHFoIdfP51Y9SgM4y33QkRGCcwvP7cjzK6RI7xn9s9twGvieY99cmYCzRK1YMmCBy4ww4MsyqyOIQste5tm99i1lncGH8cO2TIA8LDwCE/0irPXw/wLs9vW7HYk5wVv6KW3TGE3hB+P/xp83+Nf8TMIF+T+k1kBIshMGmHdxDUJmIuCgwCP7BH27wy7Jqx1hkDGkWHeDzhrw4eF/C/z7tQXzPVxchD7jG55eDeausy20aWGgAMKJPJej1W52d8nZWfR7cLb8sexItAcL/Sy+YfZxfhdYTCC2nmDNgnjCIQg3WgBI5hVNWEZgFnBClNEBhZuAEANyh+LKM9it3yVo4oIn/LGt+T5CaIS/oqRLG4s0ClKtwhP9vvsPs3W9xK3Rjr1sYc0QGwdnF1dR9Arvlo5TgOYhA8x9rtYcwbp2fQYAlONYAwT2ao8qtKILw/9xnbmr+6tkGjQHHJVBktgR0JZkgcPzZyGyAo2WVwSDY5Jwg7ROo6SEtQnROxoc50QeU7Xev7UdlVb77z7iE3+qj2+nYgfaDHmmR5PxSvmWds13AXAMA4T89O48fqn3qQX/iag+D4KCyBMen51s98nkMCP8vvVhpfmleHijpEYRImQXIRajluEWichXrFKBTQF5uBE/5ilU6qiAm4A6xT7CJt0j5soxvjPmeoCIFEgyCmvTmOHkE07Ert2eo+ZXQOCnTk3v84N6eHT46s7OLm//11ih+a+DMAYDwH4fPfznX+/wMAiwBVuBE1uDWOJvRMMKP5v/o580k+8aDNh0IA0Hg+LOR2QCjbBNvwmTmOGkpRF5cyp9h5C3Sjf3ahLQ3O8Y0TxihKSFj4j1pflaW/tJbfUTzW3Z0Oy652bNHj89sG+cEUwcAwn8qIT6N3+rsT9T8Gc9RjjnBsVymbZwTIPy/LM3/O/jcTeKbElClo8mayQHHpSwASIgBJEBnncG9JaKrMpq4UAscoMw2q2DcIeYEG9kxfoPZe7/GbL8XaiCRELRADsF0QCtBoOHz/w3tl7zrzT5V+E2Hu1tvZE6wXZZg4gBA+HFjEGJ8uaKYWFRs3jyTJcAKYA1ulshTNoMj/D//WbOPTlrtSU+8SU6WFigXQrNcBU9Ijtw8r4kHzEWBQbDJL8ve/7XXhlYPIqdc8Pn/2683++4Zmj+vYjgnkCXQxDjPvy18rFQj/KH5Ty8RVSPNAAAQAElEQVRsms8/i2gGAZagXDY9v/U5AcKPz580v5STofIkb0QRjEMJ5CkCixB4IyHAUmmW+XHVJTKsriu/jwzSrHE0cW4nUO5Eq4gbmxO8ye29bx/EIKB9AjQQAha9+Pw/9NVm3zqH5lfxkRMee10mxqU7xEoiq4ojhTaM8L7SjQGA8B/j8ysc3N9b+a1OBsE2zAkQ/n8izf9v+O+vvKPTE1Z6AxQ2/eShNss34fxO8gh1+ghiyJmNO7AEzAna/rUJli/f/Wxh7/+6oSWoSRSA5v/RrzP7iwtq/pynTjUneHx0u5YA4eej/JEBgPCH5pff/9Qa3+pkEGAJjjUnOJZV2fTIR/h/9SWz32HHNXsierY3hI+0KCZA50h+LvRkkhbldaE8aQRggpIN3HQknJigpPIESUEpgIqMuhkEvDvU9pyAQfBNsgTvqSxBtK9L+PxfZTaPz6/iU093t241J2BifBuWAOE/1KR8b7dn9QBA+I+1dHm8Js2f9wKDoLQEF8ar03l+W/i5lqD/6fM2ssOrZ3CzOSSOkOeQRmim53gzT3CdXQFVZFYDVh4ZXqM1UBbjPgbBJr4sYxB8W8MS4Pb87a81m7XaU1E6d9TpyB2637dNWwKEH83Pe2z8UlwMAIS/Dc2f90anU1hpCc7teAOWAOH/lUmaX0KmsyaxhgEUdCJ3I/mkpQQGUcKJv+HA7Jl95YIMI4tKqjTjEKwzkgMV4grAhAYYZZo4r1JvYk7AIOB7gh/8ygv73q+4tP/iTWaFQ936Av3X1ZyAfYJNWQKEH83fl+bf39sxd7cC4T9G8yscaNOiWHC1xxY8GASbsAS4Pf9Emv+j43z+RHP2UDM0lSpjMgklVl8RjO94xuJP+z74jupPOqpyVRRlgQmBjLk08wKOS1kwwLiU+wRtf1nG+/yH2sH91jebfedbru3R0WlrCxidDc0JEH40/06vY/wyXNmzZkWt+TXhRThTRpsx7QwtwfpXhxD+f/m5UZ9fg10j3sxt9BiHRxoXBZ0jN0Q9VQrwN2sd/a88a7bbMUvfE7xlryqgqL4fQEGnBRECuN/SkeFCbSSfcpFYDgIsQRtzghCURydauy8F5e5ezzoa5fyQFQMDMtYZ3L2aE2h1SBPjNuYE8HQonx/Nn7+mXaD9N6H5805jEJSW4FJzgos8e2kct+efvmCG5h9bCULUzBCuZ3BT2BplVKSBCVSCZMLQ/H/9rRbCr9Q461+buBNoXFQ84nRp4k045Y/EFFDQaYSUhzsU7w6xn9FYjk35y8QDuQMPH53GH9Ld3d8xd49w786uoTnJa2sBA3lADtc9J0D4x2n+1D8FS500nhI2GdNuaQkuNCdY3RKcXV3bL790bZ9gtacSChdDBEX1qedqeVpkNhIBCakgMIFyxN/8erO//JZR4Y88ZcavTby9codIVFByqkqYDWFlQI9VBzAhFVB2lVNGgcfFjInxR/7U7HfZ0a74LUstfk2Cwlo9LoJ71YiqcnfbxxLIXWnPEljDEpzaOizBYDAw5hfjNL/YirPoFEUAt3VhEKzDEiD8rPZ87EuNd3uGz3Au9iYWb2TQW9+uSeEPZpo/b6C2BPvKadwfgl3hVaQCN8/Ii4vFLeXFhkeVxyD4iT8yW2WfYDC4NrQ7P1eYNP+woRJyd8MS9ORDU3ZdlqCsfXhFHg7u7dsjuUPnK+wYDyT8fJqZBvSwhVGI5zmacgsYTK9iCRB+1vk/+SrC76Oy4hMYUrqe6c1MpTcrqFEBlA+ff4zmzyuibFiCr5ElyOYEqspSG8ARdOEeaxxKqjHglB8wOQCKcYf4f4Jl5gSh+Rs+v3tVqerNT3e3OxuyBLhDhxoEy1gChD98/p2e8SvQ7pN52ooBYDoYBFiCM81geX9ISXOdCH9o/pfdrpNU6U5YJgg0koEJlh2kEVIyMCHhKaajvkOa/699pdlOJ6XOjtOvTTzbmBNMu4u2CakMzy7H4Yf8SI+LGa9SMydY5C3SwRyan3aawb20BOWc4KTF1aHCkIdFLcGgqfk1WJu0j4N5ruPSbyWNQXD/7q4dx47x7DkBwv+rWu157jW3ARRXwgB4I1R5VTTMJoEwTAlIz9magvZN8vn/kpYFWe2xBQ7qYXUo/88ymiSv2UZUS0YAjUuWlqEWdSgRd4i3SJ97+VqCaVOPRTR/XpG7V3OCwphgInR5mVVxNWHdTmFYAgbBPJYAOvj2oD+H5k/0bdUAgCgGASOfN0inWQKE/59ptedjX3JpfgsZsDGH5GKYWiFVNEwXRBpBYH2Cs9rzbW80+0Fp/kWFv65IQO0O7QuZcNJeZNVAYOVlXJpySCYIjJNBgCX47S9MHgTjVnvi5gUu7skSdGP+0NqcoFvUg2DanADhf/Whlm97nRic87KydQMAwhkED+71J1oChB/N/8lXS+HnHkIIQlzAhmEkqUKICHUpEAWdI0nf9DqL1Z5F3J66ggYgebGJg4BGCSpfRUb5CFUa6eBC4ww4EgO1ALkIPbny+AW6cZYgNP+hBEW7sPlqj25d6HTfgCUQRV0Gwf09w68fZwkQ/tD8u72ZPr9lxy0OgIySDO0URfiA+ZwA4Ufz/1b4/NlNU9BKNsoSI0iZ1LySTUDz/4A0/6rC36ybOcH7tGMccwI1ojOEt1mGtCbehCVzTfTGvZGgChgEWIKPfX5oCQZL+PwjjY1B3DdkCZCHB3s33h0aJJ9/Qc2fWNnaAQCBWILmnADhZ4cXn197NvGsKdcMevamZ2IWgI0cJNUJFVJFdTL3cf+yPv+wovEQdfP/BDEnyFaHaDvdVdMFoKAzZRl1gKS0hJPWDAyCNCfgD+Fem3O1p1nHPLD7BiyBmO1qTvDg3l4skWIJsGZYhUV8/pyfrR4AEMsg4NXsx6dX9vOfGdjHkuZXh5A/M0wrV+VVUVQF/O6nzf7aV9jIDm9krvGS3KE376tSGk0RMCHhisedVZFhVpVARLC4sDrkhiX49ecvbbfXtUnr/MOKloPcN2MJurhDGgTsGL/86nH5ysYcqz2TuComZWxTuutpXnlhDy9GfX4lWx1s9HChBEUjJ2mEOhFEQafRGWj+79ZqzzrdnrqtBiB5iTnBuP8xhpZUtIYF6EzJBt/UkdKIwa06wCkDKs/HpD/MmdGnRDLWHNzbtwSQXIiPoiiMyTwDgrRlA8982Xs3ct9ATw/Tfa9r9t63uX3N3dFmedCE0dQMG1MgT9Kzs3drtef7n7WF1vmzlhZGR+YEjbuhJ6E1rQJ0joowCakgMThBMBEfs7zn7bzP37WTU15DZ3lZmS2d7qOWACFdZ1PIAzu8O72OveHgzo05waJtbfUAgFnWgNnOvntn1+7vuP0NTUrfNmZTSf1uo5JhcSAEhMgLIJLjklDid77u2v7iM9aq2xONcmkE6K7nBA13iCLkEROgkXgaH+RTjgC8W1zb977V7D9/o8tVKIz3vtLbv8yhKNNGcPdYisR9fagVp4EmqutoZyBlePj41Po73VjtQfvHnODx2dLvDm3tAIBZNH8hc3d3f6fuv7s9s/foob4jswQUcC4TwqS8QrsI73rDtf2ANP8q6/wTmp07Oc0Jmq9Sx80QTghkeCGJECkCdMbYCFwXvuT64a82+674uUIl6OwUGgTyn49PL6qXD5XY0unu8e7QTm89+wTIA5ofZciLeYnsLnMCLZEyJ5i2T5DK5/FWDgCYTZqfF7Dcebwl6UD3NAj+a1mCr5pgCShOufKO4TXSuBCUzIzizz9lhs+/26kSlX4bJzTXg2B/SEGTKmBC5AIQAtEFmCBwR5r/+6Uk0PzSH0oZnmjlp+7341f+Ts/OZ+4YD+9cHHIvLUFXew6r7BgjD03N714xWpHU1SB4oEHAm5+sDi2yKbd1AwBmx2n+itc6uqtB8MN6yPmcIBW4TkAWp65zv7Z3vcHsB2K1J6VmhW8BHTcnCOq4EERTFQkyQxaaOD7/D3+V2XdM+ekSJpAHsdF4qc1GBsGk3rKVD3ePladkCRadEyAP4zR/TlinKOyAfYLjMzvno5C8wAR8qwYAzE7S/Dn9PHQswdQ5QX5TheP2/PkDs/LdHmqqMrYgkrwYc4Jx/2M8kVJl6LTw+WUZx2n+nLWwBA+SJWj319rcS0vQkaZexBIgD9M0f5MnNRHvDj24W+0TnM3H09YMAJidR/M3mQbGEjAnGGsJkAoKNQJuz7e8fvs0f4PEAEe+J4iU8sKDBoI1AjBhhx+qnaH5KdcMYQnkDsXLhycXrbtD9/Z3jW8OXnt0qramWx3kAc3flfvU9Pmb9I+DuxpkTPYfn5zNZQm2YgDA7LyaP2caIUiWIJ8TkEdI9yD8+PzbqPkTjSlG0JkT/Og7ru3Ne5mwwBRBhYnQ/N8nzf/NT7vlPr/NOEYtAe7QjBtWyHaXJej3tCLVibdI2ckdVx3ygOZnsLAA4g6X40qOT2MQxOoQ3xPMsAQFW+Tjq9lMKswuo/lz6rAEzAkmrQ4V8vnR/Kzz3/aEN6d9Gv7GfvmLE8/sxQvfUbQWBwFo/h96m9m3P+MLC79Vx9ASXG5uTqClTL4sy+cEyEPS/Hx8U5G4cMTAjjnBDEtQvHp4apdXw85duKUVboDZZTV/3qxkwbAErA6N7BMogwnvf3ZwvZU+f85Hjru7vWnf7f3v8BFLILZKn1+T+GU0f94OAvPUJucEYywB8rCK5m/yRP90O4XNsgQFJoaJyaYtAcyuQ/M3mQbGEjTnBLg93/L6a/v+Z92eJM0PL80QE+N3mAaBlJWeLkudq2r+Zv3ABSspzAm0T3C0gTkBsoebgyVA/tah+eGjGRjY0yxB0d/t2p29nfhv101ZAoR/XZq/ySyw64Il+OtfcW1v7Q/sG+9e2X/1pidb+MWSljtLS8BbpM/uXtlffvPAvknLuIv6/NQ1LSAw7BOwnr6RfQJZgk5R2BdePoqfXmFQuPMUp1E5fx41YQkOtAGIzPGhVXOfoKAqfiPx7v5uOTFpzR2iJTOEvw3NX9Y+vBaXF/Z9bzy373rdhQ0uLoYZTzDEg9u5PLW//bYr+8b9U0NrtsFOWIIN7RPwSgaKty9FfHFxFfLRBk8xsLVPcKQ5wVljnyAGAA1CQNuWAOFnFLKdne/wQsM6AkLy+Pg83g155v6uvV7hRCb9+IQVjmw1ZR0NbqiOwWAQCooVjjfd79mBBBTX4eLyauaS4jIkJoFBY/JjxgjqMvVMu2dQvduDG3Qg16vX0+rQoxObtDo0ra558uApzQngC1mpBwAVDC3B6dq1C8xuQvPju15KKJ7S1ngh/6BTFIYPyKhnIMDnkxZ4UAj7Tq9rrKW7ly+33b/bj+9x0aBt8FSo/xBM+u1ozQok5OHwxLpa52e1x93t7v5O/CodvJLfBk8MgqcalqDIGyktQa+cE1xqwpUXWAKHmU1o/qNK8yMYPLxEaqco7P69XeNBPmmWYFBpfh7c/l4v5gLw5e7hM8MrAtOqJZB2Pju/1yvhLgAADN5JREFUNH6kgMFI+6uEQaX5d7QUitC746lb8MZ3yngIKMs2LAEtdTtSitWcoLAxR20JMEcrzglgFmYKaROYHdPcWpKOtWqBECTNn1faKcS0Rv6Z/D8GQp6/jTjChnCH5r+zGwKS09nTzmcMghaXswv6Ti7XycmlHamfoSunY1485KGh+fP73H3UErThe6lRFAqWYOwAUL6VlkCrQw9Plt4nYJNjE5ofnx+fDkEoNNCgf1zoFMXtWIJxxMxIGyTNLxehqfnz29y9tAQSUAYLSmAVAc3rT3gSmDPtrJaWIOXMHw8maP68Bvf5dozz+xbFsQTFtJvCEkjzLLNPALPcV0gg29b84fNLu9PWNH7I6xTbbwlQHAhzaH75xe4YbqifHGpL8OjULtbkuuatFXqW5ZwAS3C+0OQ7yUPy+fO6c9y9tAR9uUn0BffnZdaBTx0ANFBbApmteSdbEPv4+Cze+WhztedIPv88mh8+mqFTbK8lGEjz8xUVGnea5m/yA+zupSXQxPiQQaAlxdYsgRYYzmJOMN8bl4M5NT98NIO7G0q4JyuIG93GnKBoNjgJhoi7+7uxDDdr7RntBbFm5Qi2lo7a559T8+dkdIrtswQILNouNL8sr/tszZ/z1WNOIHeINy4vW7cEFzPnBAg/nsC8mj/nx72UI5ZK6RvkKy+zCj7XAKCBvjYq7rBjzJxgQsdCHD5/t9Ox+3d3zX3xB0hb0wJCEppfGmiWzz+tHvI6RWHbsjo0kOZHUBbV/PDRDO4eluCBBsHDx6fGZ4L0WbPMOuBOUcQPl53rObCoMK6NwZKaP6fP3Y3VIT6E5+cP12kJiryxaXhYAmkmNHxuCRD+h1qJcHO7d2dnWjUr5dWaX2a4kE+6UmW6uVMUdtv7BAgP2m0VzS9WRs6wBLhDGgRtzgkeaIkUNzRfHUL4GdDLav4RZoS4e7yygyKmr6hfySufCw0AWoOAsATMCSpLgPDzUTLaq3XNr1WIVTU/fDRDp6gswdlF668DN9sFHqxJ81NXM7h7WAL6ijcs27QEB1JGTUswWJPmb/ID7O6lJWBOIPlbhyUoqHjREJZgv5wTsAKD5rdNaf4lfX6bcXQKWQI9yDNNHjHpM4qvJbsNzZ8TtmlL8OjoPDZR16X5c37cPX4SpS+XHLljsOVlFsGXGgA0AAH72pn8wsuPrRBRrWp+bcOfytdEmxWF03wroVPIEmjuwjr3sdpEQFtpSJUOQvOfGlaTfnRvhy9335glYN7xWKt/hdpMrzeI1bWf7h6rQzs7nXJhRn25bCPFsjfi9pxpV7Xf79nF1dXa3x1KdPEbNrwlOGmHN5VbV9wp2rcEDKyHj85CMO9pTuXejvA3+6RtSzCQ2/NQy6/wg2zkc4ImLeuA3WUJtCiDIl7FEiw1AGCw9PndXvdgPyYnfMww7z7BPB2AkBxJCzPBalvz5/R0isKwaG1YAgSFyWGn49am5s95cvcYcPTluucE8ESdvNvDAEBZncli40ryHHNa1oW7+8qWoFiUGISfEcd9MEsccwJpste0RDpcHSJn+XB8cmFo/gOtMhRF+xoyp7RTDC0BVijPXwZHGB4+OpEgdrVStmvum+dr3ZYA4WdAd7X/gNtDvxR6Xjw3lBdKDL5JbyO4eyjgZS1BsQhRCH/S/GgS9+EDZMv6jpY/wxJUq0OL1J3K0lnHofkv7J788U6xEImpmrXEnaIIS3C6htWhgfzU17RM3LbPP4txd9cA7IivvqG1V1kdGsjtOXwsV06++N390QHdKUoFci43eZstQTGrw1I+wp9r/pSX4r3dntER7BMs6w7RWWfqNN7U6xRzk5dIWHvcKcoHucrqEIP64YZ9/lkdsaolQPhLze+hgce1V8gSDPcJzhd6d2hcfdPS3Es6+guuDs0lYQj/JM2fEwUB/DcrnbPIVjxCcnR8bgwAdmd5BTev+7bwTlFaAuYEi5r0JCib9vln9ZW7l5ZAO8aH2ixbxBLA0+HReM2ft9spSgWyWUvQnXt1qMgJznGEf5bmz+/BEjA/WMQS4GefX14Zu7KdYiZZeZOt452ifJDMS6B1ngYZ1Lft88+is9fR4K4GwcUcrivCz3PtahJ/R6sws+onv2haAik5+oX0NoI7lqAXr/Mjt9A7rZ2pkobwz6v580Z4eenu/k6MxGmWgM5IPj8rL51iKkl5MxvFO0UR85KZcwJRNdgSn1+kTD3d3Xa6HbtfDYJplmCAz4/m73XC1XX3qXU3MztFqUCoHyvPc2/mrxN292p1aLYlKCY1DIGMILu2WLGYVG5ael9zglmWgM7A5z/QLmynmEjOtGY2mtcpingJDJqhfVzj0Xfy+XsSFPh3n19QxtW3ibSeLAEbWbhD4ywBwr+o5s/pLpqWQAsd9FNeZl24u2tu0gtLwOID9I+re6zEQRhvdRYyc2gGdx9371xpkywBbaD58avx+TvFWFLmamPThQrR+qD6xph5C7wkGuhoOhyfn2VB9+X7LtW5idjd4/sNBkH+Fik88dv7OxrQd/d3V1q+7RSFoexQILiSzb5bN5/upSVABlmdHPfu0A2pw+3hAULM/Tu7RCuH/m4vrAgaJK0OoT1ZWaEzOsUNMlZus+0KGATMV2JOoD0L2uNhPtRu6I4E5UnR/NDdDN2OBLRyh7AECD8LGp0uGnWnWXRpuJAlOND+zpk2y/iclX5burIZN7pDd08uEe7Q6Y3fHRqRPIQ/fH4RmK/zz2hnZjaj8G41J8C6hOa/5XX+mUTPKNApCrsnS8Cc4PHxmeY7vNvjG93hnUHiwtnuPrQE2rTDGjCg7+7vrqT5c0I6BQNtz/iGGWXY9iDY2+3ZrvYrcktQDwAIqH1+CWZO8DrwvojY6XViA+benb51irr5dVR/K3V0Cj1IzV8eH52r/euwdO4u+Mk+OwXPxuMHxnhm83KzSLlCihaXixcdjzayOrRzwxIUEIzwo5U7ImhVn5/6xgXawOfHZeBdESZb01aHxtWxjWm4CKyJ93e7YV6P5Q7B6zbSOi9N8IQ87PW79vqDfSmss1a/LDuQAjnXEvhG5gS7WIJuvLLNnKDgYaH5+fkVXj2Yt5MWLYeZO9MOL37zvtaP8ZGbc4JF69uG8tF32kTqdTuGJmP3GpPOINgG+pahAeHnuZST+J3yb4fkr6OwLubYJ1imzUIWk/47u4U5QcFI98LjAbqv33QjJMen5/UOb6cIoyN/rKu15Nn7BMt06CbuKQXl1Ar13Z29XvjHRVEYc6dNmPQ2eIQn5GFHbmry+d2HcwJ+bYJ1fJ7putvvFHIl75VzguPTi9ZfmyjnBF2TBTA9tN1181PXF5r/bPwOb3+3Fz4zGietDtU3bjGAtWRyiOZnpcx9qDgKDQhcvCfNEiD8PIek+fPu73YK472eVi2B+m7TlqCgQffhA8wZXxZHSxxrs4PRPG2dv1wdSp9Xrue3SJeleZ77kqAg6Enz5/eR9yRZAnjKNX/Ok7vXq0NfTpagyBldHh+9k2XOM/n8+MWdYnozfU0gn4Q5AYN6kuYf5d7CNXoSLAHCP03z53x9uVmC6ZKZcz8HjpAcy+c/1mrINM2fV1Vagu2dE5SCMurz5zzkeCGTvs2WAJ5C82sSn3z+nIccd//ysgRrHwCh+eXzz6P5887tb+mcYJrPn/OQ4wyCbbQECH9ofg1SXl/P6Z6Ff7lYgrUNgGU1f97RpSXYnjlBEhQEeZLPn/OQ49y7TZYAnmrNf2c3VrBymmfh7l8elmBtA2AVzZ93dn9L5gQM6tLnLyxf7clpnoUzCLbBEiD8aH7oWUbz53w+6ZZg5QGAkCzj8+cdmeO3bQlKQZHPL03Hhx/unpM4xOeEELqwBGeX1vbW/ziS4ClpfhYd3Ffnyb1hCbQp2OY+Qa1A1rhPsPIAqDW/trM7xcrVjTy327IEDOpS83dij8R9dUFJjBXyuZkfbXqfAOFfp+ZP/KQ4LEHjLdKUvs7Y3Y0/BzzTjjEDmee0av1LSyyN15r/7q51tFGyKjHj7t+0JSgFJWn+3lL+8Tg+mmkMgk1aAnhCYNi4W5fmb/ID7L4ZS1AU2jGWsuXnd1hpRA5pf9mw9ADgrzP53Re0WVvCn5jalCWoV3s6xdo1f+IlxUWyBBdXxoNM6euOEf6k+e/u76y7+hv1bcISFBpsbOCeXVzaqt8TLDwAGHGl5j+P94c6xcJV3Oi0eRJqS/DwxNp4i7QpKEwO3dfn9kziryjcePu2rXeH4KltzZ/z5j60BLiRZxrgyExeblW8KIr4NJUfZ0aBLNvGwtJb+vyX0XinWPj2lfgOSyB3C422zkFA5/Gwel1p/iWXBZdlrNAgSJO7I20eLltPfh/CTz9Rf5uaP2834VgC/PVHMTFu5xUXdw8lfC5LwEDnOab2543/IwAAAP//g4597gAAAAZJREFUAwA2bL6sh8mSogAAAABJRU5ErkJggg=="></div>
   <div class="gs-ab-nome">GarageSpot</div>
-  <div class="gs-ab-msg" id="gs-ab-msg">Carregando…</div>
+  <div class="gs-ab-empresa" id="gs-ab-empresa"></div>
+  <div class="gs-ab-barra"></div>
+  <div class="gs-ab-msg" id="gs-ab-msg">Ainda carregando…</div>
+  <div class="gs-ab-rodape">Developed by Douglas Nascimento<br><span id="gs-ab-ver"></span></div>
 </div>
+<!-- v2.5.1.0: ÍCONES DE TRAÇO — Tabler Icons (MIT, https://tabler.io/icons), só os usados, embutidos (funciona sem
+     internet). Gerado por `tests/tools/sprite-icones.js` (lê os nomes usados no próprio HTML) — não editar à mão. -->
+<svg id="gs-icones" xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><!--ICONES-INICIO--><symbol id="i-alarm" viewBox="0 0 24 24"><path d="M12 13m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M12 10l0 3l2 0"/><path d="M7 4l-2.75 2"/><path d="M17 4l2.75 2"/></symbol><symbol id="i-alert-circle" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol><symbol id="i-alert-octagon" viewBox="0 0 24 24"><path d="M12.802 2.165l5.575 2.389c.48 .206 .863 .589 1.07 1.07l2.388 5.574c.22 .512 .22 1.092 0 1.604l-2.389 5.575c-.206 .48 -.589 .863 -1.07 1.07l-5.574 2.388c-.512 .22 -1.092 .22 -1.604 0l-5.575 -2.389a2.036 2.036 0 0 1 -1.07 -1.07l-2.388 -5.574a2.036 2.036 0 0 1 0 -1.604l2.389 -5.575c.206 -.48 .589 -.863 1.07 -1.07l5.574 -2.388a2.036 2.036 0 0 1 1.604 0z"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol><symbol id="i-alert-triangle" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></symbol><symbol id="i-arrows-exchange" viewBox="0 0 24 24"><path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/></symbol><symbol id="i-arrows-left-right" viewBox="0 0 24 24"><path d="M21 17l-18 0"/><path d="M6 10l-3 -3l3 -3"/><path d="M3 7l18 0"/><path d="M18 20l3 -3l-3 -3"/></symbol><symbol id="i-backspace" viewBox="0 0 24 24"><path d="M20 6a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-11l-5 -5a1.5 1.5 0 0 1 0 -2l5 -5z"/><path d="M12 10l4 4m0 -4l-4 4"/></symbol><symbol id="i-ban" viewBox="0 0 24 24"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M5.7 5.7l12.6 12.6"/></symbol><symbol id="i-battery-charging" viewBox="0 0 24 24"><path d="M16 7h1a2 2 0 0 1 2 2v.5a.5 .5 0 0 0 .5 .5a.5 .5 0 0 1 .5 .5v3a.5 .5 0 0 1 -.5 .5a.5 .5 0 0 0 -.5 .5v.5a2 2 0 0 1 -2 2h-2"/><path d="M8 7h-2a2 2 0 0 0 -2 2v6a2 2 0 0 0 2 2h1"/><path d="M12 8l-2 4h3l-2 4"/></symbol><symbol id="i-bell" viewBox="0 0 24 24"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></symbol><symbol id="i-bell-off" viewBox="0 0 24 24"><path d="M9.346 5.353c.21 -.129 .428 -.246 .654 -.353a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3m-1 3h-13a4 4 0 0 0 2 -3v-3a6.996 6.996 0 0 1 1.273 -3.707"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/><path d="M3 3l18 18"/></symbol><symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11"/></symbol><symbol id="i-broadcast" viewBox="0 0 24 24"><path d="M18.364 19.364a9 9 0 1 0 -12.728 0"/><path d="M15.536 16.536a5 5 0 1 0 -7.072 0"/><path d="M12 13m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></symbol><symbol id="i-bug" viewBox="0 0 24 24"><path d="M9 9v-1a3 3 0 0 1 6 0v1"/><path d="M8 9h8a6 6 0 0 1 1 3v3a5 5 0 0 1 -10 0v-3a6 6 0 0 1 1 -3"/><path d="M3 13l4 0"/><path d="M17 13l4 0"/><path d="M12 20l0 -6"/><path d="M4 19l3.35 -2"/><path d="M20 19l-3.35 -2"/><path d="M4 7l3.75 2.4"/><path d="M20 7l-3.75 2.4"/></symbol><symbol id="i-building" viewBox="0 0 24 24"><path d="M3 21l18 0"/><path d="M9 8l1 0"/><path d="M9 12l1 0"/><path d="M9 16l1 0"/><path d="M14 8l1 0"/><path d="M14 12l1 0"/><path d="M14 16l1 0"/><path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16"/></symbol><symbol id="i-bulb" viewBox="0 0 24 24"><path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7"/><path d="M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3"/><path d="M9.7 17l4.6 0"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/><path d="M11 15h1"/><path d="M12 15v3"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></symbol><symbol id="i-car" viewBox="0 0 24 24"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/></symbol><symbol id="i-car-suv" viewBox="0 0 24 24"><path d="M5 17a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M16 17a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M5 9l2 -4h7.438a2 2 0 0 1 1.94 1.515l.622 2.485h3a2 2 0 0 1 2 2v3"/><path d="M10 9v-4"/><path d="M2 7v4"/><path d="M22.001 14.001a4.992 4.992 0 0 0 -4.001 -2.001a4.992 4.992 0 0 0 -4 2h-3a4.998 4.998 0 0 0 -8.003 .003"/><path d="M5 12v-3h13"/></symbol><symbol id="i-carro-entrando" viewBox="0 0 24 24"><g transform="translate(0 4) scale(.82)"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/></g><path d="M22 4h-7m2.5 -2.5l-2.5 2.5l2.5 2.5"/></symbol><symbol id="i-carro-saindo" viewBox="0 0 24 24"><g transform="translate(0 4) scale(.82)"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/></g><path d="M15 4h7m-2.5 -2.5l2.5 2.5l-2.5 2.5"/></symbol><symbol id="i-chart-bar" viewBox="0 0 24 24"><path d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M4 20h14"/></symbol><symbol id="i-chart-line" viewBox="0 0 24 24"><path d="M4 19l16 0"/><path d="M4 15l4 -6l4 2l4 -5l4 4"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5l10 -10"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 6l-6 6l6 6"/></symbol><symbol id="i-circle-check" viewBox="0 0 24 24"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/></symbol><symbol id="i-clipboard-check" viewBox="0 0 24 24"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"/><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M9 14l2 2l4 -4"/></symbol><symbol id="i-clipboard-list" viewBox="0 0 24 24"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"/><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M9 12l.01 0"/><path d="M13 12l2 0"/><path d="M9 16l.01 0"/><path d="M13 16l2 0"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 7v5l3 3"/></symbol><symbol id="i-clock-plus" viewBox="0 0 24 24"><path d="M20.984 12.535a9 9 0 1 0 -8.468 8.45"/><path d="M16 19h6"/><path d="M19 16v6"/><path d="M12 7v5l3 3"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24"><path d="M6.657 18c-2.572 0 -4.657 -2.007 -4.657 -4.483c0 -2.475 2.085 -4.482 4.657 -4.482c.393 -1.762 1.794 -3.2 3.675 -3.773c1.88 -.572 3.956 -.193 5.444 1c1.488 1.19 2.162 3.007 1.77 4.769h.99c1.913 0 3.464 1.56 3.464 3.486c0 1.927 -1.551 3.487 -3.465 3.487h-11.878"/></symbol><symbol id="i-database" viewBox="0 0 24 24"><path d="M12 6m-8 0a8 3 0 1 0 16 0a8 3 0 1 0 -16 0"/><path d="M4 6v6a8 3 0 0 0 16 0v-6"/><path d="M4 12v6a8 3 0 0 0 16 0v-6"/></symbol><symbol id="i-device-floppy" viewBox="0 0 24 24"><path d="M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2"/><path d="M12 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M14 4l0 4l-6 0l0 -4"/></symbol><symbol id="i-device-mobile" viewBox="0 0 24 24"><path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14z"/><path d="M11 4h2"/><path d="M12 17v.01"/></symbol><symbol id="i-door-exit" viewBox="0 0 24 24"><path d="M13 12v.01"/><path d="M3 21h18"/><path d="M5 21v-16a2 2 0 0 1 2 -2h7.5m2.5 10.5v7.5"/><path d="M14 7h7m-3 -3l3 3l-3 3"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/></symbol><symbol id="i-eraser" viewBox="0 0 24 24"><path d="M19 20h-10.5l-4.21 -4.3a1 1 0 0 1 0 -1.41l10 -10a1 1 0 0 1 1.41 0l5 5a1 1 0 0 1 0 1.41l-9.2 9.3"/><path d="M18 13.3l-6.3 -6.3"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></symbol><symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></symbol><symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3l6 0"/><path d="M10 9l4 0"/><path d="M10 3v6l-4 11a.7 .7 0 0 0 .5 1h11a.7 .7 0 0 0 .5 -1l-4 -11v-6"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/></symbol><symbol id="i-gift" viewBox="0 0 24 24"><path d="M3 8m0 1a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1z"/><path d="M12 8l0 13"/><path d="M19 12v7a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0 -5a4.8 8 0 0 1 4.5 5a4.8 8 0 0 1 4.5 -5a2.5 2.5 0 0 1 0 5"/></symbol><symbol id="i-hand-stop" viewBox="0 0 24 24"><path d="M8 13v-7.5a1.5 1.5 0 0 1 3 0v6.5"/><path d="M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5"/><path d="M14 5.5a1.5 1.5 0 0 1 3 0v6.5"/><path d="M17 7.5a1.5 1.5 0 0 1 3 0v8.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"/></symbol><symbol id="i-help" viewBox="0 0 24 24"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M12 17l0 .01"/><path d="M12 13.5a1.5 1.5 0 0 1 1 -1.5a2.6 2.6 0 1 0 -3 -4"/></symbol><symbol id="i-history" viewBox="0 0 24 24"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></symbol><symbol id="i-home" viewBox="0 0 24 24"><path d="M5 12l-2 0l9 -9l9 9l-2 0"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"/><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6"/></symbol><symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6.5 7h11"/><path d="M6.5 17h11"/><path d="M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1z"/><path d="M6 4v2a6 6 0 1 0 12 0v-2a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1z"/></symbol><symbol id="i-info-circle" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></symbol><symbol id="i-key" viewBox="0 0 24 24"><path d="M16.555 3.843l3.602 3.602a2.877 2.877 0 0 1 0 4.069l-2.643 2.643a2.877 2.877 0 0 1 -4.069 0l-.301 -.301l-6.558 6.558a2 2 0 0 1 -1.239 .578l-.175 .008h-1.172a1 1 0 0 1 -.993 -.883l-.007 -.117v-1.172a2 2 0 0 1 .467 -1.284l.119 -.13l.414 -.414h2v-2h2v-2l2.144 -2.144l-.301 -.301a2.877 2.877 0 0 1 0 -4.069l2.643 -2.643a2.877 2.877 0 0 1 4.069 0z"/><path d="M15 9h.01"/></symbol><symbol id="i-layout-dashboard" viewBox="0 0 24 24"><path d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/><path d="M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/></symbol><symbol id="i-link" viewBox="0 0 24 24"><path d="M9 15l6 -6"/><path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464"/><path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></symbol><symbol id="i-lock-open" viewBox="0 0 24 24"><path d="M5 11m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z"/><path d="M12 16m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M8 11v-5a4 4 0 0 1 8 0"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10z"/><path d="M3 7l9 6l9 -6"/></symbol><symbol id="i-map" viewBox="0 0 24 24"><path d="M3 7l6 -3l6 3l6 -3v13l-6 3l-6 -3l-6 3v-13"/><path d="M9 4v13"/><path d="M15 7v13"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"/></symbol><symbol id="i-message" viewBox="0 0 24 24"><path d="M8 9h8"/><path d="M8 13h6"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/></symbol><symbol id="i-note" viewBox="0 0 24 24"><path d="M13 20l7 -7"/><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7"/></symbol><symbol id="i-package" viewBox="0 0 24 24"><path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/><path d="M16 5.25l-8 4.5"/></symbol><symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25"/><path d="M8.5 10.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M16.5 10.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></symbol><symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5"/></symbol><symbol id="i-parking" viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M10 16v-8h2.667c.736 0 1.333 .895 1.333 2s-.597 2 -1.333 2h-2.667"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/></symbol><symbol id="i-photo" viewBox="0 0 24 24"><path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></symbol><symbol id="i-plug" viewBox="0 0 24 24"><path d="M9.785 6l8.215 8.215l-2.054 2.054a5.81 5.81 0 1 1 -8.215 -8.215l2.054 -2.054z"/><path d="M4 20l3.5 -3.5"/><path d="M15 4l-3.5 3.5"/><path d="M20 9l-3.5 3.5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></symbol><symbol id="i-point" viewBox="0 0 24 24"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/></symbol><symbol id="i-printer" viewBox="0 0 24 24"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2"/><path d="M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4"/><path d="M7 13m0 2a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2z"/></symbol><symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2m4 -14h6m-6 4h6m-2 4h2"/></symbol><symbol id="i-recycle" viewBox="0 0 24 24"><path d="M12 17l-2 2l2 2"/><path d="M10 19h9a2 2 0 0 0 1.75 -2.75l-.55 -1"/><path d="M8.536 11l-.732 -2.732l-2.732 .732"/><path d="M7.804 8.268l-4.5 7.794a2 2 0 0 0 1.506 2.89l1.141 .024"/><path d="M15.464 11l2.732 .732l.732 -2.732"/><path d="M18.196 11.732l-4.5 -7.794a2 2 0 0 0 -3.256 -.14l-.591 .976"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></symbol><symbol id="i-send" viewBox="0 0 24 24"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></symbol><symbol id="i-server" viewBox="0 0 24 24"><path d="M3 4m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z"/><path d="M3 12m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z"/><path d="M7 8l0 .01"/><path d="M7 16l0 .01"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"/></symbol><symbol id="i-signature" viewBox="0 0 24 24"><path d="M3 17c3.333 -3.333 5 -6 5 -8c0 -3 -1 -3 -2 -3s-2.032 1.085 -2 3c.034 2.048 1.658 4.877 2.5 6c1.5 2 2.5 2.5 3.5 1l2 -3c.333 2.667 1.333 4 3 4c.53 0 2.639 -2 3 -2c.517 0 1.517 .667 3 2"/></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/></symbol><symbol id="i-text-size" viewBox="0 0 24 24"><path d="M3 7v-2h13v2"/><path d="M10 5v14"/><path d="M12 19h-4"/><path d="M15 13v-1h6v1"/><path d="M18 12v7"/><path d="M17 19h2"/></symbol><symbol id="i-tool" viewBox="0 0 24 24"><path d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><path d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0 -3 -3.85"/></symbol><symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 18l.01 0"/><path d="M9.172 15.172a4 4 0 0 1 5.656 0"/><path d="M6.343 12.343a8 8 0 0 1 11.314 0"/><path d="M3.515 9.515c4.686 -4.687 12.284 -4.687 17 0"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></symbol><!--ICONES-FIM--></svg>
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// v2.5.1.0 — BASE DA IDENTIDADE VISUAL (roda antes de tudo, logo após a tela de abertura)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// O ícone REAL do app (marca/web/icone-192.png), embutido uma vez só (na abertura) e reaproveitado no cabeçalho,
+// na tela "Sobre" e no rodapé dos PDFs.
+var GS_ICONE_APP = (function(){ try{ return document.getElementById('gs-ab-ic').getAttribute('src') || ''; }catch(e){ return ''; } })();
+var _GS_AB_INICIO = (window.performance && performance.now) ? performance.now() : 0;
+// Nome da empresa para o selo da abertura e o cabeçalho. O servidor só guarda o identificador (slug): os conhecidos
+// têm nome de exibição; sem login, o endereço do hotel diz a empresa. Sem empresa definida → '' (o selo não aparece).
+var GS_EMPRESA_NOMES = { hotelgumz:'Hotel Gumz', teste:'Empresa de teste', dev:'Dev' };
+function gsEmpresaNome(){
+  try{
+    var s = JSON.parse(localStorage.getItem('garagespot_srv') || 'null') || {};
+    var slug = String(s.ligado && s.empresa || '').toLowerCase();
+    if(slug) return GS_EMPRESA_NOMES[slug] || (slug.charAt(0).toUpperCase() + slug.slice(1));
+    if(String(location.href || '').toLowerCase().indexOf('garagespot-hotelgumz') >= 0) return 'Hotel Gumz';
+  }catch(e){}
+  return '';
+}
+try{ document.getElementById('gs-ab-empresa').textContent = gsEmpresaNome(); }catch(e){}
+// "Ainda carregando…" discreto depois de 10 s (sem tempo máximo)
+var _GS_AB_LENTO = setTimeout(function(){ try{ var m = document.getElementById('gs-ab-msg'); if(m) m.classList.add('vis'); }catch(e){} }, 10000);
+
+// Junta partes com " · " IGNORANDO as vazias — e limpa o " · " sobrando de textos antigos ("Doug · " gravado
+// quando o funcionário não tinha cargo). Era a origem do "Doug · · dispositivo A" e do "Doug ·".
+function gsJunta(){
+  var p = [];
+  for(var i = 0; i < arguments.length; i++){
+    var a = arguments[i]; (Array.isArray(a) ? a : [a]).forEach(function(x){
+      var s = String(x == null ? '' : x).replace(/^[\s ·]+|[\s ·]+$/g, '').replace(/(\s*·\s*){2,}/g, ' · ');
+      if(s) p.push(s);
+    });
+  }
+  return p.join(' · ');
+}
+// "Apto 36369 · Ranger laranja" — título único de hospedagem (menu da vaga, Detalhes, Recarga)
+function gsTituloCarro(apt, model, color){
+  var cor = String(color || '').trim(); cor = cor ? cor.charAt(0).toLowerCase() + cor.slice(1) : '';
+  var carro = [String(model || '').trim(), cor].filter(Boolean).join(' ');
+  return gsJunta(apt ? 'Apto ' + apt : '', carro);
+}
+// Ícone de traço: gi('car') → <svg class="gi"><use href="#i-car"/></svg>
+function gi(nome, cls){ return '<svg class="gi' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#i-' + nome + '"/></svg>'; }
+
+// ── Conversor de emoji → ícone de traço (todo o app: abas, menus, títulos de janela, botões e avisos) ──
+// Um mapa só. Troca o emoji do INÍCIO do texto de botões, títulos, itens de menu e avisos pelo ícone; um elemento
+// que só tem o emoji (ex.: <span class="b2-ic">🚪</span>) vira só o ícone. Não toca no mapa (#gtable) — a bateria
+// animada e o raio amarelo são o padrão de recarga e ficam como estão —, em campos de texto nem em conteúdo de dados.
+var GS_EMOJI_ICONE = {
+  '📊':'chart-bar','🗺':'map','⚡':'bolt','⚙':'settings','＋':'plus','➕':'plus','⏳':'hourglass','☁':'cloud',
+  '👥':'users','👤':'user','🕒':'clock','🕐':'clock','🕑':'clock','📋':'clipboard-list','🏨':'building','🔗':'link',
+  '🛰':'server','🔑':'key','🔤':'text-size','🔡':'text-size','🔠':'text-size','🛡':'shield','🗑':'trash','✏':'pencil',
+  '✎':'pencil','📄':'file-text','📎':'paperclip','ℹ':'info-circle','🚪':'door-exit','📅':'calendar','⏰':'alarm',
+  '🛣':'carro-saindo','🚗':'car','🚐':'car-suv','🔍':'search','🔎':'search','⚠':'alert-triangle','✅':'circle-check',
+  '✓':'check','✔':'check','✕':'x','✖':'x','❌':'x','←':'chevron-left','📤':'upload','📥':'download','💾':'device-floppy',
+  '📷':'camera','🔒':'lock','🔓':'lock-open','🔄':'refresh','🔁':'refresh','♻':'recycle','↺':'refresh','📍':'map-pin',
+  '🔧':'tool','🖨':'printer','📁':'folder','🗂':'folder','📱':'device-mobile','📈':'chart-line','🎨':'palette',
+  '🚫':'ban','⏱':'clock-plus','❗':'alert-circle','✍':'signature','🌙':'moon','☀':'sun','💡':'bulb','📦':'package',
+  '📡':'broadcast','🐛':'bug','📌':'pin','🔕':'bell-off','🔔':'bell','🏢':'building','🎁':'gift','❔':'help','❓':'help',
+  '⬇':'download','⬆':'upload','🔋':'battery-charging','🧾':'receipt','📝':'note','🗒':'note','🧹':'eraser',
+  '🔐':'lock','🆕':'sparkles','👁':'eye','📧':'mail','✉':'mail','📨':'send','💬':'message','🧪':'flask','🗄':'database',
+  '🔌':'plug','📶':'wifi','🛑':'hand-stop','🚨':'alert-octagon',
+  '🖼':'photo','📸':'camera','🗓':'calendar','📆':'calendar','⌫':'backspace','🏠':'home','🅿':'parking'
+};
+var _GS_EMOJI_RE = (function(){
+  var ks = Object.keys(GS_EMOJI_ICONE).sort(function(a, b){ return b.length - a.length; })
+    .map(function(k){ return k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+  return new RegExp('^[\\s\\u00a0]*(' + ks.join('|') + ')\\uFE0F?[\\s\\u00a0]*');
+})();
+var _GS_IC_SEL = 'button,.mt,.ms,.gestao-menu-item,.nav-btn,.painel-sec-title,.grupo-icon,.b2-ic,.b2-alerta,.b2-aviso,' +
+  '.rcp-titulo-icon,.rcp-secao-text,.rcp-status,.exp-secao-titulo,.exp-titulo-texto,.fl,label,.gs-ic-auto,.attach-btn,' +
+  '.gs-toast,.plantao-ind,.busca-btn,summary,[class*="titulo"],[class*="-title"],[class*="-hdr"],[class*="aviso"],[class*="alerta"],[class*="banner"]';
+var _GS_SVGNS = 'http://www.w3.org/2000/svg';
+function _gsIconizarEl(el){
+  try{
+    if(!el || el.nodeType !== 1 || el.closest('#gtable,.no-ic,svg,textarea,select,.gs-dados')) return;
+    // o primeiro texto do elemento (descendo por um <span>/<strong> inicial, se houver)
+    var n = el.firstChild;
+    while(n && n.nodeType === 3 && !n.nodeValue.trim() && n.nextSibling) n = n.nextSibling;
+    var prof = 0;
+    while(n && n.nodeType === 1 && prof < 2 && /^(SPAN|STRONG|B|EM)$/.test(n.tagName) && !(n.classList && n.classList.contains('gi'))){ n = n.firstChild; prof++; }
+    if(!n || n.nodeType !== 3) return;
+    var m = _GS_EMOJI_RE.exec(n.nodeValue); if(!m) return;
+    var nome = GS_EMOJI_ICONE[m[1]]; if(!nome) return;
+    var resto = n.nodeValue.slice(m[0].length);
+    var svg = document.createElementNS(_GS_SVGNS, 'svg');
+    svg.setAttribute('class', 'gi' + ((resto.trim() || n.nextSibling) ? ' gi-l' : '')); svg.setAttribute('aria-hidden', 'true');
+    var u = document.createElementNS(_GS_SVGNS, 'use'); u.setAttribute('href', '#i-' + nome); svg.appendChild(u);
+    n.parentNode.insertBefore(svg, n);
+    n.nodeValue = resto;
+  }catch(e){}
+}
+function gsIconizar(raiz){
+  try{
+    if(!raiz || raiz.nodeType !== 1) return;
+    if(raiz.closest && raiz.closest('#gtable')) return;
+    if(raiz.matches && raiz.matches(_GS_IC_SEL)) _gsIconizarEl(raiz);
+    var l = raiz.querySelectorAll(_GS_IC_SEL);
+    for(var i = 0; i < l.length; i++) _gsIconizarEl(l[i]);
+  }catch(e){}
+}
+(function(){
+  try{
+    var obs = new MutationObserver(function(recs){
+      for(var i = 0; i < recs.length; i++){
+        var r = recs[i];
+        if(r.type === 'characterData'){ var p = r.target && r.target.parentNode; if(p) _gsIconizarEl(p); continue; }
+        for(var j = 0; j < r.addedNodes.length; j++){
+          var n = r.addedNodes[j];
+          if(n.nodeType === 1) gsIconizar(n);
+          else if(n.nodeType === 3 && n.parentNode) _gsIconizarEl(n.parentNode);
+        }
+      }
+    });
+    obs.observe(document.documentElement, { childList:true, subtree:true, characterData:true });
+    window._gsIconObs = obs;
+  }catch(e){}
+})();
+</script>
 <div class="page">
 
   <!-- TOPBAR UNIFICADA -->
   <div class="topbar">
     <div class="tb-name">
-      <div class="an">🅿 GarageSpot</div>
-      <div class="as-dev">Developed by Douglas Nascimento</div>
+      <!-- v2.5.1.0 (B): ícone real do app no lugar do "P"; embaixo, o NOME DA EMPRESA (o crédito foi para a abertura e para Gestão → Sobre) -->
+      <div class="an"><img class="gs-logo" id="gs-hdr-logo" alt="">GarageSpot</div>
+      <div class="as-dev" id="gs-hdr-empresa"></div>
+      <script>try{ document.getElementById('gs-hdr-logo').src = GS_ICONE_APP; document.getElementById('gs-hdr-empresa').textContent = gsEmpresaNome(); }catch(e){}</script>
     </div>
     <!-- v1.9.4.7 (Parte 6): indicadores padronizados — Livres · Na garagem · A passeio · Overbooking -->
     <div class="tb-stats">
@@ -880,10 +1107,10 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
 
   <!-- NAVBAR -->
   <div class="navbar" id="navbar">
-    <button class="nav-btn nav-active" id="nav-painel" onclick="navTo('painel')">📊 Painel</button>
-    <button class="nav-btn" id="nav-mapa" onclick="navTo('mapa')">🗺 Mapa</button>
-    <button class="nav-btn" id="nav-recarga" onclick="navTo('recarga')">⚡ Recarga</button>
-    <button class="nav-btn" id="nav-gestao" onclick="navTo('gestao')">⚙ Gestão ▾</button>
+    <button class="nav-btn nav-active" id="nav-painel" onclick="navTo('painel')"><svg class="gi" aria-hidden="true"><use href="#i-layout-dashboard"/></svg>Painel</button>
+    <button class="nav-btn" id="nav-mapa" onclick="navTo('mapa')"><svg class="gi" aria-hidden="true"><use href="#i-map"/></svg>Mapa</button>
+    <button class="nav-btn" id="nav-recarga" onclick="navTo('recarga')"><svg class="gi" aria-hidden="true"><use href="#i-bolt"/></svg>Recarga</button>
+    <button class="nav-btn" id="nav-gestao" onclick="navTo('gestao')"><svg class="gi" aria-hidden="true"><use href="#i-settings"/></svg>Gestão</button>
   </div>
   <!-- BUSCA RÁPIDA -->
   <div class="busca-bar" id="busca-bar">
@@ -932,6 +1159,7 @@ td.pulse-novo{animation:pulse-vaga 2s ease-out 1}
         <div class="li"><div class="ls" style="background:#FCEBEB;border-color:#E24B4A"></div>Overbooking</div>
         <div class="li"><div class="ls" style="background:#FFE0B2;border-color:#E65100"></div>Duplicidade</div>
         <div class="li"><div class="ls" style="background:#888780;border-color:#666"></div>Pilar</div>
+        <div class="li" id="leg-atrasado"><span class="co-atr-ic"><svg class="gi" aria-hidden="true"><use href="#i-alarm"/></svg></span>Check-out atrasado</div>
       </div>
     </div>
     <div class="painel-wrap" id="painel-wrap" style="display:none"></div>
@@ -1413,7 +1641,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // v1.9.6.2: SEM rebuild de APK — alarme persistente e espelhamento contínuo são
 // 100% HTML/JS (o plugin de notificações já está no vc27, com as permissões e os
 // receivers no manifesto). O versionCode CONTINUA 27 de propósito.
-const GS_VERSION = 'v2.5.0.2';
+const GS_VERSION = 'v2.5.1.0';
+try{ document.getElementById('gs-ab-ver').textContent = GS_VERSION; }catch(e){}   // v2.5.1.0: rodapé da abertura
 // v1.9.9.4: volta a 29 — é SÓ exibição e tem de bater com o APK instalado (vc29).
 const GS_VERSION_CODE = 33;
 const GS_BUILD_TS = '2026-10-28';   // v2.0.0.0
@@ -1628,7 +1857,7 @@ function _gsCarregandoMostrar(){
     if(!c){
       c = document.createElement('div');
       c.id = 'gs-carregando'; c.className = 'gs-abertura'; c.setAttribute('role', 'status');
-      c.innerHTML = '<div class="gs-ab-logo">🅿</div><div class="gs-ab-nome">GarageSpot</div><div class="gs-ab-msg" id="gs-ab-msg">Carregando…</div>';
+      c.innerHTML = '<div class="gs-ab-logo"><img alt="" src="' + GS_ICONE_APP + '"></div><div class="gs-ab-nome">GarageSpot</div><div class="gs-ab-barra"></div>';
       (document.body || document.documentElement).appendChild(c);
     }
     if(c._gsTravado) return;
@@ -1637,7 +1866,18 @@ function _gsCarregandoMostrar(){
     ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend'].forEach(function(t){ c.addEventListener(t, parar, true); });
   }catch(e){}
 }
-function _gsCarregandoTirar(){ try{ const c = document.getElementById('gs-carregando'); if(c) c.remove(); }catch(e){} }
+// v2.5.1.0 (A): a abertura fica no mínimo 0,8 s (desde o início da página) e sai com um fade curto. Os toques já
+// passam para o app no "app PRONTO" (.pronta = pointer-events:none) — o tempo mínimo é só visual, não atrasa nada.
+function _gsCarregandoTirar(){
+  try{
+    const c = document.getElementById('gs-carregando'); if(!c) return;
+    try{ clearTimeout(_GS_AB_LENTO); }catch(e){}
+    if(c._gsSaindo) return; c._gsSaindo = true;
+    c.classList.add('pronta');
+    const decorrido = (window.performance && performance.now) ? performance.now() : 800;
+    setTimeout(function(){ try{ c.classList.add('saindo'); setTimeout(function(){ try{ c.remove(); }catch(e){} }, 260); }catch(e){} }, Math.max(0, 800 - decorrido));
+  }catch(e){}
+}
 // v2.5.0.2: quanto a abertura levou até o "app PRONTO", por etapa (ms desde o início da página).
 // página+script = baixar e interpretar o HTML; banco = abrir o IndexedDB; dados = mapa/hospedagens;
 // arquivos = fotos e vistorias (índices); cargas = funcionários, turnos, recargas…; mapa = montar a tela.
@@ -1972,7 +2212,7 @@ function _gsVizinhaFim(msg){
 function gsVizinhaReligar(v, gs){
   const m = gsVizinhaDaVaga(v); if(!m || !gs) return;
   confirmarUsuario('religando a vaga ' + v + ' à ' + gs, function(u){
-    const us = u ? u.nome + ' · ' + u.cargo : '';
+    const us = u ? gsJunta(u.nome, u.cargo) : '';
     if(!S[v] || S[v].hospedagem !== m.de) return _gsVizinhaFim('A vaga ' + v + ' mudou — nada foi feito');
     S[v].hospedagem = gs; try{ ref(v); }catch(e){}
     try{ addHistorico(m.apt || '?', 'edicao', v, 'Vaga ' + v + ' religada a ' + gs + ' (estava com ' + m.de + ', do carro da ' + m.dona + ') — defeito da vaga vizinha, resolvido à mão', us, gs); }catch(e){}
@@ -1984,7 +2224,7 @@ function gsVizinhaReligar(v, gs){
 function gsVizinhaLiberar(v){
   const m = gsVizinhaDaVaga(v); if(!m) return;
   showEntrarPIN(function(){ confirmarUsuario('liberando a vaga ' + v + ' (sem check-out)', function(u){
-    const us = u ? u.nome + ' · ' + u.cargo : 'Gestor';
+    const us = u ? gsJunta(u.nome, u.cargo) : 'Gestor';
     if(!S[v] || S[v].hospedagem !== m.de) return _gsVizinhaFim('A vaga ' + v + ' mudou — nada foi feito');
     const antes = _gsCarroTexto(S[v]);
     _gsVagaLiberar(v);
@@ -2601,7 +2841,7 @@ function occClass(id, apt){
   return 'occ'; // azul padrão (inclui 1D-5D e todos os outros)
 }
 
-// v2.4.2.0 (Bloco D) — HORÁRIOS DA EMPRESA (Gestão → Configurações do Sistema; sincroniza entre os dispositivos
+// v2.4.2.0 (Bloco D) — HORÁRIOS DA EMPRESA (Gestão → Configurações do sistema; sincroniza entre os dispositivos
 // pela configuração do servidor). Padrão do Hotel Gumz: check-out 11:00 · check-in 14:00.
 // Hospedagem ativa: antes do dia previsto, nada; no dia previsto até a hora do CHECK-IN, "check-out"; a partir
 // da hora do check-in do dia previsto (ou depois do dia), "check-out atrasado" + Pendências.
@@ -2650,7 +2890,7 @@ function gsAlterarDataPrevista(gs){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(nova)){ if(msg) msg.textContent = 'Escolha a nova data.'; return; }
     if(nova === ant){ if(msg) msg.textContent = 'A data é a mesma.'; return; }
     confirmarUsuario('alterando a data prevista de check-out', function(usuario){
-      const usuarioStr = usuario ? (usuario.nome + ' · ' + usuario.cargo) : '';
+      const usuarioStr = usuario ? (gsJunta(usuario.nome, usuario.cargo)) : '';
       const dm = function(iso){ const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : '—'; };
       const txt = 'Data de check-out prevista alterada de ' + dm(ant) + ' para ' + dm(nova) + ' por ' + (usuario ? usuario.nome : 'não identificado');
       HOSPEDAGENS[gs].saida_prevista = nova;
@@ -2679,7 +2919,7 @@ function ref(id){
   td.style.display='';
   const isC=id.startsWith('CORREDOR');
   let cls=isC?'corr':'vv';
-  if(d.status==='occupied') cls+=' '+occClass(id,d.apt);
+  if(d.status==='occupied') cls+=' '+occClass(id,d.apt)+' ocup';   // v2.5.1.0 (G): ocup = espaço para o nome da vaga no canto
   td.className=cls;
   if(id.endsWith('B')&&!FIXED.has(id)) td.rowSpan=d.mergedMaster?2:1;
   if(d.status==='free'){
@@ -2698,7 +2938,10 @@ function ref(id){
       // v2.4.2.0 (Bloco D): pelo HORÁRIO da empresa (gsCheckoutEstado) — mesma aparência, só a palavra a mais
       const est=gsCheckoutEstado(h);
       if(est==='dia') coLbl='<span class="co-lbl">check-out</span>';
-      else if(est==='atrasado') coLbl='<span class="co-lbl co-atrasado">check-out atrasado</span>';
+      // v2.5.1.0 (G): ATRASADO = só o número do apto, grande, e um reloginho vermelho no canto (o texto quebrava em
+      // 4 linhas e encavalava com o nome da vaga). Sem borda vermelha: o vermelho é do Overbooking. Na vaga com ponto
+      // de recarga o canto de cima é do raio/bateria — o reloginho desce para o canto de baixo.
+      else if(est==='atrasado') coLbl='<span class="co-atr-ic co-atrasado'+((typeof VAGAS_RECARGA!=='undefined'&&VAGAS_RECARGA[id])?' baixo':'')+'" title="Check-out atrasado" aria-label="Check-out atrasado">'+gi('alarm')+'</span>';
     }catch(e){}
     // v1.9.4.16: `occ` leva a identificação da vaga para o canto superior esquerdo
     // com contraste legível (era #ccc empilhado acima do apto).
@@ -3062,7 +3305,7 @@ function executarMove(ms, destId, usuario){
     confirmarUsuario('movendo vaga', function(u2){ executarMove(ms, destId, u2); });
   })) return;
   const hospedagem = S[ms.id]?.hospedagem || '';
-  const usuarioStr = usuario ? (usuario.nome+' · '+usuario.cargo) : '';
+  const usuarioStr = usuario ? (gsJunta(usuario.nome, usuario.cargo)) : '';
   const src = S[ms.id];
 
   // Desfaz TODA a origem (vertical + horizontal) e limpa a vaga
@@ -3255,7 +3498,7 @@ function aplicarHMerge(id, alvoId, usuario){
   tdAlvo.classList.add('hmerge-hidden');
   ref(id);
   if(usuario !== undefined){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
     const hospedagem=S[id]?.hospedagem||'';
     const apt=S[id]?.apt||'';
     addHistorico(apt,'merge_lateral',id,'Vagas mescladas: '+id+' + '+alvoId,usuarioStr,hospedagem);
@@ -3280,7 +3523,7 @@ function desfazHMerge(id, usuario){
   }
   S[id].hmergeWith = null;
   if(usuario !== undefined){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
     const hospedagem=S[id]?.hospedagem||'';
     const apt=S[id]?.apt||'';
     addHistorico(apt,'desfaz_merge_lateral',id,'Mesclagem desfeita: '+id+' e '+alvoId,usuarioStr,hospedagem);
@@ -3895,7 +4138,7 @@ function saveV(id,apt,model,color,plate,guest,obs,isCheckin,usuario,saidaPrevist
       d.mergedSlave=true;
     } else { d.mergedSlave=false;d.mergedMaster=false; }
   }
-  const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+  const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
   if(isCheckin){
     d.hospedagem=numH;
     _gsSincronizarHospPares(id);   // v1.9.7.0: vaga grande — a célula TOCADA tem de carregar o GS
@@ -3979,21 +4222,21 @@ function showMenu(id){
   // v2.4.2.0 (Bloco D): check-out atrasado → aviso e as duas ações no próprio modal
   const _hM=d.hospedagem?HOSPEDAGENS[d.hospedagem]:null;
   // v2.4.7.0 (B2): caixa vermelha clara com as duas ações SÓLIDAS (check-out vermelho, alterar data amarelo)
-  const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" class="b2-alerta">⏰ <strong>Check-out atrasado</strong> · saída prevista ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}
-      <div class="b2-lado"><button type="button" class="b2s verm b2-pilha" id="m-atr-chk"><span class="b2-ic">🚪</span> <span class="b2-tx">Fazer check-out</span></button><button type="button" class="b2s amar b2-pilha" id="m-atr-data"><span class="b2-ic">📅</span> <span class="b2-tx">Alterar data</span></button></div></div>`:'';
+  // v2.5.1.0 (D): o aviso fica só com "Alterar data" — o Check-out já está logo abaixo (antes aparecia duas vezes)
+  const atrasoHTML=(gsCheckoutEstado(_hM)==='atrasado')?`<div id="m-atrasado" class="b2-alerta gs-atraso">${gi('alarm')}<div class="gs-atraso-tx"><strong>Check-out atrasado</strong> · previsto ${_vtEsc(_fmtDataExibicao(_hM.saida_prevista))}</div><button type="button" class="b2s amar-v gs-atraso-bt" id="m-atr-data">${gi('calendar','gi-l')}Alterar data</button></div>`:'';
   // v2.4.3.0: vaga com o GS do carro vizinho → aviso e resolução no próprio menu (check-out e passeio ficam travados)
   const _mViz=(typeof gsVizinhaDaVaga==='function')?gsVizinhaDaVaga(id):null;
   const vizHTML=_mViz?`<div id="m-vizinha" style="background:#FFF3E0;border:1px solid #E65100;border-radius:6px;padding:6px 10px;font-size:12px;color:#8A3B00;margin-bottom:8px">⚠️ <strong>Vaga com o GS do carro vizinho</strong>: este carro (${_vtEsc(_gsCarroTexto(d))}) está com o ${_vtEsc(_mViz.de)}, que é do carro da ${_vtEsc(_mViz.dona||'vaga vizinha')}. <strong>Não faça check-out nem passeio por aqui.</strong><div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${_gsVizinhaBotoesHTML(_mViz,'padding:6px 8px;font-size:12px;width:100%')}</div></div>`:'';
   mc.innerHTML=`
-    <div class="mt" id="m-titulo" style="position:relative;padding-right:${trocaBtn?'110px':'0'}">Vaga ${id} — Apt ${_vtEsc(d.apt||'')}${d.hospedagem?' · '+_vtEsc(d.hospedagem):''}${trocaBtn}</div>
-    <div class="ms">🅿 Na garagem · ${info}</div>
+    <div class="mt" id="m-titulo" style="position:relative;padding-right:${trocaBtn?'110px':'0'}">${_vtEsc(gsTituloCarro(d.apt, d.model, d.color))}${trocaBtn}</div>
+    <div class="gs-tit-sub" id="m-sub">${_vtEsc(gsJunta('Vaga '+id, (typeof OB!=='undefined'&&OB.has(id))?'overbooking':'na garagem', (RECARGAS[id]&&RECARGAS[id].ativo)?'carregando':''))}</div>
     ${atrasoHTML}
     ${vizHTML}
     ${dupWarn}
     <div class="b2-acoes">
-      <button class="b2c amar" id="m-out">🛣️ &nbsp;Passeio</button>
-      <button class="b2c azul" id="m-det">ℹ️ &nbsp;Detalhes</button>
-      <button class="b2s verm b2-seta" id="m-chk">🚪 &nbsp;Check-out</button>
+      <button class="b2s amar-v b2-seta" id="m-out">${gi('carro-saindo')}Passeio</button>
+      <button class="b2s prim b2-seta" id="m-det">${gi('info-circle')}Detalhes</button>
+      <button class="b2s verm b2-seta" id="m-chk">${gi('door-exit')}Check-out</button>
     </div>
     <button class="b2t" id="m-fechar" onclick="closeOv()">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
@@ -4001,7 +4244,6 @@ function showMenu(id){
   document.getElementById('m-det').onclick=()=>showDet(id);
   document.getElementById('m-chk').onclick=()=>doChk(id);
   if(_mViz){ try{ _gsVizinhaLigarBotoes(document.getElementById('m-vizinha')); }catch(e){} }
-  const _mac=document.getElementById('m-atr-chk'); if(_mac) _mac.onclick=()=>doChk(id);
   const _mad=document.getElementById('m-atr-data'); if(_mad) _mad.onclick=()=>gsAlterarDataPrevista(d.hospedagem);
 }
 
@@ -4014,7 +4256,7 @@ window.trocarParaPequeno = function(id){
         obs=d.obs||'',hospedagem=d.hospedagem||'';
 
   confirmarUsuario('reduzindo para carro pequeno', function(usuario){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
 
     // Desfaz merge horizontal se houver (com log de usuario)
     if(d.hmergeWith) desfazHMerge(id, usuario);
@@ -4074,7 +4316,7 @@ window.trocarParaGrande = function(id){
   if(!opcoes.length){ closeOv(); return; }
 
   confirmarUsuario('expandindo vaga', function(usuario){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
 
     function aplicarOpcao(op){
       if(op.tipo==='vertical'){
@@ -4116,7 +4358,7 @@ function doOut(id){
   // sai da vaga carregando.
   if(!_rcLiberado(id, 'sair a passeio', function(){ doOut(id); })) return;
   confirmarUsuario('liberando para passeio',function(usuario){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
     // v1.9.9.2: o GS passa pelo RESOLVEDOR, não pelo ponteiro cru da vaga. Sem
     // ele, o passeio nascia com `hospedagem:''` na vaga grande — e o carro
     // virava órfão no primeiro check-out.
@@ -4388,7 +4630,7 @@ function doChk(id){
 
   document.getElementById('chk-sim').onclick=function(){
     confirmarUsuario('realizando o check-out',function(usuario){
-      const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+      const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
       // v1.9.7.0: resolvido ANTES de qualquer apagamento. `d.hospedagem` sozinho
       // ficava vazio na vaga grande (a célula tocada nunca recebia o GS) — e o
       // check-out então NUNCA gravava `checkout_ts`: hospedagem órfã eterna.
@@ -4489,7 +4731,7 @@ window.doShare = function(id, fp){
 function showDet(id, fromPasseio){
   const d = fromPasseio ? PASSEIO[id] : S[id];
   const apt = d.apt || "";   // v1.9.9.2: o apto é CAMPO nos dois casos
-  const status = fromPasseio ? '🛣️ A passeio' : 'Na garagem';
+  const status = fromPasseio ? 'A passeio' : 'Na garagem';
   const vagaLbl = fromPasseio ? (d.lastVaga||'—') : id;
   const mc=document.getElementById('mc');
 
@@ -4503,10 +4745,11 @@ function showDet(id, fromPasseio){
   // S/PASSEIO — por isso nunca aparecia aqui, mesmo já sendo gravada desde a
   // v1.9.4.11 (Bug B). É só exibição: lê e formata, não grava nada.
   // Hospedagem antiga sem o campo → '—' (via `_fmtDataExibicao`), sem quebrar.
-  let saidaDet = '—';
+  let saidaDet = '—', entradaDet = '—';
   try{
     const _h = hospedagemNum ? HOSPEDAGENS[hospedagemNum] : null;
     saidaDet = _fmtDataExibicao(_h && _h.saida_prevista);
+    entradaDet = gsDataHoraTraco(_h && _h.checkin_ts);   // v2.5.1.0 (E)
   }catch(e){}
   const rows = fromPasseio
     ? [
@@ -4516,6 +4759,7 @@ function showDet(id, fromPasseio){
         ['Modelo / Cor', modelCor],
         ['Placa',        d.plate||'—'],
         ['Hóspede',      d.guest||'—'],
+        ['Data de check-in', entradaDet],
         ['Data de check-out', saidaDet],
         ...(isLarge ? [['Veículo', '🚐 Carro grande']] : []),
         ['Observações',  d.obs||'—'],
@@ -4528,6 +4772,7 @@ function showDet(id, fromPasseio){
         ['Modelo / Cor', modelCor],
         ['Placa',        d.plate||'—'],
         ['Hóspede',      d.guest||'—'],
+        ['Data de check-in', entradaDet],
         ['Data de check-out', saidaDet],
         ...(isLarge ? [['Veículo', '🚐 Carro grande']] : []),
         ['Observações',  d.obs||'—'],
@@ -4536,6 +4781,9 @@ function showDet(id, fromPasseio){
 
   const nAnexos = getAnexos(id, fromPasseio).length;
   const tituloTxt = fromPasseio ? 'Passeio — '+apt : apt;
+  // v2.5.1.0 (E): quantos registros o histórico desta hospedagem tem (o mesmo recorte da janela do histórico)
+  let _nHistDet = 0;
+  try{ const _hD = hospedagemNum ? HOSPEDAGENS[hospedagemNum] : null; _nHistDet = (hospedagemNum ? _gsHistoricoDaHospedagem(apt, hospedagemNum, (_hD&&_hD.checkin_ts)||null) : getHistorico(apt)).length; }catch(e){}
   const hospSufixo = hospedagemNum ? ' · '+hospedagemNum : '';
   const _vstDet = getVistoriaByApt(apt);
   const _vstPendAssin = _vstDet && _vstDet.assinatura_pendente && !_vstDet.ts_assinada;
@@ -4544,11 +4792,12 @@ function showDet(id, fromPasseio){
   mc.innerHTML=`
     ${_dViz?`<div id="det-vizinha" style="background:#FFF3E0;border:1px solid #E65100;border-radius:7px;padding:7px 10px;font-size:12px;color:#8A3B00;margin-bottom:8px">⚠️ <strong>Este carro não é o da ${_vtEsc(_dViz.de)}</strong> — o GS veio do carro da ${_vtEsc(_dViz.dona||'vaga vizinha')} (defeito da vaga vizinha). Não faça check-out por esta vaga.<div class="gs-viz-acoes" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${_gsVizinhaBotoesHTML(_dViz,'padding:6px 8px;font-size:12px;width:100%')}</div></div>`:''}
     ${_vstPendAssin?`<div style="background:#FCEBEB;border:1px solid #E8A8A8;border-radius:7px;padding:7px 10px;font-size:11px;color:#A32D2D;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>⚠️ Assinatura da vistoria pendente</span><button style="font-size:10px;padding:3px 8px;border:none;background:#A32D2D;color:#fff;border-radius:5px;cursor:pointer;font-family:inherit" onclick="assinarVistoria('${_vstDet.id||_vstDet.numero}')">Coletar</button></div>`:''}
-    <div class="mt" style="display:flex;align-items:center;gap:4px">
-      <span style="white-space:nowrap;cursor:pointer;text-decoration:underline dotted" onclick="showHistoricoModal('${apt}','${hospedagemNum}','${id}',${fromPasseio?1:0})" title="Ver histórico">ℹ️ ${tituloTxt}${hospSufixo}</span>
+    <div class="mt gs-det-cab" id="det-titulo">
+      <span class="gs-det-tit">${_vtEsc(gsTituloCarro(apt, d.model, d.color))}</span>
       <button class="share-btn" onclick="doShare('${id}',${fromPasseio?1:0})" title="Compartilhar" style="flex-shrink:0"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" fill="none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
-      <button class="attach-btn" onclick="toggleAnexosDet('${id}',${fromPasseio?1:0})" title="Anexos (vistorias + fotos)" style="margin-left:auto">📎 ${nAnexos>0?`<span class="attach-badge">${nAnexos}</span>`:''}</button>
+      <button class="attach-btn" onclick="toggleAnexosDet('${id}',${fromPasseio?1:0})" title="Anexos (vistorias + fotos)" style="margin-left:0">📎 ${nAnexos>0?`<span class="attach-badge">${nAnexos}</span>`:''}</button>
     </div>
+    <button type="button" class="gs-hist-btn" id="det-hist" onclick="showHistoricoModal('${apt}','${hospedagemNum}','${id}',${fromPasseio?1:0})">${gi('history')}Histórico · ${_nHistDet} ${_nHistDet===1?'registro':'registros'}</button>
     <div style="margin:8px 0 10px">${rows.map(([l,v])=>`<div class="dr"><span class="dl">${l}</span><span class="dv">${v}</span></div>`).join('')}</div>
     <div id="att-det-area"></div>
     ${hospedagemNum && _hhjAtiva(hospedagemNum)?`<button class="bcx" id="det-gerar-pdf" style="width:100%;margin-top:8px">📄 Gerar PDF</button>`:''}
@@ -4636,7 +4885,7 @@ function showEdit(id, fromPasseio){
     if(mudancas.length===0){ showToast('Nenhuma alteração',2000); showDet(id, fromPasseio); return; }
 
     confirmarUsuario('editando os dados',function(usuario){
-      const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+      const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
       const aptMudou = novoApt!==(aptAtual||'');
       // 1) Aplicar em S / PASSEIO (estado da vaga / passeio)
       if(fromPasseio){
@@ -4814,7 +5063,7 @@ function _passeioIdentificar(qk){
       const b=document.getElementById('pid-'+i);
       if(b) b.onclick=function(){
         confirmarUsuario('identificando o carro a passeio',function(usuario){
-          const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+          const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
           const reg=Object.assign({}, PASSEIO[qk]);
           delete reg._quarentena; delete reg._quarentena_apt;
           reg.hospedagem=g;
@@ -4859,7 +5108,7 @@ function showPasseioCheckout(gs){
     </div>`);
   document.getElementById('pco-sim').onclick=function(){
     confirmarUsuario('realizando o check-out',function(usuario){
-      const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+      const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
       // v1.9.9.2 — B4. O resolvedor era CALCULADO e IGNORADO aqui (`d.hospedagem`
       // cru), e `delete PASSEIO[apt]` rodava SEMPRE — inclusive quando
       // `checkout_ts` não era gravado. Agora o GS vem da própria chave e a
@@ -5114,7 +5363,7 @@ function _gestaoInjetarVoltar(){
     if(!mc) return;
     _gestaoVoltarSoltoTirar();
     if(mc.querySelector('#gestao-voltar-modal')) return;          // já tem
-    if(/⚙ Gestão/.test(mc.innerHTML)) return;                     // é o próprio menu
+    if(mc.querySelector('#gestao-menu-raiz') || /⚙ Gestão/.test(mc.innerHTML)) return;   // é o próprio menu (v2.5.1.0: o ⚙ virou ícone — marca por id)
     // v2.5.0.2: telas de ENTRADA (quem está entrando / PIN) não são sub-telas da Gestão — o Voltar
     // ali levaria ao menu sem PIN. E era a lista "Quem está entrando?" (Cancelar solto no #mc) que
     // fazia o Voltar cair FORA do #mc, ao lado dele, dentro do #ov (flex em linha).
@@ -5122,7 +5371,7 @@ function _gestaoInjetarVoltar(){
     // Já existe um "← Voltar" próprio da tela (ex.: histórico do funcionário volta
     // para a lista dele)? Então não se intromete — aquele destino é o certo ali.
     const btns=Array.prototype.slice.call(mc.querySelectorAll('button'));
-    if(btns.some(function(b){ return /←\s*voltar/i.test(b.textContent||''); })) return;
+    if(btns.some(function(b){ return /^(←\s*)?voltar$/i.test(String(b.textContent||'').trim()); })) return;   // v2.5.1.0: o ← pode ter virado ícone
 
     // Âncora: "Fechar" (telas de consulta) ou "Cancelar" (telas de formulário).
     // "Fechar", "✕ Fechar", "Cancelar"… — casa pelo fim do rótulo, sem exigir
@@ -6096,7 +6345,7 @@ function agendarLimparPlantao(){
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// ESCALAS (v1.9.4.6) — Cadastro de Turnos (Padrão / 12x36) + Plantão por escala
+// ESCALAS (v1.9.4.6) — Cadastro de turnos (Padrão / 12x36) + Plantão por escala
 // ════════════════════════════════════════════════════════════════════════
 const ESCALA_LS='garagespot_escala';
 let ESCALA_CONFIG={
@@ -6232,7 +6481,7 @@ function getTurnoAtual(){ return getTurnoDoEvento(Date.now()); }
 function showHistoricoUsuario(userId){
   const u=USUARIOS.find(x=>x.id===userId);
   if(!u){ showToast('Usuário não encontrado'); return; }
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge desfeito',vistoria_criada:'Vistoria criada',vistoria_vinculada:'Vistoria vinculada',vistoria_editada:'Vistoria editada',vistoria_assinada:'Vistoria assinada',vistoria_deletada:'Vistoria excluída'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D'};
   const nomeU=u.nome.toLowerCase();
   const allEvts=[];
@@ -6317,13 +6566,13 @@ function showModalTurnos(){
         '</div>'+
       '</div>'+
       '<div style="border:1px solid #eee;border-radius:8px;padding:9px 12px;margin-bottom:6px">'+
-        '<div style="font-size:13px;font-weight:700;color:#111;margin-bottom:6px">🌙 Turno Noite <span style="font-weight:400;color:#888;font-size:11px">(pode cruzar a meia-noite)</span></div>'+
+        '<div style="font-size:13px;font-weight:700;color:#111;margin-bottom:6px">🌙 Turno noite <span style="font-weight:400;color:#888;font-size:11px">(pode cruzar a meia-noite)</span></div>'+
         '<div style="display:flex;gap:8px">'+
           '<div style="flex:1"><label class="fl">Início</label><input type="time" class="fi" id="esc-d36-noite-ini" value="'+d36.noite.inicio+'" style="margin-bottom:0"></div>'+
           '<div style="flex:1"><label class="fl">Fim</label><input type="time" class="fi" id="esc-d36-noite-fim" value="'+d36.noite.fim+'" style="margin-bottom:0"></div>'+
         '</div>'+
       '</div>';
-    mc.innerHTML='<div class="mt">🕒 Cadastro de Turnos</div>'+
+    mc.innerHTML='<div class="mt">🕒 Cadastro de turnos</div>'+
       '<label class="fl">Escala de operação</label>'+
       '<select class="fi" id="esc-tipo">'+
         '<option value="padrao" '+(_tipoSel==='padrao'?'selected':'')+'>Padrão (4 turnos)</option>'+
@@ -6639,7 +6888,7 @@ function renderPainelDia(){
 
   <!-- SEÇ1: OCUPAÇÃO ATUAL (GARAGEM AGORA — PRESERVADO) -->
   <div class="painel-sec" style="margin-bottom:10px">
-    <div class="painel-sec-title">🏢 Garagem agora — ${_dLocalExtenso(now)}</div>
+    <div class="painel-sec-title">🏢 Garagem agora · ${_dLocalExtenso(now)}</div>
     <div class="painel-stat-row" style="gap:6px">
       <div class="painel-stat-card" style="background:#EEF9F2;border:1.5px solid #b0dbc0;flex:1">
         <div class="painel-stat-val" style="color:#0F6E56" id="g-livres">${_ind.livres}</div>
@@ -6741,7 +6990,7 @@ function renderPainelDia(){
             :[...membros.map(u=>`<div style="font-size:12px;font-weight:700">${_vtEsc(u.nome)} <span style="font-weight:400;color:#888">${_vtEsc(u.cargo||'')}</span></div>`),
               ...manual.map(e=>`<div style="font-size:12px;font-weight:700">${_vtEsc(e.nome)}</div>`)].join('');
           // Parte 5 v1.9.4.7: clicar nos nomes abre o mesmo modal de Editar plantão
-          return '<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">👥 Plantão'+lbl+'</div>'+
+          return '<div style="font-size:10px;font-weight:600;color:#7B8794;margin-bottom:4px">👥 Plantão'+lbl+'</div>'+
             '<div onclick="showEditarPlantao()" style="cursor:pointer" title="Editar plantão">'+lista+'</div>'+
             '<button onclick="showEditarPlantao()" style="margin-top:6px;font-size:10px;font-weight:700;color:#185FA5;background:#fff;border:1px solid #185FA5;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">✏️ Editar plantão</button>';
         })()}
@@ -6753,7 +7002,7 @@ function renderPainelDia(){
            onclick="_gdForcarPeloRodape()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_gdForcarPeloRodape();}"
            title="Tocar para enviar o backup para a nuvem agora"
            style="flex:1;min-width:100px;text-align:right;cursor:pointer;user-select:none;-webkit-tap-highlight-color:rgba(24,95,165,.15);border-radius:8px;padding:6px 8px;margin:-4px -4px -4px 0">
-        <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:4px">☁️ Backup</div>
+        <div style="font-size:10px;font-weight:600;color:#7B8794;margin-bottom:4px">☁️ Backup</div>
         <div style="font-size:11px;color:${lastBkp?'#0F6E56':'#A32D2D'};font-weight:700">${lastBkp?_quandoLocal(lastBkp):'Sem backup'}</div>
         ${_gdRodapeHTML()}
         ${_gsSrvRodapeHTML()}
@@ -7004,7 +7253,7 @@ function renderExpansaoHoje(filtro){
           :(' onclick="fecharExpansao();abrirDetalhesAguardando(\''+_vtEsc(h._gs||'')+'\')"');
         html+='<div class="exp-item clicavel"'+clickAttr+'>'+
           '<div class="exp-item-titulo">Apt '+_vtEsc(h.apt||'—')+' · '+_vtEsc(veic)+'</div>'+
-          '<div class="exp-item-sub">'+_vtEsc(vagaLbl)+' · '+_vtEsc(h.usuario_checkin||'')+' · '+hora+'</div>'+
+          '<div class="exp-item-sub">'+_vtEsc(gsJunta(vagaLbl, h.usuario_checkin, hora))+'</div>'+
           '</div>';
       }
     }
@@ -7065,7 +7314,7 @@ function renderExpansaoHoje(filtro){
     if(outras.length===0){
       html+='<div class="exp-empty">Nenhuma outra movimentação hoje</div>';
     } else {
-      const tLabel={saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança Vaga',tornar_grande:'Tornar Grande',tornar_pequeno:'Tornar Pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria Criada',vistoria_assinada:'Vistoria Assinada',vistoria_adicional_criada:'Vistoria Adicional',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
+      const tLabel={saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',movimentacao_vaga:'Designação/Mudança de vaga',tornar_grande:'Tornar grande',tornar_pequeno:'Tornar pequeno',edicao:'Edição',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Desfaz Merge',vistoria_criada:'Vistoria criada',vistoria_assinada:'Vistoria assinada',vistoria_adicional_criada:'Vistoria adicional',recarga_iniciada:'Recarga iniciada',recarga_encerrada:'Recarga encerrada',recarga_editada:'Período de recarga editado',exclusao_anexo:'Exclusão de anexo'};
       for(const e of outras){
         const hora=_fmtHrPainel(e.ts);
         const isDesignacao=e.tipo==='movimentacao_vaga'||(e.tipo==='checkin' && e.vaga);
@@ -7541,7 +7790,7 @@ function _mostrarMenuGestao(){
   if(typeof _gestaoEsconderBack==='function') _gestaoEsconderBack();
   if(typeof _gestaoVoltarSoltoTirar==='function') _gestaoVoltarSoltoTirar();   // v2.5.0.2
   const mc=document.getElementById('mc');
-  mc.innerHTML=`<div class="mt">⚙ Gestão</div>
+  mc.innerHTML=`<div class="mt" id="gestao-menu-raiz">⚙ Gestão</div>
     <div class="gestao-menu-sep">Cadastros</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showModalUsuarios')">👥 <span>Cadastro de usuários</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showModalTurnos')">🕒 <span>Cadastro de turnos</span></div>
@@ -7550,18 +7799,37 @@ function _mostrarMenuGestao(){
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showGestaoVistorias')">📋 <span>Vistorias</span></div>
     <div class="gestao-menu-item" id="gestao-hrel-agora" onclick="gerarRelatorioHospedadosAgora()">🏨 <span>Relatório de hospedados agora</span></div>
     <div class="gestao-menu-sep">Configurações</div>
-    <div class="gestao-menu-item" onclick="_gestaoAbrir('showConfiguracoesSistema')">⚙ <span>Configurações do Sistema</span></div>
-    <div class="gestao-menu-item" onclick="_gestaoAbrir('showConexoes')">🔗 <span>Backup e Conexões</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showConfiguracoesSistema')">⚙ <span>Configurações do sistema</span></div>
+    <div class="gestao-menu-item" onclick="_gestaoAbrir('showConexoes')">🔗 <span>Backup e conexões</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showServidor')">🛰 <span>Servidor</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('alterarPIN')">🔑 <span>Alterar PIN do gestor</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showExibicao')">🔤 <span>Tamanho de fonte</span></div>
     <div class="gestao-menu-sep">Diagnóstico</div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showLogSistema')" style="color:#555">📋 <span>Log do sistema</span></div>
     <div class="gestao-menu-item" onclick="_gestaoAbrir('showAuditoria')" style="color:#555">🛡 <span>Trilha de auditoria</span></div>
+    <div class="gestao-menu-item" id="gestao-sobre" onclick="_gestaoAbrir('showSobre')" style="color:#555">ℹ️ <span>Sobre</span></div>
     <div class="gestao-menu-sep">Zona de risco</div>
     ${gsSrvAtivo() ? '<div class="gestao-menu-item" id="gestao-limpar-bloqueado" aria-disabled="true" style="color:#aaa;border-color:#eee;background:#f4f4f4;cursor:not-allowed">🗑 <span>Limpar / Restaurar mapa <small style="display:block;font-size:10px;color:#999">' + GS_SRV_BLOQ_MSG + '</small></span></div>' : '<div class="gestao-menu-item" onclick="_gestaoAbrir(\'confirmReset\')" style="color:#A32D2D;border-color:#FCEBEB">🗑 <span>Limpar / Restaurar mapa</span></div>'}
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:8px">Fechar</button>`;
   document.getElementById('ov').classList.add('on');
+}
+
+// v2.5.1.0 (B): Gestão → Sobre — versão, build, APK, empresa, dispositivo e o crédito (que saiu do cabeçalho)
+function _gestaoVoltarMenu(){ if(typeof _mostrarMenuGestao==='function') _mostrarMenuGestao(); }
+function showSobre(){
+  const linhas = [
+    ['Versão', GS_VERSION],
+    ['Build', GS_BUILD_TS],
+    ['APK', (function(){ try{ return _gsApkRotulo(); }catch(e){ return '—'; } })()],
+    ['Empresa', gsEmpresaNome() || '—'],
+    ['Dispositivo', (function(){ try{ return gsJunta(gsDispRotulo(), gsDispNome()) || '—'; }catch(e){ return '—'; } })()],
+    ['Ambiente', (function(){ try{ return _gsAmbiente().rotulo; }catch(e){ return '—'; } })()],
+  ];
+  showM(gsJanelaCab(['Gestão', 'Sobre'], '_gestaoVoltarMenu()') +
+    '<div class="gs-sobre-topo"><img alt="" src="' + GS_ICONE_APP + '"><div><div style="font-size:18px;font-weight:700;color:var(--gs-texto)">GarageSpot</div>' +
+    '<div style="font-size:12px;color:#5B6573">' + _vtEsc(GS_VERSION) + '</div></div></div>' +
+    '<div id="sobre-linhas">' + linhas.map(function(l){ return '<div class="dr"><span class="dl">' + _vtEsc(l[0]) + '</span><span class="dv">' + _vtEsc(l[1]) + '</span></div>'; }).join('') + '</div>' +
+    '<div style="margin-top:14px;font-size:12px;color:#5B6573;text-align:center">Developed by Douglas Nascimento</div>');
 }
 
 function showGestaoVistorias(){
@@ -8046,7 +8314,7 @@ function _vstStep1(){
       if(_fp.length===1){const _pd=_fp[0].d;preMod=_pd.model||'';preCor=_pd.color||'';prePla=_pd.plate||'';preGst=_pd.guest||'';}
     }
   }
-  showM(`<div class="mt">📋 Nova Vistoria</div>
+  showM(`<div class="mt">📋 Nova vistoria</div>
     <div class="ms" style="margin-bottom:10px">Dados do veículo</div>
     <label class="fl">Apartamento *</label>
     <input class="fi" id="vst-apt" value="${apt}" placeholder="Ex: 101, 205...">
@@ -8066,7 +8334,7 @@ function _vstStep1(){
     const aptV=document.getElementById('vst-apt').value.trim();
     const modV=document.getElementById('vst-mod').value.trim();
     const corV=document.getElementById('vst-cor').value.trim();
-    if(!aptV||!modV||!corV){showToast('Preencha Apt., Modelo e Cor');return;}
+    if(!aptV||!modV||!corV){showToast('Preencha apto, modelo e cor');return;}
     _vstD.apt=aptV;_vstD.modelo=modV;_vstD.cor=corV;
     _vstD.placa=document.getElementById('vst-pla').value.trim().toUpperCase();
     _vstD.hospede=document.getElementById('vst-gst').value.trim();
@@ -8129,7 +8397,7 @@ function _vstMkView(vm){
 function _vstStep2b(){
   const mc=document.getElementById('mc');
   const nd=_vstDanos.length;
-  mc.innerHTML=`<div class="mt" style="font-size:14px">📋 Marcar Avarias</div>
+  mc.innerHTML=`<div class="mt" style="font-size:14px">📋 Marcar avarias</div>
     <div style="font-size:11px;color:#888;margin-bottom:8px">Toque no local da avaria. Toque no ✕ para remover.</div>
     <div style="display:grid;grid-template-columns:3fr 2fr;gap:6px;margin-bottom:6px">
       ${_vstMkView({id:'le',label:'Lateral Esq.'})}&nbsp;
@@ -8251,7 +8519,7 @@ function _vstSetupCanvas(canvasId){
 function _vstStep4(){
   const mc=document.getElementById('mc');
   mc.innerHTML=`
-    <div class="mt" style="font-size:14px">✍ Assinatura do Hóspede</div>
+    <div class="mt" style="font-size:14px">✍ Assinatura do hóspede</div>
     <div style="font-size:11px;color:#444;margin:0 0 10px;font-style:italic;text-align:center;line-height:1.5;padding:6px 8px;background:#f8f8f8;border-radius:7px;border:1px solid #ddd">"O veículo de minha posse foi entregue com as condições descritas."</div>
     <div style="font-size:10px;color:#888;margin-bottom:8px;text-align:center">Assine abaixo para confirmar</div>
     <canvas id="vst-sig-canvas" width="320" height="150" style="border:2px solid #ddd;border-radius:8px;background:#fff;touch-action:none;width:100%;max-width:320px;display:block;margin:0 auto"></canvas>
@@ -8339,7 +8607,7 @@ function _vstConfirmarExec(assinatura){
   const isEdit=!!_vstD._editId;
   const acao=isEdit?'editando vistoria':'registrando vistoria';
   confirmarUsuario(acao,function(usuario){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
     const now=Date.now();
     let id;
     if(isEdit){
@@ -8396,7 +8664,7 @@ function _vstConfirmarExec(assinatura){
 
 // ── Ver / Assinar / Deletar ────────────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════════════
-// v1.9.4.1.4: Menu de Vistorias da Hospedagem (lista + Nova Vistoria)
+// v1.9.4.1.4: Menu de Vistorias da Hospedagem (lista + Nova vistoria)
 // ════════════════════════════════════════════════════════════════════════
 function _listarVistoriasDaHosp(gs,apt){
   // Coleta vistorias da hospedagem (preferindo GS; fallback por apt)
@@ -8456,16 +8724,16 @@ window.abrirMenuVistorias = function(apt, gs, fp){
     });
   }
   html+='<div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px">'+
-    '<button class="bsv" style="width:100%;padding:12px;font-size:13px;font-weight:700;background:#185FA5;color:#fff;border:none;border-radius:10px;cursor:pointer;font-family:inherit" onclick="closeOv();_iniciarNovaVistoriaAdicional(\''+_vtEsc(apt)+'\',\''+_vtEsc(gs)+'\')">+ Nova Vistoria</button>'+
+    '<button class="bsv" style="width:100%;padding:12px;font-size:13px;font-weight:700;background:#185FA5;color:#fff;border:none;border-radius:10px;cursor:pointer;font-family:inherit" onclick="closeOv();_iniciarNovaVistoriaAdicional(\''+_vtEsc(apt)+'\',\''+_vtEsc(gs)+'\')">+ Nova vistoria</button>'+
     '<button class="bcx" style="width:100%;margin-top:6px" onclick="closeOv()">Fechar</button>'+
     '</div>';
   showM(html);
 };
 
-// v1.9.4.1.5: Bug O — Inicia Nova Vistoria adicional usando o NCI página única
+// v1.9.4.1.5: Bug O — Inicia Nova vistoria adicional usando o NCI página única
 // (v1.9.4.1.x), pré-preenchido com dados da hospedagem em READ-ONLY.
-// NÃO chama mais o legacy novaVistoria/_vstStep* (modais "Nova Vistoria · Dados
-// do veículo" / "Avarias · Sem avaria/Com avaria" / "Marcar Avarias 5 áreas").
+// NÃO chama mais o legacy novaVistoria/_vstStep* (modais "Nova vistoria · Dados
+// do veículo" / "Avarias · Sem avaria/Com avaria" / "Marcar avarias 5 áreas").
 window._iniciarNovaVistoriaAdicional = function(apt, gs){
   const hosp=gs?HOSPEDAGENS[gs]:null;
   if(!hosp){
@@ -8487,7 +8755,7 @@ window._iniciarNovaVistoriaAdicional = function(apt, gs){
   });
 };
 
-// v1.9.4.1.5: Abre o NCI página única pré-preenchido para Nova Vistoria adicional.
+// v1.9.4.1.5: Abre o NCI página única pré-preenchido para Nova vistoria adicional.
 function _abrirNCIParaNovaVistoria(gs,usuario){
   const hosp=HOSPEDAGENS[gs];
   if(!hosp){ if(typeof showToast==='function') showToast('Hospedagem não encontrada',2500); return; }
@@ -8529,14 +8797,14 @@ function _aplicarUINovaVistoria(){
     if(el){ el.setAttribute('readonly','true'); el.classList.add('campo-readonly'); }
   });
   // Atualizar título do NCI
-  const tit=document.querySelector('.nci2-titulo'); if(tit) tit.textContent='Nova Vistoria';
+  const tit=document.querySelector('.nci2-titulo'); if(tit) tit.textContent='Nova vistoria';
   const sub=document.querySelector('.nci2-subtitulo'); if(sub) sub.textContent='Hospedagem '+_vtEsc(_nciD._gsExistente||'')+' · Apt '+_vtEsc(_nciD.apt||'');
   // Marcar progresso Dados como OK
   const progDados=document.getElementById('prog-dados');
   if(progDados){ progDados.classList.remove('ativo'); progDados.classList.add('ok'); progDados.innerHTML='<span>✓</span> Dados'; }
   // Trocar texto do botão Registrar
   const btn=document.getElementById('btn-registrar');
-  if(btn){ btn.textContent='Registrar Nova Vistoria'; }
+  if(btn){ btn.textContent='Registrar nova vistoria'; }
   // Scroll para seção vistoria
   setTimeout(function(){
     const vst=document.getElementById('secao-vistoria');
@@ -8576,7 +8844,7 @@ function assinarVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
   const mc=document.getElementById('mc');
   mc.innerHTML=`
-    <div class="mt" style="font-size:14px">✍ Assinar Vistoria</div>
+    <div class="mt" style="font-size:14px">✍ Assinar vistoria</div>
     <div style="font-size:12px;color:#888;margin-bottom:6px">${v.numero} — Apt. ${v.apt} · ${v.modelo}</div>
     <div style="font-size:11px;color:#444;margin:0 0 10px;font-style:italic;text-align:center;line-height:1.5;padding:6px 8px;background:#f8f8f8;border-radius:7px;border:1px solid #ddd">"O veículo de minha posse foi entregue com as condições descritas."</div>
     <div style="font-size:10px;color:#888;margin-bottom:8px;text-align:center">Assine abaixo para confirmar</div>
@@ -8595,7 +8863,7 @@ function assinarVistoria(id){
       return;
     }
     confirmarUsuario('assinando a vistoria',function(usuario){
-      const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+      const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
       VISTORIAS[id].assinatura=canvas.toDataURL('image/png');
       VISTORIAS[id].ts_assinada=Date.now();
       VISTORIAS[id].usuario_assinou=usuarioStr;
@@ -8638,7 +8906,7 @@ function _vstCanvasVazio(canvas){
 
 function deletarVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
-  showM(`<div class="mt">🗑 Excluir Vistoria</div>
+  showM(`<div class="mt">🗑 Excluir vistoria</div>
     <div class="ms">${v.numero} — Apt. ${v.apt} · ${v.modelo}</div>
     <div class="b2-aviso">Esta ação é permanente e não pode ser desfeita.</div>
     <div class="b2-acoes">
@@ -8647,7 +8915,7 @@ function deletarVistoria(id){
     </div>`);
   document.getElementById('vst-del-ok').onclick=function(){
     confirmarUsuario('excluindo vistoria',function(usuario){
-      const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+      const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
       if(v.apt) addHistorico(v.apt,'vistoria_deletada','',v.numero,usuarioStr,v.hospedagem||'');
       _gsRegistrarRemocao('vistoria', id);   // v1.9.9.4: caminho legítimo (sentinela)
       delete VISTORIAS[id];
@@ -8666,7 +8934,7 @@ function editarVistoria(id){
   const v=VISTORIAS[id]; if(!v) return;
   _vstD={apt:v.apt||'',hospedagem:v.hospedagem||'',modelo:v.modelo||'',cor:v.cor||'',placa:v.placa||'',hospede:v.hospede||'',_editId:id};
   _vstDanos=[...(v.danos||[])];
-  showM(`<div class="mt">✏️ Editar Vistoria</div>
+  showM(`<div class="mt">✏️ Editar vistoria</div>
     <div class="ms" style="margin-bottom:10px">${v.numero}</div>
     <label class="fl">Apartamento *</label>
     <input class="fi" id="vst-apt" value="${v.apt||''}" placeholder="Ex: 101, 205...">
@@ -8686,7 +8954,7 @@ function editarVistoria(id){
     const aptV=document.getElementById('vst-apt').value.trim();
     const modV=document.getElementById('vst-mod').value.trim();
     const corV=document.getElementById('vst-cor').value.trim();
-    if(!aptV||!modV||!corV){showToast('Preencha Apt., Modelo e Cor');return;}
+    if(!aptV||!modV||!corV){showToast('Preencha apto, modelo e cor');return;}
     _vstD.apt=aptV;_vstD.modelo=modV;_vstD.cor=corV;
     _vstD.placa=document.getElementById('vst-pla').value.trim().toUpperCase();
     _vstD.hospede=document.getElementById('vst-gst').value.trim();
@@ -8760,7 +9028,7 @@ function gerarPDFVistoria(id, _jaLido){
       const {jsPDF}=window.jspdf;
       const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
       // Página 1 — Documento da vistoria (PNG composto) ou fallback texto
-      let y=_pdfHeader(doc,'Vistoria de Veículo',
+      let y=_pdfHeader(doc,'Vistoria de veículo',
         (v.numero||v.id||'')+' · '+fmtDt(v.ts_criada||v.ts_finalizacao||Date.now())+
         (v.ts_assinada?' · Assinada':' · Pendente assinatura'));
       // v1.9.9.0: faixa de contexto, ACIMA da imagem — que não é tocada.
@@ -8808,7 +9076,7 @@ function gerarPDFVistoria(id, _jaLido){
           try{
             doc.addPage();
             const dataFmt=foto.timestamp?fmtDt(foto.timestamp):'';
-            let yF=_pdfHeader(doc,'Foto do Veículo',dataFmt+(foto.name?' · '+foto.name:''));
+            let yF=_pdfHeader(doc,'Foto do veículo',dataFmt+(foto.name?' · '+foto.name:''));
             const fmt=(foto.type||'').includes('png')?'PNG':'JPEG';
             doc.addImage(foto.data||foto.base64Original,fmt,10,yF,190,240);
             _pdfFooter(doc);
@@ -9223,7 +9491,7 @@ function _nciRenderPagina(){
     </div>
     <footer class="nci2-footer">
       <div class="registrar-status" id="registrar-status">Preencha os campos obrigatórios</div>
-      <button class="btn-registrar pendente" id="btn-registrar" onclick="_nciTentarRegistrar()">Registrar Check-in</button>
+      <button class="btn-registrar pendente" id="btn-registrar" onclick="_nciTentarRegistrar()">Registrar check-in</button>
     </footer>`;
   _nciBindCampos();
   _nciBindCarros();
@@ -9265,7 +9533,7 @@ function _nciSecaoDados(d){
     <section class="secao" id="secao-dados">
       <header class="secao-header">
         <div class="secao-num ativo" id="secao-num-dados">2</div>
-        <div class="secao-titulo">Dados do Veículo</div>
+        <div class="secao-titulo">Dados do veículo</div>
       </header>
       <div class="secao-body">
         <div class="campo">
@@ -9310,7 +9578,7 @@ function _nciSecaoVistoria(d){
     <section class="secao" id="secao-vistoria">
       <header class="secao-header">
         <div class="secao-num" id="secao-num-vst">3</div>
-        <div class="secao-titulo">Vistoria do Veículo</div>
+        <div class="secao-titulo">Vistoria do veículo</div>
       </header>
       <div class="secao-body" style="padding:0">
         <div class="vistoria-card">
@@ -10248,7 +10516,7 @@ function _nciFinalizarCont(){
 // v1.9.4.1.1: chamado depois da etapa de fotos. Decide entre auto-designação ou STEP5.
 function _nciPosFotos(){
   const d=_nciD;
-  // v1.9.4.1.5 Bug O: Nova Vistoria adicional — fecha NCI sem STEP5
+  // v1.9.4.1.5 Bug O: Nova vistoria adicional — fecha NCI sem STEP5
   if(d && d._modoNovaVistoria){
     const gs=d._gsExistente||d.gs;
     const numero=d.numero;
@@ -10361,8 +10629,8 @@ function _nciAbrirEtapaFotos(){
         <div class="ef-contador" id="ef-contador">0 / 20 fotos</div>
       </div>
       <div class="ef-botoes-captura">
-        <button class="ef-btn-camera" id="ef-btn-camera">📷 Tirar Foto</button>
-        <button class="ef-btn-arquivo" id="ef-btn-arquivo">📁 Selecionar Arquivo</button>
+        <button class="ef-btn-camera" id="ef-btn-camera">📷 Tirar foto</button>
+        <button class="ef-btn-arquivo" id="ef-btn-arquivo">📁 Selecionar arquivo</button>
         <input type="file" id="ef-input-arquivo" accept="image/*" multiple style="display:none">
       </div>
       <div class="ef-thumbnails" id="ef-thumbnails"></div>
@@ -10758,7 +11026,7 @@ function _aplicarDesignacaoAutomatica(vagaId,gs){
 
 function _nciCommitCheckin(){
   const d=_nciD;
-  // v1.9.4.1.5 Bug O: Nova Vistoria adicional — NÃO cria HOSPEDAGEM nova
+  // v1.9.4.1.5 Bug O: Nova vistoria adicional — NÃO cria HOSPEDAGEM nova
   if(d._modoNovaVistoria && d._gsExistente){
     _nciCommitNovaVistoriaAdicional();
     return;
@@ -10808,14 +11076,14 @@ function _nciCommitCheckin(){
   }
 }
 
-// v1.9.4.1.5 Bug O: commit de Nova Vistoria adicional — vincula à hospedagem
+// v1.9.4.1.5 Bug O: commit de Nova vistoria adicional — vincula à hospedagem
 // existente, NÃO cria nova HOSPEDAGEM, registra evento 'vistoria_adicional_criada'.
 function _nciCommitNovaVistoriaAdicional(){
   const d=_nciD; if(!d) return;
   const gs=d._gsExistente||d.gs;
   const hosp=HOSPEDAGENS[gs];
   if(!hosp){
-    console.error('[NV] Hospedagem não encontrada para Nova Vistoria:',gs);
+    console.error('[NV] Hospedagem não encontrada para Nova vistoria:',gs);
     return;
   }
   const numero=nextNumVistoria();
@@ -12622,7 +12890,7 @@ async function fazerBackupAgora(){
 //   • A poda é só sobre BACKUPS. PDFs de fechamento ficam para sempre.
 //
 // A PODA NASCE DESLIGADA. O app vai para o hotel sem apagar nada; o gestor liga
-// depois, em Backup e Conexões, e pode desligar de novo a qualquer momento.
+// depois, em Backup e conexões, e pode desligar de novo a qualquer momento.
 // "Simular limpeza" é somente leitura e roda quantas vezes se quiser.
 const GS_PODA_LS = 'garagespot_poda_config';
 const GS_PODA_DIAS_LOCAL = 7;
@@ -13583,7 +13851,7 @@ async function _gsPodaRodarSeLigada(){
   }catch(e){ console.warn('[PODA] execução automática falhou (ignorada):', e && e.message); }
 }
 
-// ── Interface da limpeza (Backup e Conexões) ───────────────────────────────
+// ── Interface da limpeza (Backup e conexões) ───────────────────────────────
 function _renderPodaStatus(){
   const c = _gsPodaConfig();
   let n = 0;
@@ -13915,7 +14183,7 @@ async function showUsoDrive(){
   _gsUsoDispRender();   // v2.4.6.1 (C3): não depende do Drive
   const corpo = function(){ return document.getElementById('uso-corpo'); };
   if(!_gdDisponivel() || !_gdConectado()){
-    const c0 = corpo(); if(c0) c0.innerHTML = '<div style="color:#999">O Google Drive não está conectado neste dispositivo — conecte em Backup e Conexões para ver o uso.</div>';
+    const c0 = corpo(); if(c0) c0.innerHTML = '<div style="color:#999">O Google Drive não está conectado neste dispositivo — conecte em Backup e conexões para ver o uso.</div>';
     return;
   }
   let u;
@@ -15489,7 +15757,7 @@ async function _gdObterToken(interativo){
     if(a2 && a2.accessToken){ _gdTokenVia = 'getAuthorizationCode'; _gdTokenCache = {token:a2.accessToken, ts:Date.now()}; return a2.accessToken; }
   }catch(e){ /* segue para o login (ou para o erro de reconectar) */ }
   // Um ENVIO nunca chega aqui com `interativo=true` (regra da v1.9.5.1): quem abre
-  // tela de login é o usuário, em Backup e Conexões.
+  // tela de login é o usuário, em Backup e conexões.
   if(!interativo) throw _gdErroReconectar();
   _gdTokenPasso = 'login interativo';
   const r = await _gdLoginInterativo();
@@ -15510,7 +15778,7 @@ function _gdSemAutorizacao(e){
 // Mensagem ÚNICA para "sem autorização válida": diz o que fazer, em vez de
 // "tempo esgotado (45s)", que não orienta ninguém.
 function _gdErroReconectar(){
-  const e = new Error('sem autorização válida — reconecte o Google Drive em Backup e Conexões');
+  const e = new Error('sem autorização válida — reconecte o Google Drive em Backup e conexões');
   e.gdReconectar = true;
   return e;
 }
@@ -15581,7 +15849,7 @@ async function _gdFetch(url, opts, token, etapa){
 // 403 no upload virava `p.login()` — abrindo a tela de consentimento do Google no
 // meio de um backup, inclusive num backup AUTOMÁTICO, roubando o foco de quem está
 // operando o mapa. E se aquele intent não voltasse, prendia a trava de envio.
-// Reconectar passou a ser ação EXPLÍCITA do usuário em Backup e Conexões.
+// Reconectar passou a ser ação EXPLÍCITA do usuário em Backup e conexões.
 async function _gdComToken(fn, interativo){
   // v1.9.5.2: `_gdObterToken` já embrulha CADA passo no seu próprio teto curto —
   // não há mais um teto único por cima da cadeia inteira. A rede ganha teto folgado.
@@ -16041,7 +16309,7 @@ function _gdDesvincularConta(origem, antes){
 function _gdMarcarPrecisaReconectar(msg){
   try{
     if(DRIVE_STATUS.nuvem_reconectar) return;   // v2.4.2.0: pede ao usuário UMA vez (não a cada falha)
-    if(_gdRenovaSozinho()) msg = 'o Google recusou o acesso ao Drive desta conta (acesso revogado, senha trocada ou conta removida do dispositivo) — reconecte em Gestão → Backup e Conexões';
+    if(_gdRenovaSozinho()) msg = 'o Google recusou o acesso ao Drive desta conta (acesso revogado, senha trocada ou conta removida do dispositivo) — reconecte em Gestão → Backup e conexões';
     _gsDriveRenovSomar('pedidos', { ultimo_pedido:Date.now() });
     try{ gsDiag('drive', 'PEDIDO AO USUÁRIO: reconectar o Drive (' + String(msg || '').slice(0, 80) + ')'); }catch(x){}
     DRIVE_STATUS.nuvem_reconectar = true;
@@ -16846,7 +17114,7 @@ const HHJ_RE_PROV = /^_EM-ANDAMENTO_.+\.pdf$/;
 let _hrelRodando = false;
 // v2.4.6.1 — CAUSA DO RELATÓRIO QUE NÃO SAIU NO CELULAR (29/10): depois de abrir, só havia DUAS tentativas
 // automáticas (arranque +55 s e o 1º tique nativo, ~60 s), as duas desistiam CALADAS com qualquer janela aberta
-// (o Douglas estava em Backup e Conexões / Uso do Drive) e a seguinte só vinha ~10 min depois — o app foi
+// (o Douglas estava em Backup e conexões / Uso do Drive) e a seguinte só vinha ~10 min depois — o app foi
 // fechado antes. Agora: (1) o bloqueio passageiro reagenda em 1 min (até 1 h); (2) janela aberta só segura com
 // a tela VISÍVEL; (3) o PRIMEIRO relatório (nada enviado por este dispositivo, ou nenhum `HOSPEDADOS_` das
 // últimas 24 h na pasta) sai sem esperar mudança nem a hora; (4) o último motivo fica no diagnóstico.
@@ -18045,7 +18313,7 @@ async function _gdAplicarRestauracao(obj, nome, modo){
     <button class="bcx" onclick="closeOv()" style="width:100%;margin-top:12px">Fechar</button>`);
 }
 
-// Re-renderiza "Backup e Conexões" se ele estiver aberto (status muda ali).
+// Re-renderiza "Backup e conexões" se ele estiver aberto (status muda ali).
 // v1.9.5.4 — o modal do PIN ficava aberto, com as 4 bolinhas preenchidas, depois de
 // conectar ou desconectar. Causa: `_gsPinTeclado` apenas trava (`travado=true`) sem
 // fechar nem limpar, e esta função DESISTIA porque o `.mt` visível era "🔑 PIN de
@@ -18057,7 +18325,7 @@ function _gdReabrirConexoes(){
     if(!ov || !ov.classList.contains('on')) return;
     const t = document.getElementById('mc').querySelector('.mt');
     const txt = (t && t.textContent) || '';
-    if(txt.indexOf('Conexões') >= 0 || txt.indexOf('PIN de Gestão') >= 0) showConexoes();
+    if(/Conex[õo]es/i.test(txt) || txt.indexOf('PIN de Gestão') >= 0) showConexoes();
   }catch(e){}
 }
 
@@ -18390,7 +18658,7 @@ function _rcComprovantePNG(e){
     ctx.fillStyle='#fff'; ctx.fillRect(0,0,600,820);
     ctx.fillStyle='#185FA5'; ctx.fillRect(0,0,600,8);
     ctx.fillStyle='#1A2238'; ctx.font='bold 30px sans-serif';
-    ctx.fillText('Comprovante de Recarga', 36, 70);
+    ctx.fillText('Comprovante de recarga', 36, 70);
     ctx.fillStyle='#185FA5'; ctx.fillRect(36,90,528,3);
     const fmt=function(ts){ return ts? _dtLocalCurta(new Date(ts)) : '—'; };
     const dur=(typeof _fmtDurRecarga==='function')?_fmtDurRecarga(e.mins):(e.mins+'min');
@@ -18468,7 +18736,7 @@ function _rcVibrar(padrao){
 //
 // Sem `SCHEDULE_EXACT_ALARM` de propósito (decisão do Douglas): o alerta é aviso, não
 // despertador, e tolera atraso de minutos quando o Android está economizando bateria.
-// Estado da notificação exibido em Configurações de Recarga. A regra é não deixar a
+// Estado da notificação exibido em Configurações de recarga. A regra é não deixar a
 // interface mentir: se a permissão foi negada, o toggle "Alerta" continua ligado mas
 // o usuário precisa saber que a notificação NÃO vai aparecer.
 async function _rcRenderEstadoNotif(){
@@ -18912,7 +19180,7 @@ function iniciarRecarga(vagaId, apt, hospedagem, finHHMM, usuario){
   const [h,m]=finHHMM.split(':').map(Number);
   let fim=new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate(),h,m,0,0).getTime();
   if(fim<=Date.now()) fim+=86400000; // amanhã
-  const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+  const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
   RECARGAS[vagaId]={apt,hospedagem,inicio_ts:Date.now(),fim_ts:fim,ativo:true,confirmada:false,usuario:usuarioStr};
   saveRecargas();
   agendarAlertaRecarga(vagaId);
@@ -19013,7 +19281,7 @@ function showRecargaModal(vagaId){
   if(!hosp) hosp=vaga.hospedagem||'';
   const filaInfo=FILA_RECARGA.filter(f=>f.vagaId===vagaId);
   confirmarUsuario('iniciando recarga',function(usuario){
-    showM(`<div class="mt">⚡ Iniciar Recarga — Vaga ${vagaId}</div>
+    showM(`<div class="mt">⚡ Iniciar recarga — Vaga ${vagaId}</div>
       <div class="ms">Apt. ${apt}${hosp?' · '+hosp:''}${vaga.model?' · '+vaga.model:''}</div>
       <label class="fl">Hora de termino prevista <span class="req">*</span></label>
       <input class="fi" id="rc-fim" type="time" value="${hh}" style="font-size:15px">
@@ -19118,7 +19386,7 @@ function _rcEditarPeriodo(vagaId){
       if(novoFim<=novoIni){ showToast('O término deve ser depois do início',2500); return; }
       if(novoIni===iniIni && novoFim===fimIni){ showToast('Nenhuma alteração',2000); showRecargaDetalhe(vagaId); return; }
       confirmarUsuario('editando o período da recarga',function(usuario){
-        const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+        const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
         const rr=RECARGAS[vagaId]; if(!rr){ closeOv(); return; }
         const mud=[];
         if(novoIni!==iniIni) mud.push("Início: "+fmtDt(iniIni)+" → "+fmtDt(novoIni));
@@ -19206,7 +19474,7 @@ function showRecargaFinalizar(vagaId){
   const now=Date.now();
   const emAtraso = now >= r.fim_ts;
   confirmarUsuario('finalizando recarga',function(usuario){
-    const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+    const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
     _rcRenderEncerrar(vagaId, r, usuario, usuarioStr, emAtraso, now);
   });
 }
@@ -19626,7 +19894,7 @@ function showRecargaFila(vagaId){
   setTimeout(()=>{
     document.getElementById('rc-fila-ok')?.addEventListener('click',()=>{
       confirmarUsuario('entrando na fila de recarga',function(usuario){
-        const usuarioStr=usuario?(usuario.nome+' · '+usuario.cargo):'';
+        const usuarioStr=usuario?(gsJunta(usuario.nome, usuario.cargo)):'';
         const hosp=vaga?.hospedagem||'';
         FILA_RECARGA.push({apt,vagaId,hospedagem:hosp,ts_pedido:Date.now(),usuario:usuarioStr});
         saveFilaRecarga();   // v1.9.9.3
@@ -19640,7 +19908,7 @@ function showRecargaFila(vagaId){
 
 // v1.9.4.3.2: Painel Recarga redesenhado conforme protótipo.
 // Header dinâmico + cards de ponto (livre/em uso) + recargas ativas (com barra de progresso)
-// + fila (banner + lista + add) + histórico recente. SEM botão "Configurações de Recarga"
+// + fila (banner + lista + add) + histórico recente. SEM botão "Configurações de recarga"
 // (configuração ficará em Gestão no .3). Tempo em horas via _fmtDurRecarga.
 function renderTelaRecarga(){
   const rw=document.getElementById('recarga-wrap'); if(!rw) return;
@@ -19801,7 +20069,7 @@ function renderTelaRecarga(){
 
   rw.innerHTML = ''+
     '<div class="rcp-header">' +
-      '<div class="rcp-titulo"><span class="rcp-titulo-icon">⚡</span>Recarga Veicular</div>' +
+      '<div class="rcp-titulo"><span class="rcp-titulo-icon">⚡</span>Recarga veicular</div>' +
       '<div class="rcp-sub">'+_vtEsc(subHeader)+'</div>' +
     '</div>' +
     '<div class="rcp-grid">' +
@@ -19809,13 +20077,13 @@ function renderTelaRecarga(){
     '</div>' +
     '<div class="rcp-secao">' +
       '<div class="rcp-secao-titulo">' +
-        '<div class="rcp-secao-text">⚡ Recargas Ativas <span class="rcp-badge">'+ativas.length+'</span></div>' +
+        '<div class="rcp-secao-text">⚡ Recargas ativas <span class="rcp-badge">'+ativas.length+'</span></div>' +
       '</div>' +
       ativasHtml +
     '</div>' +
     '<div class="rcp-secao">' +
       '<div class="rcp-secao-titulo">' +
-        '<div class="rcp-secao-text">⏳ Fila de Espera <span class="rcp-badge fila">'+filaCount+'</span></div>' +
+        '<div class="rcp-secao-text">⏳ Fila de espera <span class="rcp-badge fila">'+filaCount+'</span></div>' +
       '</div>' +
       (filaCount>0 ? '<div class="rcp-banner-fila"><span>💡</span><span>Quando um ponto vagar, o app avisa para designar o próximo da fila.</span></div>' : '') +
       filaHtml +
@@ -19937,7 +20205,7 @@ function _rcEscolherCarro(vagasDoPonto, usuario){
     ? 'Ponto compartilhado '+vagasDoPonto.join('/')
     : 'Ponto · Vaga '+vagasDoPonto[0];
   mc.innerHTML = ''+
-    '<div class="mt">⚡ Iniciar Recarga</div>' +
+    '<div class="mt">⚡ Iniciar recarga</div>' +
     '<div class="ms">'+_vtEsc(subtitulo)+'</div>' +
     '<div class="rcp-busca-wrap">' +
       '<span class="rcp-busca-ico">🔍</span>' +
@@ -20325,7 +20593,7 @@ window._abrirAddFilaModal = function(){
       const carro = _rcAddFilaEstado.carros[_rcAddFilaEstado.escolhidoIdx];
       if(!carro) return;
       confirmarUsuario('entrando na fila de recarga', function(usuario){
-        const usuarioStr = usuario ? (usuario.nome+' · '+usuario.cargo) : '';
+        const usuarioStr = usuario ? (gsJunta(usuario.nome, usuario.cargo)) : '';
         FILA_RECARGA.push({ apt:carro.apt, vagaId:carro.vagaId, hospedagem:carro.hospedagem, model:carro.model, color:carro.color, ts_pedido:Date.now(), usuario:usuarioStr });
         saveFilaRecarga();   // v1.9.9.3
         try{ _gsSyncAcao('recarga_fila_entrada', carro.vagaId); }catch(eS){}   // v2.1.0.0 ação explícita
@@ -20378,7 +20646,7 @@ window._rcAddFilaSelecionar = function(idx){
   if(btn){ btn.disabled = false; btn.style.opacity='1'; }
 };
 
-// v1.9.4.3.3: Configurações de Recarga completas (em Gestão).
+// v1.9.4.3.3: Configurações de recarga completas (em Gestão).
 // Pontos (compartilhado/individual) + valor/hora + arredondamento (15/30, cima/baixo) + cortesia + alertas.
 function showRecargaCfg(){
   const pontos = _getConfigPontosAtual();
@@ -20402,7 +20670,7 @@ function _rcCfgRender(){
       '</div>';
   }).join('');
   showM(''+
-    '<div class="mt">⚡ Configurações de Recarga</div>' +
+    '<div class="mt">⚡ Configurações de recarga</div>' +
     '<div class="gestao-menu-sep" style="margin-top:0">Pontos de recarga</div>' +
     pontosHtml +
     '<button onclick="_rcCfgAdicionarPonto()" style="width:100%;padding:8px;background:#fff;border:1.5px dashed #185FA5;color:#185FA5;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px">➕ Adicionar ponto</button>' +
@@ -20700,7 +20968,7 @@ function _togSwitch(id, checked, onchange){
 
 function showConfiguracoesSistema(){
   const mc=document.getElementById('mc');
-  mc.innerHTML=`<div class="mt">⚙ Configurações do Sistema</div>
+  mc.innerHTML=`<div class="mt">⚙ Configurações do sistema</div>
     <div class="gestao-menu-sep">Módulos ativos</div>
     ${gsSrvAtivo()?'<div id="cfg-perfil" style="font-size:11px;color:#777;padding:6px 4px 2px;line-height:1.5">Segmento: <strong>'+(gsPerfil().segmento==='estacionamento'?'Estacionamento':'Hotelaria')+'</strong> · liberados pelo desenvolvedor: '+gsPerfil().modulos_liberados.map(function(m){ return {garagem:'Garagem',recarga:'Recarga',reservas:'Reservas',cobrancas:'Cobranças'}[m]||m; }).join(', ')+'</div>':''}
     <div id="cfg-mod-recarga" style="display:${gsModuloLiberado('recarga')?'flex':'none'};align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #f0ede8">
@@ -20711,7 +20979,7 @@ function showConfiguracoesSistema(){
       ${_togSwitch('tog-recarga', MODULOS.recarga, "MODULOS.recarga=this.checked;saveModulos();_gsBackupAuto('módulos');applyModulos();const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px';showToast('Recarga '+(this.checked?'ativada':'desativada'))")}
     </div>
     ${gsModuloLiberado('reservas')?`<div id="cfg-mod-reservas" style="display:flex;align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid #f0ede8"><div><div style="font-size:13px;font-weight:600">📅 Reservas</div><div style="font-size:11px;color:#999;margin-top:2px">Em construção (Fase 4) — ligar ainda não muda nada</div></div>${_togSwitch('tog-reservas', !!MODULOS.reservas, "MODULOS.reservas=this.checked;saveModulos();_gsBackupAuto('módulos');const sp=this.nextElementSibling;sp.style.background=this.checked?'#0F6E56':'#ccc';sp.children[0].style.left=this.checked?'23px':'3px'")}</div>`:''}
-    ${gsModuloLiberado('recarga')?`<div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de Recarga</span></div>`:''}
+    ${gsModuloLiberado('recarga')?`<div class="gestao-menu-item" onclick="_gestaoAbrir('showRecargaCfg')" style="margin-top:8px">⚡ <span>Configurações de recarga</span></div>`:''}
     <div style="font-size:11px;color:#aaa;margin-top:10px;padding:0 2px;line-height:1.5">Módulo desativado oculta o botão da barra. Os dados são preservados.</div>
     <div class="gestao-menu-sep" style="margin-top:14px">Horários da empresa</div>
     <div class="gestao-menu-item" id="cfg-horarios" onclick="showHorarios()">🕑 <span>Check-out ${gsHorariosEmpresa().checkout} · Check-in ${gsHorariosEmpresa().checkin}</span></div>
@@ -20883,7 +21151,7 @@ function _gdDicaTocarHTML(){
 
 // v1.9.5.3 — ATALHO DO RODAPÉ: força o envio para a nuvem.
 //
-// Chama `fazerBackupNuvemAgora`, a MESMA função do botão de Backup e Conexões —
+// Chama `fazerBackupNuvemAgora`, a MESMA função do botão de Backup e conexões —
 // nada de caminho paralelo que possa divergir com o tempo.
 //
 // **SEM PIN e SEM registrar autor**, de propósito: forçar um backup é ação
@@ -20896,7 +21164,7 @@ function _gdDicaTocarHTML(){
 // O QUE ACONTECEU NO HOTEL EM 04/09: o token do Drive venceu, o app marcou
 // `nuvem_reconectar`, e a partir dali NADA subiu — nem o backup, nem o PDF de
 // fechamento, nem o documento de hospedagem do GS146. A saída existia (Gestão →
-// Backup e Conexões → Desconectar → Conectar), mas ela pede o PIN do gestor: o
+// Backup e conexões → Desconectar → Conectar), mas ela pede o PIN do gestor: o
 // manobrista não tinha como resolver, e a operação ficou parada até o gestor
 // chegar. Documento de hospedagem que não sobe é PERDA DE DOCUMENTAÇÃO — que é
 // exatamente a coisa que este projeto existe para não deixar acontecer.
@@ -20936,7 +21204,7 @@ async function _gdReautenticarPeloUsuario(origem){
       {aud:true, acao:'drive_reconexao_conta_diferente', quem:'usuário (sem PIN)',
        alvo:antes + ' × ' + email, origem:'usuario'});
     const e = new Error('a conta escolhida (' + email + ') não é a vinculada (' + antes +
-      ') — peça ao gestor em Gestão → Backup e Conexões');
+      ') — peça ao gestor em Gestão → Backup e conexões');
     e.gdContaDiferente = true;
     throw e;
   }
@@ -21030,7 +21298,7 @@ function _gdForcarPeloRodape(){
     }
     if(!_gdConectado()){
       // NÃO abre login: VINCULAR uma conta é ação de gestor, com PIN, em Gestão.
-      showToast('☁️ Google Drive não conectado. Peça ao gestor: Gestão → Backup e Conexões.', 5500);
+      showToast('☁️ Google Drive não conectado. Peça ao gestor: Gestão → Backup e conexões.', 5500);
       return Promise.resolve();
     }
     if(_gdEnviando){ showToast('☁️ Já estou enviando — aguarde.', 3000); return Promise.resolve(); }
@@ -21215,7 +21483,7 @@ function _gdEspacoAvisoHTML(){
 function showConexoes(){
   const mc=document.getElementById('mc');
   const ult=DRIVE_STATUS.ultimo_backup;
-  mc.innerHTML=`<div class="mt">🔗 Backup e Conexões</div>
+  mc.innerHTML=`<div class="mt">🔗 Backup e conexões</div>
     <div class="gestao-menu-sep">Backup local</div>
     ${_renderBackupStatus()}
     <button class="bsv" id="btn-backup-agora" onclick="fazerBackupAgora()" style="width:100%;margin-top:8px">💾 Fazer backup agora</button>
@@ -21267,7 +21535,7 @@ function _relWrap(titulo, bodyHTML){
 }
 
 function buildRelMovimentacoesHTML(evts, deVal, ateVal){
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem lateral',desfaz_merge_lateral:'Merge desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const ci=evts.filter(e=>e.tipo==='checkin').length, co=evts.filter(e=>e.tipo==='checkout').length;
   const pass=evts.filter(e=>e.tipo==='saida_passeio'||e.tipo==='retorno_passeio').length;
@@ -21281,7 +21549,7 @@ function buildRelMovimentacoesHTML(evts, deVal, ateVal){
       ${ev.extra?`<div style="font-size:10px;opacity:.75;margin-top:1px">${ev.extra}</div>`:''}</div>
       <div style="font-size:10px;opacity:.88;white-space:nowrap;text-align:right;flex-shrink:0">${fmtDt(ev.ts)}</div>
     </div>`).join('');
-  const body=_relHdrHTML('Relatório de Movimentações','Período: '+periodo+' · Gerado em '+_dLocal(new Date()))+
+  const body=_relHdrHTML('Relatório de movimentações','Período: '+periodo+' · Gerado em '+_dLocal(new Date()))+
     `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#EEF9F2;color:#0F6E56">CI: ${ci}</span>
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#FCEBEB;color:#A32D2D">CO: ${co}</span>
@@ -21290,7 +21558,7 @@ function buildRelMovimentacoesHTML(evts, deVal, ateVal){
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#F2F2F2;color:#555">Edições: ${ed}</span>
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#EEF6FF;color:#185FA5">Total: ${evts.length}</span>
     </div>${eventsHTML}`;
-  return _relWrap('Relatório de Movimentações', body);
+  return _relWrap('Relatório de movimentações', body);
 }
 
 function buildRelOcupacaoHTML(dadosOcup, hospsP, deVal, ateVal){
@@ -21298,7 +21566,7 @@ function buildRelOcupacaoHTML(dadosOcup, hospsP, deVal, ateVal){
   const ativas=hospsP.filter(h=>!h.checkout_ts).length;
   const finalizadas=hospsP.filter(h=>!!h.checkout_ts).length;
   const periodo=deVal+(ateVal&&ateVal!==deVal?' a '+ateVal:'');
-  const body=_relHdrHTML('Relatório de Ocupação','Período: '+periodo+' · Gerado em '+_dLocal(new Date()))+
+  const body=_relHdrHTML('Relatório de ocupação','Período: '+periodo+' · Gerado em '+_dLocal(new Date()))+
     `<div style="margin:10px 0 20px">
       <div style="background:#EEF6FF;border-radius:8px;height:20px;overflow:hidden;margin-bottom:8px">
         <div style="background:#185FA5;height:100%;width:${pct}%;border-radius:8px"></div>
@@ -21318,7 +21586,7 @@ function buildRelOcupacaoHTML(dadosOcup, hospsP, deVal, ateVal){
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#EEF9F2;color:#0F6E56">Ativas: ${ativas}</span>
       <span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#FCEBEB;color:#A32D2D">Finalizadas: ${finalizadas}</span>
     </div>`;
-  return _relWrap('Relatório de Ocupação', body);
+  return _relWrap('Relatório de ocupação', body);
 }
 
 function buildRelPorAptoHTML(hosps, aptVal, deVal, ateVal){
@@ -21332,9 +21600,9 @@ function buildRelPorAptoHTML(hosps, aptVal, deVal, ateVal){
       <div style="font-size:11px;color:#888">${[h.guest,h.model,h.color,h.plate].filter(Boolean).join(' · ')||'Sem dados'}</div>
       <div style="font-size:10px;color:#aaa;margin-top:3px">Entrada: ${fmtDt(h.checkin_ts)}${h.checkout_ts?' · Saída: '+fmtDt(h.checkout_ts):''}</div>
     </div>`).join('');
-  const body=_relHdrHTML('Relatório por Apartamento','Filtros: '+periodo+' · Gerado em '+_dLocal(new Date()))+
+  const body=_relHdrHTML('Relatório por apartamento','Filtros: '+periodo+' · Gerado em '+_dLocal(new Date()))+
     `<div style="margin-bottom:12px"><span style="border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;background:#EEF6FF;color:#185FA5">Total: ${hosps.length} hospedagem(s)</span></div>`+cardsHTML;
-  return _relWrap('Relatório por Apartamento', body);
+  return _relWrap('Relatório por apartamento', body);
 }
 
 // ── RELATÓRIOS ────────────────────────────────────────────────────────────
@@ -21443,7 +21711,7 @@ function showRelatorios(){
 
 function showRelMovimentacoes(){
   const mc=document.getElementById('mc');
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem lateral',desfaz_merge_lateral:'Merge desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const allEvts=[];
   Object.entries(HISTORICO).forEach(([apt,evts])=>evts.forEach(ev=>allEvts.push({apt,...ev})));
@@ -21643,7 +21911,7 @@ function showRelPorApto(){
 
 function showRelTurno(){
   const mc=document.getElementById('mc');
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem lateral',desfaz_merge_lateral:'Merge desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const allEvts=[];
   Object.entries(HISTORICO).forEach(([apt,evts])=>evts.forEach(ev=>allEvts.push({apt,...ev})));
@@ -21691,7 +21959,7 @@ function showRelTurno(){
         <button class="bcx" style="flex:1" onclick="showRelatorios()">← Voltar</button>
         <button class="bcx" style="flex:1" onclick="closeOv()">✕ Fechar</button>
       </div>
-      <div class="mt">🕐 Por Turno</div>
+      <div class="mt">🕐 Por turno</div>
       <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
         <button onclick="window._rtHoje()" style="padding:5px 10px;font-size:11px;border:1px solid #185FA5;border-radius:6px;background:#EEF6FF;color:#185FA5;cursor:pointer;font-family:inherit;font-weight:600">Hoje</button>
         <span style="font-size:11px;color:#888">De</span>
@@ -21732,7 +22000,7 @@ function showRelProdutividade(){
   const hoje=new Date();
   const td=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
   const actionTypes=['checkin','checkout','saida_passeio','retorno_passeio','edicao','movimentacao_vaga','tornar_grande','tornar_pequeno','merge_lateral','desfaz_merge_lateral'];
-  const tLabel={checkin:'Check-in',checkout:'Check-out',data_prevista:'Data prevista alterada',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',checkout:'Check-out',data_prevista:'Data prevista alterada',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge desfeito'};
 
   function dts(s){if(!s)return 0;const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).getTime();}
   function dte(s){if(!s)return Infinity;const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,23,59,59,999).getTime();}
@@ -21800,14 +22068,14 @@ function showRelProdutividade(){
       const usrF=document.getElementById('rp-usr')?.value||'';
       const m2=calcMetricas(de,ate,usrF);
       const html=buildRelProdutividadeHTML(m2,de,ate,usrF);
-      await gerarECompartilharPDF('Relatório de Produtividade',html,`Produtividade_${de}_a_${ate}`);
+      await gerarECompartilharPDF('Relatório de produtividade',html,`Produtividade_${de}_a_${ate}`);
     };
   }
   render(td, td, '');
 }
 
 function buildRelProdutividadeHTML(metricas, deVal, ateVal, usrFiltro){
-  const tLabel={checkin:'Check-in',checkout:'Check-out',data_prevista:'Data prevista alterada',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',checkout:'Check-out',data_prevista:'Data prevista alterada',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem',desfaz_merge_lateral:'Merge desfeito'};
   const actionTypes=['checkin','checkout','saida_passeio','retorno_passeio','edicao','movimentacao_vaga','tornar_grande','tornar_pequeno','merge_lateral','desfaz_merge_lateral'];
   const totalGeral=metricas.reduce((s,m)=>s+m.total,0);
   const linhasTabela=metricas.map(m=>{
@@ -21820,7 +22088,7 @@ function buildRelProdutividadeHTML(metricas, deVal, ateVal, usrFiltro){
   <body><div class="page">
     <div style="background:#185FA5;color:#fff;padding:16px 20px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-size:16px;font-weight:700">🅿 GarageSpot</div><div style="font-size:9px;opacity:.6">Developed by Douglas Nascimento</div></div>
-      <div style="text-align:right"><div style="font-size:15px;font-weight:700">Relatório de Produtividade</div><div style="font-size:11px;opacity:.85">${subtit}</div></div>
+      <div style="text-align:right"><div style="font-size:15px;font-weight:700">Relatório de produtividade</div><div style="font-size:11px;opacity:.85">${subtit}</div></div>
     </div>
     <div style="font-size:13px;margin-bottom:10px">Total de ações: <strong>${totalGeral}</strong></div>
     <table><thead><tr><th style="text-align:left;padding:6px 10px">Funcionário</th>${headerCols}<th style="background:#e8eef8">Total</th></tr></thead>
@@ -21830,7 +22098,7 @@ function buildRelProdutividadeHTML(metricas, deVal, ateVal, usrFiltro){
 }
 
 function buildRelTurnoHTML(evts, deVal, ateVal, turnosSel){
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída Passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Carro Grande',tornar_pequeno:'Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Merge Desfeito'};
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Carro grande',tornar_pequeno:'Carro pequeno',merge_lateral:'Mesclagem lateral',desfaz_merge_lateral:'Merge desfeito'};
   const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888'};
   const grupos={};
   TURNOS.filter(t=>!turnosSel||turnosSel.includes(t.nome)).forEach(t=>grupos[t.nome]=[]);
@@ -21862,8 +22130,8 @@ function buildRelTurnoHTML(evts, deVal, ateVal, turnosSel){
     </div>`;
   }).join('');
   const subtitulo=`${periodo} · ${(turnosSel||TURNOS.map(t=>t.nome)).join(', ')}`;
-  const body=_relHdrHTML('Relatório por Turno', subtitulo)+gruposHTML;
-  return _relWrap('Relatório por Turno', body);
+  const body=_relHdrHTML('Relatório por turno', subtitulo)+gruposHTML;
+  return _relWrap('Relatório por turno', body);
 }
 
 function showRelOverbooking(){
@@ -21892,32 +22160,83 @@ function showHistoricoModal(apt, hospedagem, detId, detFp){
   // Parte 5 v1.9.4.4: ordenar da mais recente → mais antiga (antes era ordem de inserção)
   // v1.9.9.3: com a hospedagem conhecida, só a movimentação DELA (o histórico do
   // apto agora acumula todas as hospedagens que passaram por ele).
+  // v2.5.1.0 (F): LINHA DO TEMPO LEVE no lugar dos blocos coloridos — ícone e cor por tipo, título, data à direita
+  // (dd/mm hh:mm; o ano só se não for o atual) e embaixo vaga · quem · dispositivo e o detalhe. O mais novo em cima;
+  // o check-in, o mais antigo, por último. Cabeçalho no padrão das janelas (‹ · título · ✕).
   const _hMod=hospedagem?HOSPEDAGENS[hospedagem]:null;
-  const hist=(hospedagem?_gsHistoricoDaHospedagem(apt, hospedagem, (_hMod&&_hMod.checkin_ts)||null):getHistorico(apt)).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
-  const tLabel={checkin:'Check-in',saida_passeio:'Saída para Passeio',retorno_passeio:'Retorno do Passeio',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de Vaga',tornar_grande:'Expandido para Carro Grande',tornar_pequeno:'Reduzido para Carro Pequeno',merge_lateral:'Mesclagem Lateral',desfaz_merge_lateral:'Mesclagem Lateral Desfeita',vistoria_criada:'Vistoria Criada',vistoria_vinculada:'Vistoria Vinculada',vistoria_editada:'Vistoria Editada',vistoria_assinada:'Vistoria Assinada',vistoria_deletada:'Vistoria Excluída',recarga_iniciada:'Recarga Iniciada',recarga_encerrada:'Recarga Encerrada',recarga_editada:'Período de Recarga Editado',exclusao_anexo:'Exclusão de Anexo'};
-  const tColor={checkin:'#0F6E56',saida_passeio:'#854F0B',retorno_passeio:'#185FA5',checkout:'#A32D2D',edicao:'#555',movimentacao_vaga:'#5C35B0',tornar_grande:'#185FA5',tornar_pequeno:'#0F6E56',merge_lateral:'#854F0B',desfaz_merge_lateral:'#888',vistoria_criada:'#0D3B6E',vistoria_vinculada:'#0F6E56',vistoria_editada:'#555',vistoria_assinada:'#27AE60',vistoria_deletada:'#A32D2D',recarga_iniciada:'#BA7517',recarga_encerrada:'#1F9A5F',recarga_editada:'#185FA5',exclusao_anexo:'#A32D2D'};
-  const titulo=hospedagem?`ℹ️ Apt. ${apt} · ${hospedagem}`:`ℹ️ Apt. ${apt}`;
+  const hist=(hospedagem?_gsHistoricoDaHospedagem(apt, hospedagem, (_hMod&&_hMod.checkin_ts)||null):getHistorico(apt)).slice().sort((a,b)=>((b.ts||0)-(a.ts||0)) || ((a.tipo==='checkin')-(b.tipo==='checkin')));
+  const tLabel={checkin:'Check-in',saida_passeio:'Saída para passeio',retorno_passeio:'Retorno do passeio',checkout:'Check-out',data_prevista:'Data prevista alterada',edicao:'Edição',movimentacao_vaga:'Mudança de vaga',tornar_grande:'Expandido para carro grande',tornar_pequeno:'Reduzido para carro pequeno',merge_lateral:'Mesclagem lateral',desfaz_merge_lateral:'Mesclagem lateral desfeita',vistoria_criada:'Vistoria criada',vistoria_vinculada:'Vistoria vinculada',vistoria_editada:'Vistoria editada',vistoria_assinada:'Vistoria assinada',vistoria_deletada:'Vistoria excluída',recarga_iniciada:'Recarga iniciada',recarga_encerrada:'Recarga encerrada',recarga_editada:'Período de recarga editado',exclusao_anexo:'Exclusão de anexo'};
+  const _frase=(t)=>{ t=String(t||''); return t ? t.charAt(0)+t.slice(1).toLowerCase().replace(/check-(in|out)/g,'check-$1') : t; };
+  const tituloDe=(ev)=>{ const t=ev.tipo==='saida_passeio'?'Saída para passeio':(tLabel[ev.tipo]||(typeof MOV_LABEL!=='undefined'&&MOV_LABEL[ev.tipo])||ev.tipo); return _frase(t); };
+  const cards=hist.map(ev=>{
+    const [ic,cor,fundo]=gsHistIcone(ev.tipo);
+    const disp=ev.disp ? ev.disp + (ev.disp_nome ? ' (' + ev.disp_nome + ')' : '') : '';
+    const linha2=gsJunta(ev.vaga && ev.tipo!=='movimentacao_vaga' ? 'Vaga '+ev.vaga : '', ev.usuario, disp) || 'Não identificado';
+    return '<div class="gs-tl-it" data-tipo="'+_vtEsc(ev.tipo||'')+'">'+
+      '<div class="gs-tl-ic" style="color:'+cor+';background:'+fundo+'">'+gi(ic)+'</div>'+
+      '<div class="gs-tl-c"><div class="gs-tl-l1"><span class="gs-tl-tit" style="color:'+cor+'">'+_vtEsc(tituloDe(ev))+'</span><span class="gs-tl-dt">'+_vtEsc(gsDataCurta(ev.ts)||'—')+'</span></div>'+
+      '<div class="gs-tl-l2">'+_vtEsc(linha2)+'</div>'+
+      (ev.extra?'<div class="gs-tl-l3">'+ev.extra+'</div>':'')+
+      '</div></div>';
+  }).join('');
   const cardsHTML=hist.length===0
     ?'<span style="font-size:12px;color:#bbb;font-style:italic">Sem eventos registrados</span>'
-    :hist.map(ev=>`<div class="hist-card" style="background:${tColor[ev.tipo]||'#666'}">
-        <div class="hist-tipo">${tLabel[ev.tipo]||ev.tipo}</div>
-        <div class="hist-info">${fmtDt(ev.ts)}</div>
-        ${ev.vaga?'<div class="hist-info">Vaga: '+ev.vaga+'</div>':''}
-        <div class="hist-info">Por: ${_vtEsc(_gsEvQuem(ev))||'Não identificado'}</div>
-        ${ev.extra?'<div class="hist-info">'+ev.extra+'</div>':''}
-      </div>`).join('');
-  const voltarOnclick = detId ? `showDet('${detId}',${detFp?1:0})` : 'closeOv()';
-  showM(`<div style="display:flex;gap:6px;margin-bottom:10px">
-    <button class="bcx" style="flex:1" onclick="${voltarOnclick}">← Voltar</button>
-    <button class="bcx" style="flex:1" onclick="closeOv()">✕ Fechar</button>
-  </div>
-  <div class="mt">${titulo}</div>
-  <div style="margin:8px 0;max-height:52vh;overflow-y:auto">${cardsHTML}</div>`);
+    :'<div class="gs-tl" id="hist-linha">'+cards+'</div>';
+  const voltarOnclick = detId ? `showDet('${detId}',${detFp?1:0})` : '';
+  showM(gsJanelaCab('Histórico · Apto ' + apt, voltarOnclick) +
+  `<div style="margin:4px 0;max-height:62vh;overflow-y:auto">${cardsHTML}</div>`);
+}
+
+// v2.5.1.0 (F): ícone e cor de cada tipo de registro na linha do tempo — [ícone, cor, fundo claro]
+// ICONES-EXTRA: plus door-exit carro-saindo carro-entrando arrows-left-right bolt clock-plus pencil calendar clipboard-check car-suv car arrows-exchange note trash point
+function gsHistIcone(tipo){
+  const t = String(tipo || '');
+  const T = {
+    checkin:['plus','#1F7A45','#E6F4EA'], checkout:['door-exit','#A33030','#FBEAEA'],
+    saida_passeio:['carro-saindo','#8A5A00','#FDF1DC'], retorno_passeio:['carro-entrando','#1C5AA0','#E6EEF8'],
+    movimentacao_vaga:['arrows-left-right','#6A3FB5','#EFE9FA'], troca_apartamento:['arrows-exchange','#6A3FB5','#EFE9FA'],
+    recarga_iniciada:['bolt','#B86E0C','#FDF1DC'], recarga_encerrada:['bolt','#1F7A45','#E6F4EA'],
+    recarga_prolongada:['clock-plus','#B86E0C','#FDF1DC'], recarga_editada:['pencil','#B86E0C','#FDF1DC'],
+    data_prevista:['calendar','#1C5AA0','#E6EEF8'], edicao:['pencil','#5B6573','#EEF0F3'],
+    tornar_grande:['car-suv','#1C5AA0','#E6EEF8'], tornar_pequeno:['car','#1F7A45','#E6F4EA'],
+    merge_lateral:['arrows-exchange','#8A5A00','#FDF1DC'], desfaz_merge_lateral:['arrows-exchange','#5B6573','#EEF0F3'],
+    exclusao_anexo:['trash','#A33030','#FBEAEA'], checkout_total:['door-exit','#A33030','#FBEAEA'],
+  };
+  if(T[t]) return T[t];
+  if(t.indexOf('vistoria') === 0) return ['clipboard-check', t === 'vistoria_deletada' ? '#A33030' : '#0D3B6E', t === 'vistoria_deletada' ? '#FBEAEA' : '#E8EFF7'];
+  if(t.indexOf('observacao') === 0) return ['note','#5B6573','#EEF0F3'];
+  return ['point','#5B6573','#EEF0F3'];
+}
+
+// v2.5.1.0 (F) / v2.5.1.1 (H): CABEÇALHO PADRÃO DAS JANELAS — seta de voltar à esquerda (quando há tela anterior),
+// título com o caminho ("Gestão › Usuários") e o X de fechar à direita. `caminho`: texto ou lista de partes.
+function gsJanelaCab(caminho, voltarJs, opts){
+  opts = opts || {};
+  const partes = (Array.isArray(caminho) ? caminho : [caminho]).filter(Boolean);
+  const tit = partes.map(function(p, i){ return i < partes.length - 1 ? '<span class="gs-jan-cam">' + _vtEsc(p) + '</span><span class="gs-jan-sep">›</span>' : _vtEsc(p); }).join('');
+  return '<div class="gs-jan-cab' + (voltarJs ? '' : ' sem-volta') + '"' + (opts.id ? ' id="' + opts.id + '"' : '') + '>' +
+    (voltarJs ? '<button type="button" class="gs-jan-volta" title="Voltar" aria-label="Voltar" onclick="' + voltarJs + '">' + gi('chevron-left') + '</button>' : '') +
+    '<div class="mt gs-jan-tit">' + tit + '</div>' +
+    '<button type="button" class="gs-jan-x" title="Fechar" aria-label="Fechar" onclick="' + (opts.fecharJs || 'closeOv()') + '">' + gi('x') + '</button></div>';
 }
 
 // ── HISTÓRICO DE EVENTOS ─────────────────────────────────────────────────
 const HISTORICO = {};
 
+// v2.5.1.0 (E): "17/10/2026 - 22:10" (Data de check-in nos Detalhes); sem data → '—'
+function gsDataHoraTraco(ts){
+  if(!ts) return '—';
+  const d = new Date(ts); if(isNaN(d.getTime())) return '—';
+  const p = (n) => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' - ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+// v2.5.1.0 (F/J): "dd/mm hh:mm", com o ano só quando não é o atual
+function gsDataCurta(ts){
+  if(!ts) return '';
+  const d = new Date(ts); if(isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + (d.getFullYear() !== new Date().getFullYear() ? '/' + d.getFullYear() : '') + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
 function fmtDt(ts){
   if(!ts) return 'Não informado';
   const d=new Date(ts);
@@ -21947,7 +22266,7 @@ function gsDispNome(){
 function _gsEvQuem(ev){
   if(!ev) return '';
   const d = ev.disp ? ev.disp + (ev.disp_nome ? ' (' + ev.disp_nome + ')' : '') : '';
-  return (ev.usuario || '') + (d ? (ev.usuario ? ' · ' : '') + d : '');
+  return gsJunta(ev.usuario, d);   // v2.5.1.0: sem ' · ' sobrando ('Doug · · dispositivo A')
 }
 function addHistorico(apt, tipo, vaga, extra, usuario, hospedagem){
   if(!apt) return;
@@ -22074,15 +22393,15 @@ function buildRegistroHTML(apt,dv,hist,anexos){
   const ni=v=>v&&String(v).trim()?String(v).trim():'Não informado';
   const tLabel={
     checkin:'Check-in (Entrada)',
-    saida_passeio:'Saída para Passeio',
-    retorno_passeio:'Retorno do Passeio',
+    saida_passeio:'Saída para passeio',
+    retorno_passeio:'Retorno do passeio',
     checkout:'Check-out (Saída)',
     edicao:'Edição de Dados',
-    movimentacao_vaga:'Mudança de Vaga',
-    tornar_grande:'Expandido para Carro Grande',
-    tornar_pequeno:'Reduzido para Carro Pequeno',
-    merge_lateral:'Mesclagem Lateral',
-    desfaz_merge_lateral:'Mesclagem Lateral Desfeita',
+    movimentacao_vaga:'Mudança de vaga',
+    tornar_grande:'Expandido para carro grande',
+    tornar_pequeno:'Reduzido para carro pequeno',
+    merge_lateral:'Mesclagem lateral',
+    desfaz_merge_lateral:'Mesclagem lateral desfeita',
   };
   const tColor={
     checkin:'#0F6E56',
@@ -22225,7 +22544,7 @@ function buildRegistroHTML(apt,dv,hist,anexos){
   </div>
 
   <!-- Pg 1: Dados do veículo -->
-  <h2>Dados do Veículo</h2>
+  <h2>Dados do veículo</h2>
   <div>
     ${campos.map(([l,v])=>`<div class="campo">
       <span class="campo-label">${l}</span>
@@ -23091,7 +23410,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
         if(dataFmt) partes.push(dataFmt);
         if(funcF) partes.push(funcF);
         const legenda = partes.join(' · ') || (foto.name || 'Foto');
-        let yF=_pdfBarraMarca(doc,'Foto do Veículo', legenda);
+        let yF=_pdfBarraMarca(doc,'Foto do veículo', legenda);
         // v1.9.4.16: contador + moldura + barra de legenda
         _fotoSeq++;
         doc.setFont('helvetica','bold'); doc.setFontSize(7);
@@ -23199,7 +23518,7 @@ function buildRegistroDoc(apt, dv, hist, snapshotCheckout, imgCache, opts){
       try{
         const imgData=rc.data||rc.base64Original; if(!imgData) continue;
         doc.addPage();
-        let yR=_pdfBarraMarca(doc,'Comprovante de Recarga', rc.name||'Comprovante de recarga');
+        let yR=_pdfBarraMarca(doc,'Comprovante de recarga', rc.name||'Comprovante de recarga');
         _pdfAddImagemAjustada(doc, rc, imgData, rc.type, imgCache, 10, yR, 190, 240);
         recargasUsadas.add(rc);
       }catch(e){ console.error('[recarga PDF] erro', rc&&rc.name, e); }
@@ -23290,7 +23609,7 @@ function buildRelMovimentacoesDoc(evts, deVal, ateVal){
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
   const ci=evts.filter(e=>e.tipo==='checkin').length;
   const co=evts.filter(e=>e.tipo==='checkout').length;
-  let y=_pdfHeader(doc,'Relatório de Movimentações',periodo+' · CI:'+ci+' CO:'+co+' Total:'+evts.length);
+  let y=_pdfHeader(doc,'Relatório de movimentações',periodo+' · CI:'+ci+' CO:'+co+' Total:'+evts.length);
   // v1.9.4.16: mapa ÚNICO (era uma cópia ASCII e incompleta)
   const tLabel=MOV_LABEL;
   doc.autoTable({
@@ -23312,7 +23631,7 @@ function buildRelOcupacaoDoc(dadosOcup, hospsP, deVal, ateVal){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
-  let y=_pdfHeader(doc,'Relatório de Ocupação',periodo);
+  let y=_pdfHeader(doc,'Relatório de ocupação',periodo);
   // Stats
   doc.setFontSize(8.5); doc.setFont('helvetica','bold');
   doc.text('Ocupação média: '+dadosOcup.pct+'%   Check-ins: '+dadosOcup.ci+'   Check-outs: '+dadosOcup.co,13,y+6);
@@ -23338,7 +23657,7 @@ function buildRelPorAptoDoc(hosps, aptVal, deVal, ateVal){
   const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
   const subtitulo=(aptVal?'Apt. '+aptVal+' · ':'')+periodo;
-  let y=_pdfHeader(doc,'Relatório por Apartamento',subtitulo);
+  let y=_pdfHeader(doc,'Relatório por apartamento',subtitulo);
   doc.autoTable({
     startY:y,
     head:[['GS','Apt','Hóspede','Veículo','Check-in','Check-out']],
@@ -23360,7 +23679,7 @@ function buildRelTurnoDoc(evts, deVal, ateVal, turnosSel){
   const periodo=deVal===ateVal?deVal:(deVal+' a '+ateVal);
   // v1.9.4.16: mapa ÚNICO (era uma cópia ASCII e incompleta)
   const tLabel=MOV_LABEL;
-  let y=_pdfHeader(doc,'Relatório por Turno',periodo+' · '+(turnosSel||TURNOS.map(t=>t.nome)).join(', '));
+  let y=_pdfHeader(doc,'Relatório por turno',periodo+' · '+(turnosSel||TURNOS.map(t=>t.nome)).join(', '));
   TURNOS.filter(t=>!turnosSel||turnosSel.includes(t.nome)).forEach(t=>{
     const evsTurno=evts.filter(ev=>getTurnoDoEvento(ev.ts)===t.nome);
     if(evsTurno.length===0) return;
@@ -23797,7 +24116,7 @@ function renderAnexosArea(id, fromPasseio, containerId){
         <span class="attach-label">📎 Fotos ${lista.length>0?'('+lista.length+'/'+MAX_ANEXOS+')':''}</span>
         <div class="attach-actions">
           ${(()=>{
-            // v1.9.4.1.4: 📋 abre menu de vistorias da hospedagem (lista + Nova Vistoria)
+            // v1.9.4.1.4: 📋 abre menu de vistorias da hospedagem (lista + Nova vistoria)
             const _ap=fromPasseio?(PASSEIO[id]?.apt||''):(S[id]?.apt||'');
             const _hosp=fromPasseio?(PASSEIO[id]?.hospedagem||''):(S[id]?.hospedagem||'');
             const _vist=_listarVistoriasDaHosp(_hosp,_ap);
@@ -28057,14 +28376,14 @@ function _gsRespLigarPainel(){
     const rr = _gsRespLer(), minha = _gsDriveContaParaSinal();
     if(_gsDriveOkParaSinal() && rr.conta_oficial && minha && minha !== String(rr.conta_oficial).toLowerCase()){
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-conta-errada" style="font-weight:700;color:#A32D2D">⚠️ Este dispositivo está com o Drive na conta ' + _vtEsc(minha) + '.</div>' +
-        '<div class="ms">A conta oficial da empresa é <strong>' + _vtEsc(rr.conta_oficial) + '</strong>. Conecte o Drive nela em <strong>Gestão → Backup e Conexões</strong> e tente de novo.</div>' +
+        '<div class="ms">A conta oficial da empresa é <strong>' + _vtEsc(rr.conta_oficial) + '</strong>. Conecte o Drive nela em <strong>Gestão → Backup e conexões</strong> e tente de novo.</div>' +
         '<button class="b2t" onclick="showServidor()">Voltar</button>');
       return;
     }
     // v2.4.1.0 (Bloco B): sem Google Drive conectado este aparelho não pode assumir — e é dito o porquê
     if(!_gsDriveOkParaSinal()){
       showM('<div class="mt">☁️ Assumir o envio ao Drive</div><div class="ms" id="srv-assumir-sem-drive" style="font-weight:700;color:#A32D2D">⚠️ Este dispositivo não tem o Google Drive conectado.</div>' +
-        '<div class="ms">Só quem tem o Drive conectado pode enviar ao Drive. Conecte em <strong>Gestão → Backup e Conexões → Conectar Google Drive</strong> e tente de novo.</div>' +
+        '<div class="ms">Só quem tem o Drive conectado pode enviar ao Drive. Conecte em <strong>Gestão → Backup e conexões → Conectar Google Drive</strong> e tente de novo.</div>' +
         '<button class="b2t" onclick="showServidor()">Voltar</button>');
       return;
     }
@@ -28338,7 +28657,7 @@ function gsTelaEncerrarCorte(){
     document.getElementById('corte-ok').onclick = function(){
       const a = atualizar(); if(!a.l.length){ showToast('Nenhuma hospedagem ativa antes desse momento.', 3000); return; }
       confirmarUsuario('encerrando ' + a.l.length + ' hospedagem(ns) no corte', async function(u){
-        const quem = u ? u.nome + ' · ' + u.cargo : 'Gestor';
+        const quem = u ? gsJunta(u.nome, u.cargo) : 'Gestor';
         showM('<div class="mt">🗂 Encerrando…</div><div class="ms" id="corte-prog">0 de ' + a.l.length + '</div>');
         const f = await gsEncerrarEmLote(a.ms, quem, function(n, t, g){ const e = document.getElementById('corte-prog'); if(e) e.textContent = n + ' de ' + t + ' · ' + g; });
         showM('<div class="mt">✅ Encerramento concluído</div><div class="ms" id="corte-fim">' + f.length + ' hospedagem(ns) encerrada(s), cada uma com o PDF de fechamento.</div><button class="bcx" onclick="closeOv()" style="width:100%">Fechar</button>');
@@ -28942,7 +29261,7 @@ function _gsConflitoPasso2(pid, fica, outro, vaga){
     '<button class="b2t" id="gs-c-depois">Conferir depois</button></div>');
   const exec = function(destino, vagaOutro){
     confirmarUsuario('resolvendo o conflito da vaga ' + vaga, function(usuario){
-      const quem = usuario ? usuario.nome + ' · ' + usuario.cargo : '';
+      const quem = usuario ? gsJunta(usuario.nome, usuario.cargo) : '';
       const texto = 'Conflito de vaga resolvido: ' + fica.gs + ' mantido na ' + vaga + ', ' + outro.gs + ' ' +
         (destino === 'vaga' ? 'movido para a ' + vagaOutro : destino === 'passeio' ? 'marcado a passeio' : 'saiu (check-out)') + (usuario ? ' por ' + usuario.nome : '');
       const ok = _gsResolver(pid, { fica:fica.gs, vaga:vaga, outro:outro.gs, destino:destino, vaga_outro:vagaOutro || null }, 'conflito_vaga_resolvido', function(){
@@ -28996,7 +29315,7 @@ function gsOrfaAbrir(gs){
     '<button class="b2c verm" id="gs-o-encerrar">Encerrar hospedagem antiga</button>' +
     '<button class="b2t" onclick="closeOv()">Fechar</button></div>');
   const registrar = function(tipo, txt, vaga, usuario){
-    addHistorico(String(h.apt || '?'), tipo, vaga || '', txt, usuario ? usuario.nome + ' · ' + usuario.cargo : '', gs);
+    addHistorico(String(h.apt || '?'), tipo, vaga || '', txt, usuario ? gsJunta(usuario.nome, usuario.cargo) : '', gs);
   };
   document.getElementById('gs-o-vaga').onclick = function(){
     _gsEscolherVagaNoMapa('Toque na vaga livre para o ' + gs, function(v){
@@ -29019,7 +29338,7 @@ function gsOrfaAbrir(gs){
 // ENCERRAMENTO ADMINISTRATIVO: PDF de fechamento com a observação + trilha
 function gsEncerrarOrfa(gs, usuario){
   const h = HOSPEDAGENS[gs]; if(!h || h.checkout_ts) return false;
-  const usuarioStr = usuario ? usuario.nome + ' · ' + usuario.cargo : 'Gestor';
+  const usuarioStr = usuario ? gsJunta(usuario.nome, usuario.cargo) : 'Gestor';
   const txt = 'encerramento administrativo — hospedagem sem vaga desde ' + _dLocal(_gsOrfaDesde(gs));
   const apt = String(h.apt || '');
   addHistorico(apt, 'checkout', '', 'Checkout — ' + txt, usuarioStr, gs);
@@ -29054,7 +29373,7 @@ function gsPendAbrir(pid){
   const cab = '<div class="mt">⚠️ ' + _vtEsc(_gsPendRotulo(p)) + '</div>';
   const fechar = '<button class="b2t" id="gs-p-depois">Conferir depois</button>';
   const ligarFechar = function(){ const b = document.getElementById('gs-p-depois'); if(b) b.onclick = function(){ _gsPendJanela = null; closeOv(); }; };
-  const comOperador = function(acao, fn){ confirmarUsuario(acao, function(u){ fn(u, u ? u.nome + ' · ' + u.cargo : ''); }); };
+  const comOperador = function(acao, fn){ confirmarUsuario(acao, function(u){ fn(u, u ? gsJunta(u.nome, u.cargo) : ''); }); };
   if(p.tipo === 'gs_dois_lugares'){
     const gs = d.gs || p.gs, ac = d.aceito || {}, rc = d.recusado || {};
     const txt = function(o){ return o.tipo === 'vaga' ? 'Vaga ' + o.vaga : 'A passeio'; };
